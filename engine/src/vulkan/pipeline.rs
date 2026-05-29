@@ -8,9 +8,15 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    pub fn new_triangle(device: &ash::Device, color_format: vk::Format) -> anyhow::Result<Self> {
-        let vert = ShaderModule::from_bytes(device, include_bytes!(concat!(env!("OUT_DIR"), "/triangle.vert.spv")))?;
-        let frag = ShaderModule::from_bytes(device, include_bytes!(concat!(env!("OUT_DIR"), "/triangle.frag.spv")))?;
+    pub fn new_mesh(device: &ash::Device, color_format: vk::Format) -> anyhow::Result<Self> {
+        let vert = ShaderModule::from_bytes(
+            device,
+            include_bytes!(concat!(env!("OUT_DIR"), "/mesh.vert.spv")),
+        )?;
+        let frag = ShaderModule::from_bytes(
+            device,
+            include_bytes!(concat!(env!("OUT_DIR"), "/mesh.frag.spv")),
+        )?;
 
         let entry = c"main";
 
@@ -25,7 +31,33 @@ impl Pipeline {
                 .name(entry),
         ];
 
-        let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
+        // Vertex layout: position (12) + normal (12) + uv (8) = 32 байта / вершину
+        let binding = vk::VertexInputBindingDescription::default()
+            .binding(0)
+            .stride(32)
+            .input_rate(vk::VertexInputRate::VERTEX);
+
+        let attributes = [
+            vk::VertexInputAttributeDescription::default()
+                .binding(0)
+                .location(0)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .offset(0),
+            vk::VertexInputAttributeDescription::default()
+                .binding(0)
+                .location(1)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .offset(12),
+            vk::VertexInputAttributeDescription::default()
+                .binding(0)
+                .location(2)
+                .format(vk::Format::R32G32_SFLOAT)
+                .offset(24),
+        ];
+
+        let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
+            .vertex_binding_descriptions(std::slice::from_ref(&binding))
+            .vertex_attribute_descriptions(&attributes);
 
         let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
@@ -36,8 +68,8 @@ impl Pipeline {
 
         let rasterizer = vk::PipelineRasterizationStateCreateInfo::default()
             .polygon_mode(vk::PolygonMode::FILL)
-            .cull_mode(vk::CullModeFlags::NONE)
-            .front_face(vk::FrontFace::CLOCKWISE)
+            .cull_mode(vk::CullModeFlags::BACK)
+            .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .line_width(1.0);
 
         let multisampling = vk::PipelineMultisampleStateCreateInfo::default()
@@ -50,10 +82,16 @@ impl Pipeline {
             .attachments(std::slice::from_ref(&blend_attachment));
 
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-        let dynamic_state = vk::PipelineDynamicStateCreateInfo::default()
-            .dynamic_states(&dynamic_states);
+        let dynamic_state =
+            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
 
-        let layout_info = vk::PipelineLayoutCreateInfo::default();
+        let push_range = vk::PushConstantRange::default()
+            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
+            .offset(0)
+            .size(128);
+
+        let layout_info = vk::PipelineLayoutCreateInfo::default()
+            .push_constant_ranges(std::slice::from_ref(&push_range));
         let layout = unsafe { device.create_pipeline_layout(&layout_info, None)? };
 
         let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
@@ -72,19 +110,24 @@ impl Pipeline {
             .push_next(&mut rendering_info);
 
         let handle = unsafe {
-            device.create_graphics_pipelines(
-                vk::PipelineCache::null(),
-                std::slice::from_ref(&pipeline_info),
-                None,
-            )
+            device
+                .create_graphics_pipelines(
+                    vk::PipelineCache::null(),
+                    std::slice::from_ref(&pipeline_info),
+                    None,
+                )
                 .map_err(|(_, e)| e)?[0]
         };
 
         drop(vert);
         drop(frag);
 
-        log::info!("Graphics pipeline создан");
-        Ok(Self { handle, layout, device: device.clone() })
+        log::info!("Mesh pipeline создан");
+        Ok(Self {
+            handle,
+            layout,
+            device: device.clone(),
+        })
     }
 }
 

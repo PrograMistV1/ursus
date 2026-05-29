@@ -12,7 +12,7 @@ pub use debug::DebugMessenger;
 pub use device::Device;
 pub use instance::Instance;
 pub use pipeline::Pipeline;
-pub use renderer::Renderer;
+pub use renderer::{Camera, DrawCall, Renderer};
 pub use swapchain::Swapchain;
 
 use ash::vk;

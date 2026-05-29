@@ -1,13 +1,58 @@
 use super::{commands::Commands, sync::FrameSync, Device, Pipeline, VulkanContext};
+use crate::assets::GpuMesh;
+use crate::ecs::components::Transform;
 use ash::vk;
+use glam::{Mat4, Vec3};
 use std::sync::Arc;
 
 const FRAMES_IN_FLIGHT: u32 = 2;
 
+pub struct DrawCall<'a> {
+    pub gpu_mesh: &'a GpuMesh,
+    pub transform: &'a Transform,
+}
+
+pub struct Camera {
+    pub eye: Vec3,
+    pub target: Vec3,
+    pub up: Vec3,
+    pub fov_y: f32,
+    pub z_near: f32,
+    pub z_far: f32,
+}
+
+impl Default for Camera {
+    fn default() -> Self {
+        Self {
+            eye: Vec3::new(2.0, 2.0, 3.0),
+            target: Vec3::ZERO,
+            up: Vec3::Y,
+            fov_y: 60_f32.to_radians(),
+            z_near: 0.1,
+            z_far: 100.0,
+        }
+    }
+}
+
+impl Camera {
+    pub fn view_proj(&self, aspect: f32) -> Mat4 {
+        let view = Mat4::look_at_rh(self.eye, self.target, self.up);
+        let mut proj = Mat4::perspective_rh(self.fov_y, aspect, self.z_near, self.z_far);
+        proj.y_axis.y *= -1.0;
+        proj * view
+    }
+}
+
+#[repr(C)]
+struct MeshPushConstants {
+    mvp: [[f32; 4]; 4],
+    model: [[f32; 4]; 4],
+}
+
 pub struct Renderer {
-    pub pipeline: Pipeline,
+    pub mesh_pipeline: Pipeline,
+    pub commands: Commands,
     frames: Vec<FrameSync>,
-    commands: Commands,
     current_frame: usize,
     swapchain_loader: ash::khr::swapchain::Device,
     device: Arc<Device>,
@@ -17,7 +62,7 @@ impl Renderer {
     pub fn new(ctx: &VulkanContext) -> anyhow::Result<Self> {
         let swapchain = ctx.swapchain.as_ref().unwrap();
 
-        let pipeline = Pipeline::new_triangle(&ctx.device.handle, swapchain.format)?;
+        let mesh_pipeline = Pipeline::new_mesh(&ctx.device.handle, swapchain.format)?;
 
         let frames: anyhow::Result<Vec<_>> = (0..FRAMES_IN_FLIGHT)
             .map(|_| FrameSync::new(&ctx.device.handle))
@@ -34,20 +79,29 @@ impl Renderer {
             ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
 
         Ok(Self {
-            pipeline,
-            frames,
+            mesh_pipeline,
             commands,
+            frames,
             current_frame: 0,
             swapchain_loader,
             device: ctx.device.clone(),
         })
     }
 
-    pub fn draw_frame(&mut self, ctx: &VulkanContext, clear_color: [f32; 4]) -> anyhow::Result<()> {
+    pub fn draw_frame(
+        &mut self,
+        ctx: &VulkanContext,
+        clear_color: [f32; 4],
+        camera: &Camera,
+        draw_calls: &[DrawCall<'_>],
+    ) -> anyhow::Result<()> {
         let frame = &self.frames[self.current_frame];
         let cmd = self.commands.buffers[self.current_frame];
         let device = &ctx.device.handle;
         let swapchain = ctx.swapchain.as_ref().unwrap();
+
+        let aspect = swapchain.extent.width as f32 / swapchain.extent.height as f32;
+        let view_proj = camera.view_proj(aspect);
 
         unsafe {
             device.wait_for_fences(&[frame.render_fence], true, u64::MAX)?;
@@ -65,7 +119,6 @@ impl Renderer {
 
         unsafe {
             device.reset_command_buffer(cmd, vk::CommandBufferResetFlags::empty())?;
-
             device.begin_command_buffer(
                 cmd,
                 &vk::CommandBufferBeginInfo::default()
@@ -102,8 +155,6 @@ impl Renderer {
                     .color_attachments(std::slice::from_ref(&color_attachment)),
             );
 
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline.handle);
-
             device.cmd_set_viewport(
                 cmd,
                 0,
@@ -126,7 +177,43 @@ impl Renderer {
                 }],
             );
 
-            device.cmd_draw(cmd, 3, 1, 0, 0);
+            device.cmd_bind_pipeline(
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.mesh_pipeline.handle,
+            );
+
+            for dc in draw_calls {
+                let model = dc.transform.matrix();
+                let mvp = view_proj * model;
+
+                let pc = MeshPushConstants {
+                    mvp: mvp.to_cols_array_2d(),
+                    model: model.to_cols_array_2d(),
+                };
+
+                let pc_bytes = std::slice::from_raw_parts(
+                    &pc as *const MeshPushConstants as *const u8,
+                    size_of::<MeshPushConstants>(),
+                );
+
+                device.cmd_push_constants(
+                    cmd,
+                    self.mesh_pipeline.layout,
+                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                    0,
+                    pc_bytes,
+                );
+
+                device.cmd_bind_vertex_buffers(cmd, 0, &[dc.gpu_mesh.vertex_buffer], &[0]);
+                device.cmd_bind_index_buffer(
+                    cmd,
+                    dc.gpu_mesh.index_buffer,
+                    0,
+                    vk::IndexType::UINT32,
+                );
+                device.cmd_draw_indexed(cmd, dc.gpu_mesh.index_count, 1, 0, 0, 0);
+            }
 
             device.cmd_end_rendering(cmd);
 

@@ -15,5 +15,10 @@ raw-window-handle = "0.6"
 anyhow = "1"
 log = "0.4"
 env_logger = "0.11"
+hecs = "0.11.0"
+glam = { version = "0.33.0", features = ["bytemuck"] }
+tobj = "4.0.3"
+gltf = "1.4.1"
+bytemuck = { version = "1.25.0", features = ["derive"] }
 
 [build-dependencies]

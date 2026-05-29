@@ -1,4 +1,7 @@
-use crate::vulkan::{Renderer, VulkanContext};
+use crate::assets::AssetServer;
+use crate::ecs::systems::collect_draw_calls;
+use crate::ecs::GameWorld;
+use crate::vulkan::{Camera, DrawCall, Renderer, VulkanContext};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -14,8 +17,50 @@ pub trait App {
 }
 
 pub struct EngineContext {
+    pub world: GameWorld,
+    pub assets: AssetServer,
     pub renderer: Renderer,
     pub vk: VulkanContext,
+    pub camera: Camera,
+}
+
+impl EngineContext {
+    fn new(vk: VulkanContext) -> anyhow::Result<Self> {
+        let renderer = Renderer::new(&vk)?;
+
+        let assets = AssetServer::new(
+            vk.device.handle.clone(),
+            vk.device.physical,
+            vk.instance.handle.clone(),
+            renderer.commands.pool,
+            vk.device.graphics_queue,
+        );
+
+        Ok(Self {
+            world: GameWorld::new(),
+            assets,
+            renderer,
+            vk,
+            camera: Camera::default(),
+        })
+    }
+    pub fn render_world(&mut self, clear_color: [f32; 4]) -> anyhow::Result<()> {
+        let ecs_calls = collect_draw_calls(&mut self.world, &self.assets);
+
+        let gpu_calls: Vec<DrawCall<'_>> = ecs_calls
+            .iter()
+            .filter_map(|dc| {
+                let gpu = self.assets.get_gpu_mesh(dc.mesh)?;
+                Some(DrawCall {
+                    gpu_mesh: gpu,
+                    transform: &dc.transform,
+                })
+            })
+            .collect();
+
+        self.renderer
+            .draw_frame(&self.vk, clear_color, &self.camera, &gpu_calls)
+    }
 }
 
 pub struct Engine;
@@ -24,6 +69,7 @@ impl Engine {
     pub fn run(app: impl App + 'static) -> anyhow::Result<()> {
         env_logger::builder()
             .filter_level(log::LevelFilter::Info)
+            .parse_default_env()
             .init();
 
         let event_loop = EventLoop::new()?;
@@ -51,7 +97,9 @@ struct EngineHandler {
 
 impl ApplicationHandler for EngineHandler {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.state.is_some() { return; }
+        if self.state.is_some() {
+            return;
+        }
 
         let attrs = WindowAttributes::default()
             .with_title("engine")
@@ -61,14 +109,22 @@ impl ApplicationHandler for EngineHandler {
             .create_window(attrs)
             .expect("Failed to create window");
 
-        let vk = VulkanContext::new(&window, cfg!(debug_assertions))
-            .expect("Failed to init Vulkan");
+        let vk =
+            VulkanContext::new(&window, cfg!(debug_assertions)).expect("Failed to init Vulkan");
 
-        let renderer = Renderer::new(&vk)
-            .expect("Failed to create renderer");
+        let mut ctx = EngineContext::new(vk).expect("Failed to create EngineContext");
 
-        let mut ctx = EngineContext { renderer, vk };
         self.app.on_start(&mut ctx);
+
+        ctx.assets
+            .upload_all_meshes()
+            .expect("Failed to upload meshes to GPU");
+
+        log::info!(
+            "AssetServer: {} мешей, {} материалов",
+            ctx.assets.mesh_count(),
+            ctx.assets.material_count(),
+        );
 
         self.state = Some(RunningState {
             window,
