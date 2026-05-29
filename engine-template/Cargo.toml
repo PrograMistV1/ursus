@@ -1,0 +1,13 @@
+[package]
+name = "engine-template"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "engine-template"
+path = "src/main.rs"
+
+[dependencies]
+engine = { path = "../engine" }
+anyhow = "1"
+log = "0.4"

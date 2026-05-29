@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "engine",
+    "engine-template",
+    "sandbox",
+]
+resolver = "2"
+
+[profile.dev.package."*"]
+opt-level = 3

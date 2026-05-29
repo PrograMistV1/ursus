@@ -1,0 +1,19 @@
+[package]
+name = "engine"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "engine"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ash = "0.38"
+ash-window = "0.13"
+winit = "=0.30.9"
+raw-window-handle = "0.6"
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
+
+[build-dependencies]
