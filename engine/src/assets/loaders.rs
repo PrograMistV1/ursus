@@ -68,9 +68,7 @@ pub fn load_obj(path: &std::path::Path) -> anyhow::Result<CpuMesh> {
 
 pub struct GltfPrimitive {
     pub mesh: CpuMesh,
-    /// Сырые байты embedded текстур по слотам.
-    /// AssetServer загрузит их через `load_texture_bytes`.
-    pub textures: Vec<(TextureSlot, Vec<u8>, String)>,
+    pub textures: Vec<(TextureSlot, Vec<u8>, u32, u32, String)>,
     pub material: Option<GltfMaterial>,
 }
 
@@ -121,14 +119,9 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 .unwrap_or_else(|| (0..vertices.len() as u32).collect());
 
             let mesh_name = mesh.name().unwrap_or("gltf_mesh").to_string();
-            log::info!(
-                "glTF '{}': {} вершин, {} индексов",
-                mesh_name,
-                vertices.len(),
-                indices.len()
-            );
+            log::info!("glTF '{}': {} вершин, {} индексов", mesh_name, vertices.len(), indices.len());
 
-            let mut tex_data: Vec<(TextureSlot, Vec<u8>, String)> = Vec::new();
+            let mut tex_data: Vec<(TextureSlot, Vec<u8>, u32, u32, String)> = Vec::new();
             let mut mat_out = None;
 
             if let Some(mat) = primitive.material().index().map(|_| primitive.material()) {
@@ -148,52 +141,32 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 });
 
                 if let Some(info) = pbr.base_color_texture() {
-                    if let Some(bytes) = image_bytes(&images, info.texture().source().index()) {
-                        tex_data.push((
-                            TextureSlot::Diffuse,
-                            bytes,
-                            format!("{}_diffuse", mesh_name),
-                        ));
+                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
+                        tex_data.push((TextureSlot::Diffuse, bytes, w, h, format!("{}_diffuse", mesh_name)));
                     }
                 }
 
                 if let Some(info) = pbr.metallic_roughness_texture() {
-                    if let Some(bytes) = image_bytes(&images, info.texture().source().index()) {
-                        tex_data.push((
-                            TextureSlot::MetallicRoughness,
-                            bytes,
-                            format!("{}_metallic_roughness", mesh_name),
-                        ));
+                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
+                        tex_data.push((TextureSlot::MetallicRoughness, bytes, w, h, format!("{}_metallic_roughness", mesh_name)));
                     }
                 }
 
                 if let Some(info) = mat.normal_texture() {
-                    if let Some(bytes) = image_bytes(&images, info.texture().source().index()) {
-                        tex_data.push((
-                            TextureSlot::Normal,
-                            bytes,
-                            format!("{}_normal", mesh_name),
-                        ));
+                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
+                        tex_data.push((TextureSlot::Normal, bytes, w, h, format!("{}_normal", mesh_name)));
                     }
                 }
 
                 if let Some(info) = mat.emissive_texture() {
-                    if let Some(bytes) = image_bytes(&images, info.texture().source().index()) {
-                        tex_data.push((
-                            TextureSlot::Emissive,
-                            bytes,
-                            format!("{}_emissive", mesh_name),
-                        ));
+                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
+                        tex_data.push((TextureSlot::Emissive, bytes, w, h, format!("{}_emissive", mesh_name)));
                     }
                 }
 
                 if let Some(info) = mat.occlusion_texture() {
-                    if let Some(bytes) = image_bytes(&images, info.texture().source().index()) {
-                        tex_data.push((
-                            TextureSlot::Occlusion,
-                            bytes,
-                            format!("{}_occlusion", mesh_name),
-                        ));
+                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
+                        tex_data.push((TextureSlot::Occlusion, bytes, w, h, format!("{}_occlusion", mesh_name)));
                     }
                 }
             }
@@ -213,9 +186,15 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
     Ok(primitives)
 }
 
-fn image_bytes(images: &[gltf::image::Data], index: usize) -> Option<Vec<u8>> {
+fn image_bytes(images: &[gltf::image::Data], index: usize) -> Option<(Vec<u8>, u32, u32)> {
     let data = images.get(index)?;
-    // Конвертируем в RGBA8 через image крейт
+    log::info!(
+        "image_bytes: index={} format={:?} {}x{}",
+        index,
+        data.format,
+        data.width,
+        data.height
+    );
     use image::DynamicImage;
     let img = match data.format {
         gltf::image::Format::R8G8B8A8 => {
@@ -232,5 +211,7 @@ fn image_bytes(images: &[gltf::image::Data], index: usize) -> Option<Vec<u8>> {
             return None;
         }
     };
-    Some(img.into_rgba8().into_raw())
+    let rgba = img.into_rgba8();
+    let (w, h) = (rgba.width(), rgba.height());
+    Some((rgba.into_raw(), w, h))
 }

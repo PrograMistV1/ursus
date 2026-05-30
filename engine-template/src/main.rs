@@ -18,21 +18,31 @@ impl MyApp {
 
 impl App for MyApp {
     fn on_start(&mut self, ctx: &mut EngineContext) {
-        match ctx.assets.load_mesh("assets/duck.glb") {
-            Ok(mesh) => {
-                ctx.world
-                    .spawn()
-                    .insert(mesh)
-                    .insert(Transform::at(0.0, 0.0, 0.0))
-                    .build();
-            }
-            Err(e) => log::warn!("Не удалось загрузить: {e}"),
-        }
-
         let center = Vec3::new(13.44, 86.95, -3.70);
         ctx.camera.target = center;
         ctx.camera.eye = center + Vec3::new(0.0, 0.0, 280.0);
         ctx.camera.z_far = 1000.0;
+
+        match ctx.assets.load_mesh("assets/duck.glb") {
+            Ok((mesh, material)) => {
+                let mut builder = ctx.world.spawn();
+                builder = builder.insert(mesh);
+                builder = builder.insert(Transform::at(0.0, 0.0, 0.0));
+                if let Some(mat) = material {
+                    builder = builder.insert(mat);
+                }
+                builder.build();
+                log::info!("Модель загружена");
+            }
+            Err(e) => {
+                log::warn!("Не удалось загрузить модель: {e}, спавним куб");
+                ctx.world
+                    .spawn()
+                    .insert(ctx.assets.mesh_cube())
+                    .insert(Transform::at(0.0, 0.0, 0.0))
+                    .build();
+            }
+        }
     }
 
     fn on_update(&mut self, ctx: &mut EngineContext, dt: f32) {
