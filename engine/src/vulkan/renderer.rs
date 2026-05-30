@@ -59,7 +59,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(ctx: &VulkanContext, assets: &AssetServer) -> anyhow::Result<Self> {
+    pub fn new(ctx: &VulkanContext, assets: &mut AssetServer) -> anyhow::Result<Self> {
         let swapchain = ctx.swapchain.as_ref().unwrap();
         let w = swapchain.extent.width;
         let h = swapchain.extent.height;
@@ -77,6 +77,7 @@ impl Renderer {
             render_target.format,
             assets.bindless.layout,
             assets.material_buffer.layout,
+            assets,  // теперь можно
         )?;
 
         let post_process = PostProcessPass::new(
@@ -148,7 +149,6 @@ impl Renderer {
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )?;
 
-            // ── Pass 1: Geometry ──────────────────────────────────────────────
             self.geometry.record(
                 device, cmd,
                 &self.render_target,
@@ -159,7 +159,6 @@ impl Renderer {
                 assets,
             );
 
-            // ── Pass 2: Post-process (tonemap + FXAA) → swapchain ─────────────
             self.post_process.record(
                 device, cmd,
                 swapchain.images[image_index as usize],

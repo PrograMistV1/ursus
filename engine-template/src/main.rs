@@ -24,14 +24,16 @@ impl App for MyApp {
         ctx.camera.z_far = 1000.0;
 
         match ctx.assets.load_mesh("assets/duck.glb") {
-            Ok((mesh, material)) => {
-                let mut builder = ctx.world.spawn();
-                builder = builder.insert(mesh);
-                builder = builder.insert(Transform::at(0.0, 0.0, 0.0));
-                if let Some(mat) = material {
-                    builder = builder.insert(mat);
+            Ok(primitives) => {
+                for (mesh, material) in primitives {
+                    let mut builder = ctx.world.spawn();
+                    builder = builder.insert(mesh);
+                    builder = builder.insert(Transform::at(0.0, 0.0, 0.0));
+                    if let Some(mat) = material {
+                        builder = builder.insert(mat);
+                    }
+                    builder.build();
                 }
-                builder.build();
                 log::info!("Модель загружена");
             }
             Err(e) => {

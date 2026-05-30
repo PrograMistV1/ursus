@@ -1,6 +1,36 @@
 use super::shader::ShaderModule;
 use ash::vk;
 
+// Описание того что нужно для создания pipeline
+pub struct PipelineDesc<'a> {
+    pub vert_spv: &'a [u8],
+    pub frag_spv: &'a [u8],
+    pub color_format: vk::Format,
+    pub depth_format: vk::Format,
+    pub cull_mode: vk::CullModeFlags,
+    pub depth_test: bool,
+    pub depth_write: bool,
+}
+
+impl<'a> PipelineDesc<'a> {
+    // Дефолтные настройки для большинства мешей
+    pub fn standard(
+        vert_spv: &'a [u8],
+        frag_spv: &'a [u8],
+        color_format: vk::Format,
+    ) -> Self {
+        Self {
+            vert_spv,
+            frag_spv,
+            color_format,
+            depth_format: vk::Format::D32_SFLOAT,
+            cull_mode: vk::CullModeFlags::BACK,
+            depth_test: true,
+            depth_write: true,
+        }
+    }
+}
+
 pub struct Pipeline {
     pub handle: vk::Pipeline,
     pub layout: vk::PipelineLayout,
@@ -8,23 +38,15 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    pub fn new_mesh(
+    pub fn new(
         device: &ash::Device,
-        color_format: vk::Format,
-        bindless_layout: vk::DescriptorSetLayout,
-        material_layout: vk::DescriptorSetLayout,
+        desc: &PipelineDesc,
+        set_layouts: &[vk::DescriptorSetLayout],
     ) -> anyhow::Result<Self> {
-        let vert = ShaderModule::from_bytes(
-            device,
-            include_bytes!(concat!(env!("OUT_DIR"), "/mesh.vert.spv")),
-        )?;
-        let frag = ShaderModule::from_bytes(
-            device,
-            include_bytes!(concat!(env!("OUT_DIR"), "/mesh.frag.spv")),
-        )?;
+        let vert = ShaderModule::from_bytes(device, desc.vert_spv)?;
+        let frag = ShaderModule::from_bytes(device, desc.frag_spv)?;
 
         let entry = c"main";
-
         let stages = [
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlags::VERTEX)
@@ -36,6 +58,8 @@ impl Pipeline {
                 .name(entry),
         ];
 
+        // Vertex layout фиксированный — position(12) + normal(12) + uv(8) = 32 байта
+        // Если понадобится другой layout — добавим в PipelineDesc позже
         let binding = vk::VertexInputBindingDescription::default()
             .binding(0)
             .stride(32)
@@ -43,20 +67,14 @@ impl Pipeline {
 
         let attributes = [
             vk::VertexInputAttributeDescription::default()
-                .binding(0)
-                .location(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(0),
+                .binding(0).location(0)
+                .format(vk::Format::R32G32B32_SFLOAT).offset(0),
             vk::VertexInputAttributeDescription::default()
-                .binding(0)
-                .location(1)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(12),
+                .binding(0).location(1)
+                .format(vk::Format::R32G32B32_SFLOAT).offset(12),
             vk::VertexInputAttributeDescription::default()
-                .binding(0)
-                .location(2)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(24),
+                .binding(0).location(2)
+                .format(vk::Format::R32G32_SFLOAT).offset(24),
         ];
 
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
@@ -72,7 +90,7 @@ impl Pipeline {
 
         let rasterizer = vk::PipelineRasterizationStateCreateInfo::default()
             .polygon_mode(vk::PolygonMode::FILL)
-            .cull_mode(vk::CullModeFlags::BACK)
+            .cull_mode(desc.cull_mode)
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .line_width(1.0);
 
@@ -86,35 +104,34 @@ impl Pipeline {
             .attachments(std::slice::from_ref(&blend_attachment));
 
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-        let dynamic_state =
-            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+        let dynamic_state = vk::PipelineDynamicStateCreateInfo::default()
+            .dynamic_states(&dynamic_states);
 
+        // Push constants одинаковые для всех mesh шейдеров
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
             .offset(0)
-            .size(132);
-
-        let set_layouts = [bindless_layout, material_layout];
+            .size(std::mem::size_of::<crate::vulkan::passes::geometry::MeshPushConstants>() as u32);
 
         let layout = unsafe {
             device.create_pipeline_layout(
                 &vk::PipelineLayoutCreateInfo::default()
-                    .set_layouts(&set_layouts)
+                    .set_layouts(set_layouts)
                     .push_constant_ranges(std::slice::from_ref(&push_range)),
                 None,
             )?
         };
 
-        let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
-            .color_attachment_formats(std::slice::from_ref(&color_format))
-            .depth_attachment_format(vk::Format::D32_SFLOAT);
-
         let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
-            .depth_test_enable(true)
-            .depth_write_enable(true)
+            .depth_test_enable(desc.depth_test)
+            .depth_write_enable(desc.depth_write)
             .depth_compare_op(vk::CompareOp::LESS)
             .depth_bounds_test_enable(false)
             .stencil_test_enable(false);
+
+        let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
+            .color_attachment_formats(std::slice::from_ref(&desc.color_format))
+            .depth_attachment_format(desc.depth_format);
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
             .stages(&stages)
@@ -125,24 +142,18 @@ impl Pipeline {
             .multisample_state(&multisampling)
             .color_blend_state(&color_blending)
             .dynamic_state(&dynamic_state)
-            .layout(layout)
             .depth_stencil_state(&depth_stencil)
+            .layout(layout)
             .push_next(&mut rendering_info);
 
         let handle = unsafe {
-            device
-                .create_graphics_pipelines(
-                    vk::PipelineCache::null(),
-                    std::slice::from_ref(&pipeline_info),
-                    None,
-                )
-                .map_err(|(_, e)| e)?[0]
+            device.create_graphics_pipelines(
+                vk::PipelineCache::null(),
+                std::slice::from_ref(&pipeline_info),
+                None,
+            ).map_err(|(_, e)| e)?[0]
         };
 
-        drop(vert);
-        drop(frag);
-
-        log::info!("Mesh pipeline создан (bindless + material buffer)");
         Ok(Self {
             handle,
             layout,

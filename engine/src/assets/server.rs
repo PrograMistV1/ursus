@@ -86,7 +86,7 @@ impl AssetServer {
         self.material_buffer.set
     }
 
-    pub fn load_mesh(&mut self, path: impl AsRef<Path>) -> anyhow::Result<(MeshHandle, Option<MaterialHandle>)> {
+    pub fn load_mesh(&mut self, path: impl AsRef<Path>) -> anyhow::Result<Vec<(MeshHandle, Option<MaterialHandle>)>> {
         let path = path.as_ref();
         let canonical = path.to_path_buf();
 
@@ -96,14 +96,13 @@ impl AssetServer {
             "obj" => {
                 let mesh = loaders::load_obj(path)?;
                 let handle = self.register_mesh(mesh);
-                self.mesh_path_cache.insert(canonical, handle);
-                Ok((handle, None))
+                Ok(vec![(handle, None)])  // один элемент
             }
             "gltf" | "glb" => {
                 let result = loaders::load_gltf(path)?;
-                let mut first: Option<(MeshHandle, Option<MaterialHandle>)> = None;
+                let mut all = Vec::new();
 
-                for (i, primitive) in result.into_iter().enumerate() {
+                for primitive in result.into_iter() {
                     let mut mat_def = primitive.material.map(|m| {
                         MaterialDef::new(&m.name, self.shaders.diffuse()).with_color(
                             m.base_color[0],
@@ -126,15 +125,10 @@ impl AssetServer {
 
                     let mh = self.register_mesh(primitive.mesh);
                     let mat_handle = mat_def.map(|mat| self.register_material(mat));
-
-                    if i == 0 {
-                        first = Some((mh, mat_handle));
-                    }
+                    all.push((mh, mat_handle));
                 }
 
-                let (handle, mat_handle) = first.unwrap();
-                self.mesh_path_cache.insert(canonical, handle);
-                Ok((handle, mat_handle))
+                Ok(all)
             }
             _ => anyhow::bail!("Неизвестный формат меша: {:?}", path),
         }

@@ -1,8 +1,11 @@
+use crate::assets::shader_registry::ShaderHandle;
 use crate::assets::{AssetServer, GpuMesh};
 use crate::ecs::components::{MaterialHandle, Transform};
+use crate::vulkan::pipeline::PipelineDesc;
 use crate::vulkan::{depth::DepthBuffer, render_target::RenderTarget, Pipeline};
 use ash::vk;
 use glam::Mat4;
+use std::collections::HashMap;
 
 #[repr(C)]
 pub struct MeshPushConstants {
@@ -15,10 +18,16 @@ pub struct DrawCall<'a> {
     pub gpu_mesh: &'a GpuMesh,
     pub transform: &'a Transform,
     pub material: Option<MaterialHandle>,
+    pub shader: ShaderHandle,  // теперь знаем какой шейдер
 }
 
 pub struct GeometryPass {
-    pub pipeline: Pipeline,
+    pipelines: HashMap<ShaderHandle, Pipeline>,
+    default_shader: ShaderHandle,
+    // храним layouts чтобы создавать новые pipeline по требованию
+    bindless_layout: vk::DescriptorSetLayout,
+    material_layout: vk::DescriptorSetLayout,
+    color_format: vk::Format,
 }
 
 impl GeometryPass {
@@ -27,13 +36,56 @@ impl GeometryPass {
         color_format: vk::Format,
         bindless_layout: vk::DescriptorSetLayout,
         material_layout: vk::DescriptorSetLayout,
+        assets: &mut AssetServer,
     ) -> anyhow::Result<Self> {
-        let pipeline = Pipeline::new_mesh(device, color_format, bindless_layout, material_layout)?;
-        Ok(Self { pipeline })
+        let mut pass = Self {
+            pipelines: HashMap::new(),
+            default_shader: assets.shaders.diffuse(),
+            bindless_layout,
+            material_layout,
+            color_format,
+        };
+
+        // Создаём pipeline для встроенных шейдеров сразу
+        let default = assets.shaders.diffuse();
+        pass.get_or_create_pipeline(device, default, &mut assets.shaders)?;
+
+        Ok(pass)
+    }
+
+    // Возвращает существующий pipeline или создаёт новый
+    pub fn get_or_create_pipeline(
+        &mut self,
+        device: &ash::Device,
+        shader: ShaderHandle,
+        registry: &mut crate::assets::shader_registry::ShaderRegistry,
+    ) -> anyhow::Result<&Pipeline> {
+        // Если pipeline уже есть — возвращаем
+        if self.pipelines.contains_key(&shader) {
+            return Ok(&self.pipelines[&shader]);
+        }
+
+        // Иначе загружаем байты и создаём новый
+        log::info!("Создаём pipeline для шейдера {:?}", shader);
+
+        let (vert_spv, frag_spv) = registry.load_spv(shader)?;
+        let vert_spv = vert_spv.to_vec();
+        let frag_spv = frag_spv.to_vec();
+
+        let set_layouts = [self.bindless_layout, self.material_layout];
+
+        let pipeline = Pipeline::new(
+            device,
+            &PipelineDesc::standard(&vert_spv, &frag_spv, self.color_format),
+            &set_layouts,
+        )?;
+
+        self.pipelines.insert(shader, pipeline);
+        Ok(&self.pipelines[&shader])
     }
 
     pub fn record(
-        &self,
+        &mut self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,
         target: &RenderTarget,
@@ -41,7 +93,7 @@ impl GeometryPass {
         clear_color: [f32; 4],
         view_proj: Mat4,
         draw_calls: &[DrawCall<'_>],
-        assets: &AssetServer,
+        assets: &AssetServer,  // immutable снова
     ) {
         unsafe {
             transition(device, cmd, target.image,
@@ -98,29 +150,68 @@ impl GeometryPass {
                 extent: target.extent,
             }]);
 
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline.handle);
-            device.cmd_bind_descriptor_sets(
-                cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline.layout,
-                0, &[assets.bindless.set, assets.material_buffer_set()], &[],
-            );
+            // Группируем draw calls по шейдеру чтобы минимизировать переключения pipeline
+            // Сортировка по ShaderHandle — объекты с одинаковым шейдером идут подряд
+            let mut sorted: Vec<(usize, &DrawCall)> = draw_calls
+                .iter()
+                .enumerate()
+                .collect();
+            sorted.sort_by_key(|(_, dc)| dc.shader.0);
 
-            for (i, dc) in draw_calls.iter().enumerate() {
+            let mut current_shader: Option<ShaderHandle> = None;
+            let mut current_layout: vk::PipelineLayout = vk::PipelineLayout::null();
+
+            for (i, dc) in &sorted {
+                // Переключаем pipeline только если шейдер изменился
+                if current_shader != Some(dc.shader) {
+                    let pipeline = match self.get_or_create_pipeline_inner(dc.shader) {
+                        Some(p) => p,
+                        None => {
+                            log::warn!("Pipeline для шейдера {:?} не найден, пропускаем", dc.shader);
+                            continue;
+                        }
+                    };
+
+                    device.cmd_bind_pipeline(
+                        cmd,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        pipeline.handle,
+                    );
+                    device.cmd_bind_descriptor_sets(
+                        cmd,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        pipeline.layout,
+                        0,
+                        &[assets.bindless.set, assets.material_buffer_set()],
+                        &[],
+                    );
+
+                    current_shader = Some(dc.shader);
+                    current_layout = pipeline.layout;
+                }
+
+                // Push constants и draw — одинаковые для всех шейдеров
                 let model = dc.transform.matrix();
                 let mvp = view_proj * model;
+                let material_id = dc.material.map(|m| m.0).unwrap_or(0);
+
                 let pc = MeshPushConstants {
                     mvp: mvp.to_cols_array_2d(),
                     model: model.to_cols_array_2d(),
-                    material_id: i as u32,
+                    material_id,
                 };
                 let pc_bytes = std::slice::from_raw_parts(
                     &pc as *const MeshPushConstants as *const u8,
                     std::mem::size_of::<MeshPushConstants>(),
                 );
                 device.cmd_push_constants(
-                    cmd, self.pipeline.layout,
+                    cmd,
+                    current_layout,
                     vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                    0, pc_bytes,
+                    0,
+                    pc_bytes,
                 );
+
                 device.cmd_bind_vertex_buffers(cmd, 0, &[dc.gpu_mesh.vertex_buffer], &[0]);
                 device.cmd_bind_index_buffer(cmd, dc.gpu_mesh.index_buffer, 0, vk::IndexType::UINT32);
                 device.cmd_draw_indexed(cmd, dc.gpu_mesh.index_count, 1, 0, 0, 0);
@@ -135,8 +226,15 @@ impl GeometryPass {
             );
         }
     }
+
+    // Внутренний геттер — не создаёт новый pipeline, только ищет существующий
+    // Нужен внутри record() где нет доступа к registry
+    fn get_or_create_pipeline_inner(&self, shader: ShaderHandle) -> Option<&Pipeline> {
+        self.pipelines.get(&shader)
+    }
 }
 
+// transition остаётся без изменений
 fn transition(
     device: &ash::Device,
     cmd: vk::CommandBuffer,
