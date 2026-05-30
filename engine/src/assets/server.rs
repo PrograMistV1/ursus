@@ -7,6 +7,7 @@ use super::material::MaterialDef;
 use super::mesh::{CpuMesh, GpuMesh};
 use super::shader_registry::{ShaderHandle, ShaderRegistry};
 use crate::ecs::components::{MaterialHandle, MeshHandle};
+use crate::vulkan::MaterialBuffer;
 use crate::vulkan::{BindlessSet, GpuTexture};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -22,6 +23,8 @@ pub struct AssetServer {
 
     gpu_textures: Vec<GpuTexture>,
     texture_path_cache: HashMap<PathBuf, TextureHandle>,
+
+    pub material_buffer: MaterialBuffer,
 
     pub shaders: ShaderRegistry,
 
@@ -43,6 +46,7 @@ impl AssetServer {
         queue: vk::Queue,
     ) -> anyhow::Result<Self> {
         let bindless = BindlessSet::new(&device, physical_device, &instance, command_pool, queue)?;
+        let material_buffer = MaterialBuffer::new(&device, physical_device, &instance)?;
 
         let mut server = Self {
             cpu_meshes: Vec::new(),
@@ -54,6 +58,7 @@ impl AssetServer {
             texture_path_cache: HashMap::new(),
             shaders: ShaderRegistry::new(),
             bindless,
+            material_buffer,
             device,
             physical_device,
             instance,
@@ -66,6 +71,19 @@ impl AssetServer {
         server.register_mesh(CpuMesh::plane(10.0, 10));
 
         Ok(server)
+    }
+
+    pub fn upload_materials(&self) {
+        let data: Vec<_> = self.cpu_materials.iter()
+            .map(|m| m.to_gpu_data())
+            .collect();
+        if !data.is_empty() {
+            self.material_buffer.upload(&data);
+        }
+    }
+
+    pub fn material_buffer_set(&self) -> vk::DescriptorSet {
+        self.material_buffer.set
     }
 
     pub fn load_mesh(&mut self, path: impl AsRef<Path>) -> anyhow::Result<(MeshHandle, Option<MaterialHandle>)> {

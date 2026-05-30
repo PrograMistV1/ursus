@@ -1,19 +1,19 @@
-use super::material_buffer::MaterialBuffer;
-use super::{commands::Commands, sync::FrameSync, Device, Pipeline, VulkanContext};
-use crate::assets::material::MaterialData;
-use crate::assets::{AssetServer, GpuMesh};
-use crate::ecs::components::{MaterialHandle, Transform};
+use super::{
+    commands::Commands,
+    depth::DepthBuffer,
+    passes::geometry::{DrawCall, GeometryPass},
+    passes::post_process::PostProcessPass,
+    render_target::RenderTarget,
+    sync::FrameSync,
+    Device, VulkanContext,
+};
+use crate::assets::AssetServer;
 use ash::vk;
 use glam::{Mat4, Vec3};
 use std::sync::Arc;
 
 const FRAMES_IN_FLIGHT: u32 = 2;
 
-pub struct DrawCall<'a> {
-    pub gpu_mesh: &'a GpuMesh,
-    pub transform: &'a Transform,
-    pub material: Option<MaterialHandle>,
-}
 
 pub struct Camera {
     pub eye: Vec3,
@@ -41,22 +41,17 @@ impl Camera {
     pub fn view_proj(&self, aspect: f32) -> Mat4 {
         let view = Mat4::look_at_rh(self.eye, self.target, self.up);
         let mut proj = Mat4::perspective_rh(self.fov_y, aspect, self.z_near, self.z_far);
-        proj.y_axis.y *= -1.0; // Vulkan: Y вниз
+        proj.y_axis.y *= -1.0;
         proj * view
     }
 }
 
-#[repr(C)]
-struct MeshPushConstants {
-    mvp: [[f32; 4]; 4],   // 64 B
-    model: [[f32; 4]; 4], // 60 B
-    material_id: u32,
-}
-
 pub struct Renderer {
-    pub mesh_pipeline: Pipeline,
+    pub geometry: GeometryPass,
+    pub post_process: PostProcessPass,
     pub commands: Commands,
-    pub material_buffer: MaterialBuffer,
+    render_target: RenderTarget,
+    depth: DepthBuffer,
     frames: Vec<FrameSync>,
     current_frame: usize,
     swapchain_loader: ash::khr::swapchain::Device,
@@ -66,24 +61,33 @@ pub struct Renderer {
 impl Renderer {
     pub fn new(ctx: &VulkanContext, assets: &AssetServer) -> anyhow::Result<Self> {
         let swapchain = ctx.swapchain.as_ref().unwrap();
+        let w = swapchain.extent.width;
+        let h = swapchain.extent.height;
 
-        let material_buffer = MaterialBuffer::new(
-            &ctx.device.handle,
-            ctx.device.physical,
-            &ctx.instance.handle,
+        let render_target = RenderTarget::new(
+            &ctx.device.handle, ctx.device.physical, &ctx.instance.handle, w, h,
         )?;
 
-        let mesh_pipeline = Pipeline::new_mesh(
+        let depth = DepthBuffer::new(
+            &ctx.device.handle, ctx.device.physical, &ctx.instance.handle, w, h,
+        )?;
+
+        let geometry = GeometryPass::new(
+            &ctx.device.handle,
+            render_target.format,
+            assets.bindless.layout,
+            assets.material_buffer.layout,
+        )?;
+
+        let post_process = PostProcessPass::new(
             &ctx.device.handle,
             swapchain.format,
-            assets.bindless.layout,
-            material_buffer.layout,
+            &render_target,
         )?;
 
-        let frames: anyhow::Result<Vec<_>> = (0..FRAMES_IN_FLIGHT)
+        let frames: Vec<_> = (0..FRAMES_IN_FLIGHT)
             .map(|_| FrameSync::new(&ctx.device.handle))
-            .collect();
-        let frames = frames?;
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
         let commands = Commands::new(
             &ctx.device.handle,
@@ -95,9 +99,11 @@ impl Renderer {
             ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
 
         Ok(Self {
-            mesh_pipeline,
+            geometry,
+            post_process,
             commands,
-            material_buffer,
+            render_target,
+            depth,
             frames,
             current_frame: 0,
             swapchain_loader,
@@ -120,29 +126,17 @@ impl Renderer {
         let aspect = swapchain.extent.width as f32 / swapchain.extent.height as f32;
         let view_proj = camera.view_proj(aspect);
 
-        let material_data: Vec<MaterialData> = draw_calls
-            .iter()
-            .map(|dc| {
-                dc.material
-                    .and_then(|mh| assets.get_material(mh))
-                    .map(|m| m.to_gpu_data())
-                    .unwrap_or_else(MaterialData::default_white)
-            })
-            .collect();
-
-        self.material_buffer.upload(&material_data);
+        assets.upload_materials();
 
         unsafe {
             device.wait_for_fences(&[frame.render_fence], true, u64::MAX)?;
             device.reset_fences(&[frame.render_fence])?;
         }
 
-        let (image_index, _suboptimal) = unsafe {
+        let (image_index, _) = unsafe {
             self.swapchain_loader.acquire_next_image(
-                swapchain.handle,
-                u64::MAX,
-                frame.image_available,
-                vk::Fence::null(),
+                swapchain.handle, u64::MAX,
+                frame.image_available, vk::Fence::null(),
             )?
         };
 
@@ -154,113 +148,23 @@ impl Renderer {
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )?;
 
-            Self::transition_image(
-                device,
-                cmd,
+            // ── Pass 1: Geometry ──────────────────────────────────────────────
+            self.geometry.record(
+                device, cmd,
+                &self.render_target,
+                &self.depth,
+                clear_color,
+                view_proj,
+                draw_calls,
+                assets,
+            );
+
+            // ── Pass 2: Post-process (tonemap + FXAA) → swapchain ─────────────
+            self.post_process.record(
+                device, cmd,
                 swapchain.images[image_index as usize],
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            );
-
-            let color_attachment = vk::RenderingAttachmentInfo::default()
-                .image_view(swapchain.image_views[image_index as usize])
-                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::STORE)
-                .clear_value(vk::ClearValue {
-                    color: vk::ClearColorValue {
-                        float32: clear_color,
-                    },
-                });
-
-            device.cmd_begin_rendering(
-                cmd,
-                &vk::RenderingInfo::default()
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent: swapchain.extent,
-                    })
-                    .layer_count(1)
-                    .color_attachments(std::slice::from_ref(&color_attachment)),
-            );
-
-            device.cmd_set_viewport(
-                cmd,
-                0,
-                &[vk::Viewport {
-                    x: 0.0,
-                    y: 0.0,
-                    width: swapchain.extent.width as f32,
-                    height: swapchain.extent.height as f32,
-                    min_depth: 0.0,
-                    max_depth: 1.0,
-                }],
-            );
-            device.cmd_set_scissor(
-                cmd,
-                0,
-                &[vk::Rect2D {
-                    offset: vk::Offset2D { x: 0, y: 0 },
-                    extent: swapchain.extent,
-                }],
-            );
-
-            device.cmd_bind_pipeline(
-                cmd,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.mesh_pipeline.handle,
-            );
-
-            device.cmd_bind_descriptor_sets(
-                cmd,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.mesh_pipeline.layout,
-                0,
-                &[assets.bindless.set, self.material_buffer.set],
-                &[],
-            );
-
-            for (i, dc) in draw_calls.iter().enumerate() {
-                let model = dc.transform.matrix();
-                let mvp = view_proj * model;
-
-                let pc = MeshPushConstants {
-                    mvp: mvp.to_cols_array_2d(),
-                    model: model.to_cols_array_2d(),
-                    material_id: i as u32,
-                };
-
-                let pc_bytes = std::slice::from_raw_parts(
-                    &pc as *const MeshPushConstants as *const u8,
-                    std::mem::size_of::<MeshPushConstants>(),
-                );
-
-                device.cmd_push_constants(
-                    cmd,
-                    self.mesh_pipeline.layout,
-                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                    0,
-                    pc_bytes,
-                );
-
-                device.cmd_bind_vertex_buffers(cmd, 0, &[dc.gpu_mesh.vertex_buffer], &[0]);
-                device.cmd_bind_index_buffer(
-                    cmd,
-                    dc.gpu_mesh.index_buffer,
-                    0,
-                    vk::IndexType::UINT32,
-                );
-                device.cmd_draw_indexed(cmd, dc.gpu_mesh.index_count, 1, 0, 0, 0);
-            }
-
-            device.cmd_end_rendering(cmd);
-
-            Self::transition_image(
-                device,
-                cmd,
-                swapchain.images[image_index as usize],
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                vk::ImageLayout::PRESENT_SRC_KHR,
+                swapchain.image_views[image_index as usize],
+                swapchain.extent,
             );
 
             device.end_command_buffer(cmd)?;
@@ -293,54 +197,6 @@ impl Renderer {
 
         self.current_frame = (self.current_frame + 1) % FRAMES_IN_FLIGHT as usize;
         Ok(())
-    }
-
-    fn transition_image(
-        device: &ash::Device,
-        cmd: vk::CommandBuffer,
-        image: vk::Image,
-        from: vk::ImageLayout,
-        to: vk::ImageLayout,
-    ) {
-        let (src_stage, src_access, dst_stage, dst_access) = match (from, to) {
-            (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) => (
-                vk::PipelineStageFlags2::TOP_OF_PIPE,
-                vk::AccessFlags2::empty(),
-                vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-                vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            ),
-            (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::PRESENT_SRC_KHR) => (
-                vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-                vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-                vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
-                vk::AccessFlags2::empty(),
-            ),
-            _ => panic!("transition_image: неизвестная пара layout-ов"),
-        };
-
-        let barrier = vk::ImageMemoryBarrier2::default()
-            .src_stage_mask(src_stage)
-            .src_access_mask(src_access)
-            .dst_stage_mask(dst_stage)
-            .dst_access_mask(dst_access)
-            .old_layout(from)
-            .new_layout(to)
-            .image(image)
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            });
-
-        unsafe {
-            device.cmd_pipeline_barrier2(
-                cmd,
-                &vk::DependencyInfo::default()
-                    .image_memory_barriers(std::slice::from_ref(&barrier)),
-            )
-        };
     }
 }
 

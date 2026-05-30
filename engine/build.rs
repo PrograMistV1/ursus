@@ -10,8 +10,10 @@ fn compile_shaders() {
     let shaders = [
         ("shaders/triangle.vert", "triangle.vert.spv"),
         ("shaders/triangle.frag", "triangle.frag.spv"),
-        ("shaders/mesh.vert",     "mesh.vert.spv"),
-        ("shaders/mesh.frag",     "mesh.frag.spv"),
+        ("shaders/mesh.vert", "mesh.vert.spv"),
+        ("shaders/mesh.frag", "mesh.frag.spv"),
+        ("shaders/post_process.vert", "post_process.vert.spv"),
+        ("shaders/post_process.frag", "post_process.frag.spv"),
     ];
 
     for (src, dst) in &shaders {

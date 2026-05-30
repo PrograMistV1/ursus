@@ -106,7 +106,15 @@ impl Pipeline {
         };
 
         let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
-            .color_attachment_formats(std::slice::from_ref(&color_format));
+            .color_attachment_formats(std::slice::from_ref(&color_format))
+            .depth_attachment_format(vk::Format::D32_SFLOAT);
+
+        let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
+            .depth_test_enable(true)
+            .depth_write_enable(true)
+            .depth_compare_op(vk::CompareOp::LESS)
+            .depth_bounds_test_enable(false)
+            .stencil_test_enable(false);
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
             .stages(&stages)
@@ -118,6 +126,7 @@ impl Pipeline {
             .color_blend_state(&color_blending)
             .dynamic_state(&dynamic_state)
             .layout(layout)
+            .depth_stencil_state(&depth_stencil)
             .push_next(&mut rendering_info);
 
         let handle = unsafe {
