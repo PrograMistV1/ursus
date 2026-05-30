@@ -92,7 +92,7 @@ impl Pipeline {
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
             .offset(0)
-            .size(128);
+            .size(132);
 
         let set_layouts = [bindless_layout, material_layout];
 

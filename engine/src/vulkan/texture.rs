@@ -111,7 +111,6 @@ impl GpuTexture {
                 device,
                 cmd,
                 image,
-                /// Выполняет одноразовый command buffer синхронно.
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             );

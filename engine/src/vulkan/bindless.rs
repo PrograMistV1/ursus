@@ -9,6 +9,7 @@ pub struct BindlessSet {
     pool: vk::DescriptorPool,
     pub sampler: vk::Sampler,
     next_slot: u32,
+    owned_textures: Vec<GpuTexture>,
     device: ash::Device,
 }
 
@@ -108,6 +109,7 @@ impl BindlessSet {
             pool,
             sampler,
             next_slot: 0,
+            owned_textures: Vec::new(),
             device: device.clone(),
         };
 
@@ -126,7 +128,7 @@ impl BindlessSet {
         let slot = bindless.register_view(white.view);
         assert_eq!(slot, 0, "white fallback должен быть слотом 0");
 
-        std::mem::forget(white);
+        bindless.owned_textures.push(white);
 
         log::info!("BindlessSet создан (MAX_TEXTURES={})", MAX_TEXTURES);
         Ok(bindless)

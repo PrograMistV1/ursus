@@ -16,12 +16,8 @@ impl Device {
         let (physical, graphics_family, present_family) =
             Self::pick_physical(&instance.handle, &instance.entry, surface)?;
 
-        let physical_props = unsafe {
-            instance.handle.get_physical_device_properties(physical)
-        };
-        let name = unsafe {
-            std::ffi::CStr::from_ptr(physical_props.device_name.as_ptr())
-        };
+        let physical_props = unsafe { instance.handle.get_physical_device_properties(physical) };
+        let name = unsafe { std::ffi::CStr::from_ptr(physical_props.device_name.as_ptr()) };
         log::info!("GPU: {:?}", name);
 
         let unique_families: Vec<u32> = if graphics_family != present_family {
@@ -43,20 +39,30 @@ impl Device {
 
         let mut features12 = vk::PhysicalDeviceVulkan12Features::default()
             .buffer_device_address(true)
-            .descriptor_indexing(true);
+            .descriptor_indexing(true)
+            .runtime_descriptor_array(true)
+            .shader_sampled_image_array_non_uniform_indexing(true)
+            .descriptor_binding_sampled_image_update_after_bind(true)
+            .descriptor_binding_partially_bound(true)
+            .descriptor_binding_variable_descriptor_count(true);
 
         let mut features13 = vk::PhysicalDeviceVulkan13Features::default()
             .dynamic_rendering(true)
             .synchronization2(true);
 
+        let features10 = vk::PhysicalDeviceFeatures::default().sampler_anisotropy(true);
+
         let create_info = vk::DeviceCreateInfo::default()
             .queue_create_infos(&queue_infos)
             .enabled_extension_names(&extensions)
+            .enabled_features(&features10)
             .push_next(&mut features12)
             .push_next(&mut features13);
 
         let handle = unsafe {
-            instance.handle.create_device(physical, &create_info, None)?
+            instance
+                .handle
+                .create_device(physical, &create_info, None)?
         };
 
         let graphics_queue = unsafe { handle.get_device_queue(graphics_family, 0) };
@@ -87,9 +93,7 @@ impl Device {
 
         for device in devices {
             let props = unsafe { instance.get_physical_device_properties(device) };
-            let queues = unsafe {
-                instance.get_physical_device_queue_family_properties(device)
-            };
+            let queues = unsafe { instance.get_physical_device_queue_family_properties(device) };
 
             let mut graphics_family = None;
             let mut present_family = None;

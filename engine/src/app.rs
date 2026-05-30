@@ -22,18 +22,18 @@ pub struct EngineContext {
     pub renderer: Renderer,
     pub vk: VulkanContext,
     pub camera: Camera,
+    temp_pool: ash::vk::CommandPool,
 }
 
 impl EngineContext {
     fn new(vk: VulkanContext) -> anyhow::Result<Self> {
+        let temp_pool = create_temp_pool(&vk)?;
+
         let assets = AssetServer::new(
             vk.device.handle.clone(),
             vk.device.physical,
             vk.instance.handle.clone(),
-            // command pool создадим временный для загрузки — renderer ещё не создан
-            // поэтому порядок: сначала assets (нужен для bindless layouts),
-            // потом renderer (нужны layouts из assets)
-            create_temp_pool(&vk)?,
+            temp_pool,
             vk.device.graphics_queue,
         )?;
 
@@ -45,6 +45,7 @@ impl EngineContext {
             renderer,
             vk,
             camera: Camera::default(),
+            temp_pool,
         })
     }
 
@@ -70,6 +71,18 @@ impl EngineContext {
             &gpu_calls,
             &self.assets,
         )
+    }
+}
+
+impl Drop for EngineContext {
+    fn drop(&mut self) {
+        unsafe {
+            self.vk.device.handle.device_wait_idle().ok();
+            self.vk
+                .device
+                .handle
+                .destroy_command_pool(self.temp_pool, None);
+        }
     }
 }
 
