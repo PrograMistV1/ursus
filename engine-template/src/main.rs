@@ -48,13 +48,10 @@ impl App for MyApp {
 
     fn on_update(&mut self, ctx: &mut EngineContext, _dt: f32) {
         self.frame += 1;
+        let center = Vec3::new(0.0, 2.0, 0.0);
         let t = self.frame as f32 * 0.003;
-
-        let eye = Vec3::new(0.0, 2.0, 0.0);
-        let target = Vec3::new(t.cos() * 5.0, 2.0, t.sin() * 5.0);
-
-        ctx.camera.eye = eye;
-        ctx.camera.target = target;
+        ctx.camera.eye = Vec3::new(t.sin() * 9.0, 2.0, t.cos() * 4.0);
+        ctx.camera.target = center;
     }
 
     fn on_render(&mut self, ctx: &mut EngineContext) {
