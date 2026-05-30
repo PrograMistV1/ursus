@@ -59,7 +59,7 @@ impl App for MyApp {
     }
 
     fn on_render(&mut self, ctx: &mut EngineContext) {
-        ctx.render_world([0.05, 0.05, 0.1, 1.0])
+        ctx.render_world([0.0, 0.0, 0.0, 1.0])
             .expect("render_world failed");
     }
 

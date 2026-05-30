@@ -1,19 +1,25 @@
-mod instance;
-mod device;
-mod swapchain;
-mod debug;
-pub mod sync;
+pub mod bindless;
 pub mod commands;
+mod debug;
+mod device;
+mod instance;
+pub mod material_buffer;
+pub mod pipeline;
 pub mod renderer;
 pub mod shader;
-pub mod pipeline;
+mod swapchain;
+pub mod sync;
+pub mod texture;
 
+pub use bindless::BindlessSet;
 pub use debug::DebugMessenger;
 pub use device::Device;
 pub use instance::Instance;
+pub use material_buffer::MaterialBuffer;
 pub use pipeline::Pipeline;
 pub use renderer::{Camera, DrawCall, Renderer};
 pub use swapchain::Swapchain;
+pub use texture::GpuTexture;
 
 use ash::vk;
 use std::sync::Arc;
@@ -42,21 +48,20 @@ impl VulkanContext {
         };
 
         let surface = unsafe {
-            ash_window::create_surface(
-                &instance.entry,
-                &instance.handle,
-                display,
-                whandle,
-                None,
-            )?
+            ash_window::create_surface(&instance.entry, &instance.handle, display, whandle, None)?
         };
 
         let device = Arc::new(Device::new(&instance, surface)?);
-
         let size = window.inner_size();
         let swapchain = Swapchain::new(&instance, &device, surface, size.width, size.height)?;
 
-        Ok(Self { swapchain: Some(swapchain), device, surface, _debug: debug, instance })
+        Ok(Self {
+            swapchain: Some(swapchain),
+            device,
+            surface,
+            _debug: debug,
+            instance,
+        })
     }
 }
 
@@ -65,10 +70,8 @@ impl Drop for VulkanContext {
         unsafe {
             self.device.handle.device_wait_idle().ok();
             drop(self.swapchain.take());
-            let surface_loader = ash::khr::surface::Instance::new(
-                &self.instance.entry,
-                &self.instance.handle,
-            );
+            let surface_loader =
+                ash::khr::surface::Instance::new(&self.instance.entry, &self.instance.handle);
             surface_loader.destroy_surface(self.surface, None);
         }
     }

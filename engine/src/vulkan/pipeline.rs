@@ -8,7 +8,12 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    pub fn new_mesh(device: &ash::Device, color_format: vk::Format) -> anyhow::Result<Self> {
+    pub fn new_mesh(
+        device: &ash::Device,
+        color_format: vk::Format,
+        bindless_layout: vk::DescriptorSetLayout,
+        material_layout: vk::DescriptorSetLayout,
+    ) -> anyhow::Result<Self> {
         let vert = ShaderModule::from_bytes(
             device,
             include_bytes!(concat!(env!("OUT_DIR"), "/mesh.vert.spv")),
@@ -31,7 +36,6 @@ impl Pipeline {
                 .name(entry),
         ];
 
-        // Vertex layout: position (12) + normal (12) + uv (8) = 32 байта / вершину
         let binding = vk::VertexInputBindingDescription::default()
             .binding(0)
             .stride(32)
@@ -90,9 +94,16 @@ impl Pipeline {
             .offset(0)
             .size(128);
 
-        let layout_info = vk::PipelineLayoutCreateInfo::default()
-            .push_constant_ranges(std::slice::from_ref(&push_range));
-        let layout = unsafe { device.create_pipeline_layout(&layout_info, None)? };
+        let set_layouts = [bindless_layout, material_layout];
+
+        let layout = unsafe {
+            device.create_pipeline_layout(
+                &vk::PipelineLayoutCreateInfo::default()
+                    .set_layouts(&set_layouts)
+                    .push_constant_ranges(std::slice::from_ref(&push_range)),
+                None,
+            )?
+        };
 
         let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
             .color_attachment_formats(std::slice::from_ref(&color_format));
@@ -122,7 +133,7 @@ impl Pipeline {
         drop(vert);
         drop(frag);
 
-        log::info!("Mesh pipeline создан");
+        log::info!("Mesh pipeline создан (bindless + material buffer)");
         Ok(Self {
             handle,
             layout,

@@ -26,15 +26,18 @@ pub struct EngineContext {
 
 impl EngineContext {
     fn new(vk: VulkanContext) -> anyhow::Result<Self> {
-        let renderer = Renderer::new(&vk)?;
-
         let assets = AssetServer::new(
             vk.device.handle.clone(),
             vk.device.physical,
             vk.instance.handle.clone(),
-            renderer.commands.pool,
+            // command pool создадим временный для загрузки — renderer ещё не создан
+            // поэтому порядок: сначала assets (нужен для bindless layouts),
+            // потом renderer (нужны layouts из assets)
+            create_temp_pool(&vk)?,
             vk.device.graphics_queue,
-        );
+        )?;
+
+        let renderer = Renderer::new(&vk, &assets)?;
 
         Ok(Self {
             world: GameWorld::new(),
@@ -44,6 +47,7 @@ impl EngineContext {
             camera: Camera::default(),
         })
     }
+
     pub fn render_world(&mut self, clear_color: [f32; 4]) -> anyhow::Result<()> {
         let ecs_calls = collect_draw_calls(&mut self.world, &self.assets);
 
@@ -54,12 +58,18 @@ impl EngineContext {
                 Some(DrawCall {
                     gpu_mesh: gpu,
                     transform: &dc.transform,
+                    material: dc.material,
                 })
             })
             .collect();
 
-        self.renderer
-            .draw_frame(&self.vk, clear_color, &self.camera, &gpu_calls)
+        self.renderer.draw_frame(
+            &self.vk,
+            clear_color,
+            &self.camera,
+            &gpu_calls,
+            &self.assets,
+        )
     }
 }
 
@@ -101,29 +111,29 @@ impl ApplicationHandler for EngineHandler {
             return;
         }
 
-        let attrs = WindowAttributes::default()
-            .with_title("engine")
-            .with_inner_size(winit::dpi::LogicalSize::new(1280u32, 720u32));
-
         let window = event_loop
-            .create_window(attrs)
+            .create_window(
+                WindowAttributes::default()
+                    .with_title("engine")
+                    .with_inner_size(winit::dpi::LogicalSize::new(1280u32, 720u32)),
+            )
             .expect("Failed to create window");
 
         let vk =
             VulkanContext::new(&window, cfg!(debug_assertions)).expect("Failed to init Vulkan");
-
         let mut ctx = EngineContext::new(vk).expect("Failed to create EngineContext");
 
         self.app.on_start(&mut ctx);
 
         ctx.assets
             .upload_all_meshes()
-            .expect("Failed to upload meshes to GPU");
+            .expect("Failed to upload meshes");
 
         log::info!(
-            "AssetServer: {} мешей, {} материалов",
+            "AssetServer: {} мешей, {} материалов, {} текстур",
             ctx.assets.mesh_count(),
             ctx.assets.material_count(),
+            ctx.assets.texture_count(),
         );
 
         self.state = Some(RunningState {
@@ -161,4 +171,17 @@ impl ApplicationHandler for EngineHandler {
             _ => {}
         }
     }
+}
+
+fn create_temp_pool(vk: &VulkanContext) -> anyhow::Result<ash::vk::CommandPool> {
+    use ash::vk;
+    let pool = unsafe {
+        vk.device.handle.create_command_pool(
+            &vk::CommandPoolCreateInfo::default()
+                .queue_family_index(vk.device.graphics_family)
+                .flags(vk::CommandPoolCreateFlags::TRANSIENT),
+            None,
+        )?
+    };
+    Ok(pool)
 }

@@ -1,6 +1,8 @@
+use super::material_buffer::MaterialBuffer;
 use super::{commands::Commands, sync::FrameSync, Device, Pipeline, VulkanContext};
-use crate::assets::GpuMesh;
-use crate::ecs::components::Transform;
+use crate::assets::material::MaterialData;
+use crate::assets::{AssetServer, GpuMesh};
+use crate::ecs::components::{MaterialHandle, Transform};
 use ash::vk;
 use glam::{Mat4, Vec3};
 use std::sync::Arc;
@@ -10,6 +12,7 @@ const FRAMES_IN_FLIGHT: u32 = 2;
 pub struct DrawCall<'a> {
     pub gpu_mesh: &'a GpuMesh,
     pub transform: &'a Transform,
+    pub material: Option<MaterialHandle>,
 }
 
 pub struct Camera {
@@ -38,20 +41,22 @@ impl Camera {
     pub fn view_proj(&self, aspect: f32) -> Mat4 {
         let view = Mat4::look_at_rh(self.eye, self.target, self.up);
         let mut proj = Mat4::perspective_rh(self.fov_y, aspect, self.z_near, self.z_far);
-        proj.y_axis.y *= -1.0;
+        proj.y_axis.y *= -1.0; // Vulkan: Y вниз
         proj * view
     }
 }
 
 #[repr(C)]
 struct MeshPushConstants {
-    mvp: [[f32; 4]; 4],
-    model: [[f32; 4]; 4],
+    mvp: [[f32; 4]; 4],   // 64 B
+    model: [[f32; 4]; 4], // 60 B
+    material_id: u32,
 }
 
 pub struct Renderer {
     pub mesh_pipeline: Pipeline,
     pub commands: Commands,
+    pub material_buffer: MaterialBuffer,
     frames: Vec<FrameSync>,
     current_frame: usize,
     swapchain_loader: ash::khr::swapchain::Device,
@@ -59,10 +64,21 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(ctx: &VulkanContext) -> anyhow::Result<Self> {
+    pub fn new(ctx: &VulkanContext, assets: &AssetServer) -> anyhow::Result<Self> {
         let swapchain = ctx.swapchain.as_ref().unwrap();
 
-        let mesh_pipeline = Pipeline::new_mesh(&ctx.device.handle, swapchain.format)?;
+        let material_buffer = MaterialBuffer::new(
+            &ctx.device.handle,
+            ctx.device.physical,
+            &ctx.instance.handle,
+        )?;
+
+        let mesh_pipeline = Pipeline::new_mesh(
+            &ctx.device.handle,
+            swapchain.format,
+            assets.bindless.layout,
+            material_buffer.layout,
+        )?;
 
         let frames: anyhow::Result<Vec<_>> = (0..FRAMES_IN_FLIGHT)
             .map(|_| FrameSync::new(&ctx.device.handle))
@@ -81,6 +97,7 @@ impl Renderer {
         Ok(Self {
             mesh_pipeline,
             commands,
+            material_buffer,
             frames,
             current_frame: 0,
             swapchain_loader,
@@ -94,14 +111,26 @@ impl Renderer {
         clear_color: [f32; 4],
         camera: &Camera,
         draw_calls: &[DrawCall<'_>],
+        assets: &AssetServer,
     ) -> anyhow::Result<()> {
         let frame = &self.frames[self.current_frame];
         let cmd = self.commands.buffers[self.current_frame];
         let device = &ctx.device.handle;
         let swapchain = ctx.swapchain.as_ref().unwrap();
-
         let aspect = swapchain.extent.width as f32 / swapchain.extent.height as f32;
         let view_proj = camera.view_proj(aspect);
+
+        let material_data: Vec<MaterialData> = draw_calls
+            .iter()
+            .map(|dc| {
+                dc.material
+                    .and_then(|mh| assets.get_material(mh))
+                    .map(|m| m.to_gpu_data())
+                    .unwrap_or_else(MaterialData::default_white)
+            })
+            .collect();
+
+        self.material_buffer.upload(&material_data);
 
         unsafe {
             device.wait_for_fences(&[frame.render_fence], true, u64::MAX)?;
@@ -167,7 +196,6 @@ impl Renderer {
                     max_depth: 1.0,
                 }],
             );
-
             device.cmd_set_scissor(
                 cmd,
                 0,
@@ -183,18 +211,28 @@ impl Renderer {
                 self.mesh_pipeline.handle,
             );
 
-            for dc in draw_calls {
+            device.cmd_bind_descriptor_sets(
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.mesh_pipeline.layout,
+                0,
+                &[assets.bindless.set, self.material_buffer.set],
+                &[],
+            );
+
+            for (i, dc) in draw_calls.iter().enumerate() {
                 let model = dc.transform.matrix();
                 let mvp = view_proj * model;
 
                 let pc = MeshPushConstants {
                     mvp: mvp.to_cols_array_2d(),
                     model: model.to_cols_array_2d(),
+                    material_id: i as u32,
                 };
 
                 let pc_bytes = std::slice::from_raw_parts(
                     &pc as *const MeshPushConstants as *const u8,
-                    size_of::<MeshPushConstants>(),
+                    std::mem::size_of::<MeshPushConstants>(),
                 );
 
                 device.cmd_push_constants(

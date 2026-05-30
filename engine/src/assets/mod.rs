@@ -1,9 +1,11 @@
-pub mod server;
-pub mod mesh;
-pub mod material;
 pub mod loaders;
+pub mod material;
+pub mod mesh;
+pub mod server;
+pub mod shader_registry;
 
-pub use server::AssetServer;
+pub use crate::ecs::components::{MaterialHandle, MeshHandle};
+pub use material::{MaterialData, MaterialDef};
 pub use mesh::{CpuMesh, GpuMesh, Vertex};
-pub use material::{Material, MaterialDef};
-pub use crate::ecs::components::{MeshHandle, MaterialHandle};
+pub use server::{AssetServer, TextureHandle};
+pub use shader_registry::{ShaderDef, ShaderHandle, ShaderRegistry, TextureSlot};

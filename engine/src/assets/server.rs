@@ -5,16 +5,27 @@ use std::path::{Path, PathBuf};
 use super::loaders;
 use super::material::MaterialDef;
 use super::mesh::{CpuMesh, GpuMesh};
+use super::shader_registry::{ShaderHandle, ShaderRegistry};
 use crate::ecs::components::{MaterialHandle, MeshHandle};
+use crate::vulkan::{BindlessSet, GpuTexture};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TextureHandle(pub u32);
 
 pub struct AssetServer {
     cpu_meshes: Vec<CpuMesh>,
-    cpu_materials: Vec<MaterialDef>,
-
     gpu_meshes: Vec<Option<GpuMesh>>,
-
     mesh_path_cache: HashMap<PathBuf, MeshHandle>,
+
+    cpu_materials: Vec<MaterialDef>,
     material_name_cache: HashMap<String, MaterialHandle>,
+
+    gpu_textures: Vec<GpuTexture>,
+    texture_path_cache: HashMap<PathBuf, TextureHandle>,
+
+    pub shaders: ShaderRegistry,
+
+    pub bindless: BindlessSet,
 
     device: ash::Device,
     physical_device: vk::PhysicalDevice,
@@ -30,13 +41,19 @@ impl AssetServer {
         instance: ash::Instance,
         command_pool: vk::CommandPool,
         queue: vk::Queue,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
+        let bindless = BindlessSet::new(&device, physical_device, &instance, command_pool, queue)?;
+
         let mut server = Self {
             cpu_meshes: Vec::new(),
-            cpu_materials: Vec::new(),
             gpu_meshes: Vec::new(),
             mesh_path_cache: HashMap::new(),
+            cpu_materials: Vec::new(),
             material_name_cache: HashMap::new(),
+            gpu_textures: Vec::new(),
+            texture_path_cache: HashMap::new(),
+            shaders: ShaderRegistry::new(),
+            bindless,
             device,
             physical_device,
             instance,
@@ -48,12 +65,11 @@ impl AssetServer {
         server.register_mesh(CpuMesh::cube());
         server.register_mesh(CpuMesh::plane(10.0, 10));
 
-        server
+        Ok(server)
     }
 
     pub fn load_mesh(&mut self, path: impl AsRef<Path>) -> anyhow::Result<MeshHandle> {
         let path = path.as_ref();
-        println!("Loading mesh: {}", path.display());
         let canonical = path.to_path_buf();
 
         if let Some(&handle) = self.mesh_path_cache.get(&canonical) {
@@ -66,27 +82,52 @@ impl AssetServer {
             .unwrap_or("")
             .to_lowercase();
 
-        let cpu_mesh = match ext.as_str() {
-            "obj" => loaders::load_obj(path)?,
+        match ext.as_str() {
+            "obj" => {
+                let mesh = loaders::load_obj(path)?;
+                let handle = self.register_mesh(mesh);
+                self.mesh_path_cache.insert(canonical, handle);
+                Ok(handle)
+            }
             "gltf" | "glb" => {
-                let meshes = loaders::load_gltf(path)?;
+                let result = loaders::load_gltf(path)?;
                 let mut first = None;
-                for (i, m) in meshes.into_iter().enumerate() {
-                    let h = self.register_mesh(m);
+                for (i, primitive) in result.into_iter().enumerate() {
+                    // Загружаем текстуры
+                    let mut mat_def = primitive.material.map(|m| {
+                        MaterialDef::new(&m.name, self.shaders.diffuse())
+                            .with_color(
+                                m.base_color[0],
+                                m.base_color[1],
+                                m.base_color[2],
+                                m.base_color[3],
+                            )
+                            .with_metallic(m.metallic)
+                            .with_roughness(m.roughness)
+                    });
+
+                    for (slot, bytes, name) in primitive.textures {
+                        if let Ok(handle) = self.load_texture_bytes(&bytes, &name) {
+                            if let Some(ref mut mat) = mat_def {
+                                mat.set_texture(slot, handle);
+                            }
+                        }
+                    }
+
+                    let mh = self.register_mesh(primitive.mesh);
+                    if let Some(mat) = mat_def {
+                        self.register_material(mat);
+                    }
                     if i == 0 {
-                        first = Some(h);
+                        first = Some(mh);
                     }
                 }
                 let handle = first.unwrap();
                 self.mesh_path_cache.insert(canonical, handle);
-                return Ok(handle);
+                Ok(handle)
             }
             _ => anyhow::bail!("Неизвестный формат меша: {:?}", path),
-        };
-
-        let handle = self.register_mesh(cpu_mesh);
-        self.mesh_path_cache.insert(canonical, handle);
-        Ok(handle)
+        }
     }
 
     pub fn register_mesh(&mut self, mesh: CpuMesh) -> MeshHandle {
@@ -106,6 +147,85 @@ impl AssetServer {
         MeshHandle(2)
     }
 
+    pub fn load_texture(&mut self, path: impl AsRef<Path>) -> anyhow::Result<TextureHandle> {
+        let path = path.as_ref();
+        let canonical = path.to_path_buf();
+
+        if let Some(&handle) = self.texture_path_cache.get(&canonical) {
+            return Ok(handle);
+        }
+
+        let img = image::open(path)
+            .map_err(|e| anyhow::anyhow!("Не удалось загрузить текстуру {:?}: {}", path, e))?
+            .into_rgba8();
+
+        let (width, height) = img.dimensions();
+        let pixels = img.into_raw();
+
+        let handle = self.upload_texture_raw(
+            &pixels,
+            width,
+            height,
+            vk::Format::R8G8B8A8_SRGB,
+            path.file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .as_ref(),
+        )?;
+
+        self.texture_path_cache.insert(canonical, handle);
+        Ok(handle)
+    }
+
+    pub fn load_texture_bytes(
+        &mut self,
+        data: &[u8],
+        name: impl Into<String>,
+    ) -> anyhow::Result<TextureHandle> {
+        let name = name.into();
+        let img = image::load_from_memory(data)
+            .map_err(|e| anyhow::anyhow!("Не удалось загрузить текстуру '{}': {}", name, e))?
+            .into_rgba8();
+        let (width, height) = img.dimensions();
+        let pixels = img.into_raw();
+        self.upload_texture_raw(&pixels, width, height, vk::Format::R8G8B8A8_SRGB, name)
+    }
+    pub fn upload_texture_raw(
+        &mut self,
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+        format: vk::Format,
+        name: impl Into<String>,
+    ) -> anyhow::Result<TextureHandle> {
+        let name = name.into();
+        let tex = GpuTexture::upload(
+            &self.device,
+            self.physical_device,
+            &self.instance,
+            self.command_pool,
+            self.queue,
+            pixels,
+            width,
+            height,
+            format,
+            &name,
+        )?;
+
+        let slot = self.bindless.register_view(tex.view);
+        self.gpu_textures.push(tex);
+
+        Ok(TextureHandle(slot))
+    }
+
+    pub fn get_texture(&self, handle: TextureHandle) -> Option<&GpuTexture> {
+        let idx = handle.0 as usize;
+        if idx == 0 {
+            return None;
+        }
+        self.gpu_textures.get(idx - 1)
+    }
+
     pub fn register_material(&mut self, mat: MaterialDef) -> MaterialHandle {
         let name = mat.name.clone();
         let id = self.cpu_materials.len() as u32;
@@ -115,12 +235,15 @@ impl AssetServer {
         handle
     }
 
-    pub fn material_from_shader(&mut self, shader: impl Into<String>) -> MaterialHandle {
-        let shader = shader.into();
-        if let Some(&h) = self.material_name_cache.get(&shader) {
-            return h;
-        }
-        self.register_material(MaterialDef::new(&shader).with_shader(&shader))
+    pub fn get_material(&self, handle: MaterialHandle) -> Option<&MaterialDef> {
+        self.cpu_materials.get(handle.0 as usize)
+    }
+    pub fn create_material(
+        &mut self,
+        name: impl Into<String>,
+        shader: ShaderHandle,
+    ) -> MaterialHandle {
+        self.register_material(MaterialDef::new(name, shader))
     }
 
     pub fn upload_all_meshes(&mut self) -> anyhow::Result<()> {
@@ -154,14 +277,13 @@ impl AssetServer {
         self.gpu_meshes.get(handle.0 as usize)?.as_ref()
     }
 
-    pub fn get_material(&self, handle: MaterialHandle) -> Option<&MaterialDef> {
-        self.cpu_materials.get(handle.0 as usize)
-    }
-
     pub fn mesh_count(&self) -> usize {
         self.cpu_meshes.len()
     }
     pub fn material_count(&self) -> usize {
         self.cpu_materials.len()
+    }
+    pub fn texture_count(&self) -> usize {
+        self.gpu_textures.len()
     }
 }
