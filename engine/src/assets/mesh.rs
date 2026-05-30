@@ -9,6 +9,40 @@ pub struct Vertex {
     pub uv: [f32; 2],
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Aabb {
+    pub min: Vec3,
+    pub max: Vec3,
+}
+
+impl Aabb {
+    pub fn from_vertices(vertices: &[Vertex]) -> Self {
+        let mut min = Vec3::splat(f32::MAX);
+        let mut max = Vec3::splat(f32::MIN);
+        for v in vertices {
+            let p = Vec3::from(v.position);
+            min = min.min(p);
+            max = max.max(p);
+        }
+        Self { min, max }
+    }
+
+    pub fn intersects_frustum(&self, planes: &[glam::Vec4; 6]) -> bool {
+        for plane in planes {
+            let normal = Vec3::new(plane.x, plane.y, plane.z);
+            let p = Vec3::new(
+                if normal.x >= 0.0 { self.max.x } else { self.min.x },
+                if normal.y >= 0.0 { self.max.y } else { self.min.y },
+                if normal.z >= 0.0 { self.max.z } else { self.min.z },
+            );
+            if normal.dot(p) + plane.w < 0.0 {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 unsafe impl bytemuck::Pod for Vertex {}
 unsafe impl bytemuck::Zeroable for Vertex {}
 
@@ -155,6 +189,7 @@ pub struct GpuMesh {
     pub index_count: u32,
     pub vertex_count: u32,
     pub name: String,
+    pub aabb: Aabb,
     device: ash::Device,
 }
 
@@ -204,6 +239,7 @@ impl GpuMesh {
             index_count: cpu_mesh.index_count(),
             vertex_count: cpu_mesh.vertex_count(),
             name: cpu_mesh.name.clone(),
+            aabb: Aabb::from_vertices(&cpu_mesh.vertices),
             device: device.clone(),
         })
     }
@@ -231,8 +267,8 @@ fn find_memory_type(
     for i in 0..props.memory_type_count {
         if (type_filter & (1 << i)) != 0
             && props.memory_types[i as usize]
-                .property_flags
-                .contains(properties)
+            .property_flags
+            .contains(properties)
         {
             return Ok(i);
         }

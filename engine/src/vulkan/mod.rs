@@ -13,6 +13,7 @@ pub mod texture;
 mod depth;
 mod render_target;
 mod passes;
+pub mod frustum;
 
 pub use bindless::BindlessSet;
 pub use debug::DebugMessenger;

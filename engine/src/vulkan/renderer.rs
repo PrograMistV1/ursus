@@ -77,7 +77,7 @@ impl Renderer {
             render_target.format,
             assets.bindless.layout,
             assets.material_buffer.layout,
-            assets,  // теперь можно
+            assets,
         )?;
 
         let post_process = PostProcessPass::new(

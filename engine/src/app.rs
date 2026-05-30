@@ -1,6 +1,7 @@
 use crate::assets::AssetServer;
 use crate::ecs::systems::collect_draw_calls;
 use crate::ecs::GameWorld;
+use crate::vulkan::frustum::transform_aabb;
 use crate::vulkan::{Camera, DrawCall, Renderer, VulkanContext};
 use winit::{
     application::ApplicationHandler,
@@ -52,35 +53,32 @@ impl EngineContext {
     pub fn render_world(&mut self, clear_color: [f32; 4]) -> anyhow::Result<()> {
         let ecs_calls = collect_draw_calls(&mut self.world, &self.assets);
 
+        let swapchain = self.vk.swapchain.as_ref().unwrap();
+        let aspect = swapchain.extent.width as f32 / swapchain.extent.height as f32;
+        let view_proj = self.camera.view_proj(aspect);
+        let frustum_planes = crate::vulkan::frustum::extract_planes(view_proj);
+
         let device = self.vk.device.handle.clone();
         for dc in &ecs_calls {
-            self.renderer.geometry.get_or_create_pipeline(
-                &device,
-                dc.shader,
-                &mut self.assets.shaders,
-            )?;
+            self.renderer.geometry.get_or_create_pipeline(&device, dc.shader, &mut self.assets.shaders)?;
         }
 
         let gpu_calls: Vec<DrawCall<'_>> = ecs_calls
             .iter()
             .filter_map(|dc| {
                 let gpu = self.assets.get_gpu_mesh(dc.mesh)?;
-                Some(DrawCall {
-                    gpu_mesh: gpu,
-                    transform: &dc.transform,
-                    material: dc.material,
-                    shader: dc.shader,
-                })
+
+                let model = dc.transform.matrix();
+                let world_aabb = transform_aabb(&gpu.aabb, model);
+                if !world_aabb.intersects_frustum(&frustum_planes) {
+                    return None;
+                }
+
+                Some(DrawCall { gpu_mesh: gpu, transform: &dc.transform, material: dc.material, shader: dc.shader })
             })
             .collect();
 
-        self.renderer.draw_frame(
-            &self.vk,
-            clear_color,
-            &self.camera,
-            &gpu_calls,
-            &self.assets,
-        )
+        self.renderer.draw_frame(&self.vk, clear_color, &self.camera, &gpu_calls, &self.assets)
     }
 }
 
