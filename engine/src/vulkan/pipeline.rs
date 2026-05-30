@@ -1,7 +1,6 @@
 use super::shader::ShaderModule;
 use ash::vk;
 
-// Описание того что нужно для создания pipeline
 pub struct PipelineDesc<'a> {
     pub vert_spv: &'a [u8],
     pub frag_spv: &'a [u8],
@@ -13,7 +12,6 @@ pub struct PipelineDesc<'a> {
 }
 
 impl<'a> PipelineDesc<'a> {
-    // Дефолтные настройки для большинства мешей
     pub fn standard(
         vert_spv: &'a [u8],
         frag_spv: &'a [u8],
@@ -24,7 +22,7 @@ impl<'a> PipelineDesc<'a> {
             frag_spv,
             color_format,
             depth_format: vk::Format::D32_SFLOAT,
-            cull_mode: vk::CullModeFlags::BACK,
+            cull_mode: vk::CullModeFlags::NONE,
             depth_test: true,
             depth_write: true,
         }
@@ -58,8 +56,6 @@ impl Pipeline {
                 .name(entry),
         ];
 
-        // Vertex layout фиксированный — position(12) + normal(12) + uv(8) = 32 байта
-        // Если понадобится другой layout — добавим в PipelineDesc позже
         let binding = vk::VertexInputBindingDescription::default()
             .binding(0)
             .stride(32)
@@ -107,11 +103,10 @@ impl Pipeline {
         let dynamic_state = vk::PipelineDynamicStateCreateInfo::default()
             .dynamic_states(&dynamic_states);
 
-        // Push constants одинаковые для всех mesh шейдеров
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
             .offset(0)
-            .size(std::mem::size_of::<crate::vulkan::passes::geometry::MeshPushConstants>() as u32);
+            .size(size_of::<crate::vulkan::passes::geometry::MeshPushConstants>() as u32);
 
         let layout = unsafe {
             device.create_pipeline_layout(

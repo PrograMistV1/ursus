@@ -18,13 +18,11 @@ pub struct DrawCall<'a> {
     pub gpu_mesh: &'a GpuMesh,
     pub transform: &'a Transform,
     pub material: Option<MaterialHandle>,
-    pub shader: ShaderHandle,  // теперь знаем какой шейдер
+    pub shader: ShaderHandle,
 }
 
 pub struct GeometryPass {
     pipelines: HashMap<ShaderHandle, Pipeline>,
-    default_shader: ShaderHandle,
-    // храним layouts чтобы создавать новые pipeline по требованию
     bindless_layout: vk::DescriptorSetLayout,
     material_layout: vk::DescriptorSetLayout,
     color_format: vk::Format,
@@ -40,32 +38,27 @@ impl GeometryPass {
     ) -> anyhow::Result<Self> {
         let mut pass = Self {
             pipelines: HashMap::new(),
-            default_shader: assets.shaders.diffuse(),
             bindless_layout,
             material_layout,
             color_format,
         };
 
-        // Создаём pipeline для встроенных шейдеров сразу
         let default = assets.shaders.diffuse();
         pass.get_or_create_pipeline(device, default, &mut assets.shaders)?;
 
         Ok(pass)
     }
 
-    // Возвращает существующий pipeline или создаёт новый
     pub fn get_or_create_pipeline(
         &mut self,
         device: &ash::Device,
         shader: ShaderHandle,
         registry: &mut crate::assets::shader_registry::ShaderRegistry,
     ) -> anyhow::Result<&Pipeline> {
-        // Если pipeline уже есть — возвращаем
         if self.pipelines.contains_key(&shader) {
             return Ok(&self.pipelines[&shader]);
         }
 
-        // Иначе загружаем байты и создаём новый
         log::info!("Создаём pipeline для шейдера {:?}", shader);
 
         let (vert_spv, frag_spv) = registry.load_spv(shader)?;
@@ -93,7 +86,7 @@ impl GeometryPass {
         clear_color: [f32; 4],
         view_proj: Mat4,
         draw_calls: &[DrawCall<'_>],
-        assets: &AssetServer,  // immutable снова
+        assets: &AssetServer,
     ) {
         unsafe {
             transition(device, cmd, target.image,
@@ -150,8 +143,6 @@ impl GeometryPass {
                 extent: target.extent,
             }]);
 
-            // Группируем draw calls по шейдеру чтобы минимизировать переключения pipeline
-            // Сортировка по ShaderHandle — объекты с одинаковым шейдером идут подряд
             let mut sorted: Vec<(usize, &DrawCall)> = draw_calls
                 .iter()
                 .enumerate()
@@ -161,8 +152,7 @@ impl GeometryPass {
             let mut current_shader: Option<ShaderHandle> = None;
             let mut current_layout: vk::PipelineLayout = vk::PipelineLayout::null();
 
-            for (i, dc) in &sorted {
-                // Переключаем pipeline только если шейдер изменился
+            for (_i, dc) in &sorted {
                 if current_shader != Some(dc.shader) {
                     let pipeline = match self.get_or_create_pipeline_inner(dc.shader) {
                         Some(p) => p,
@@ -190,7 +180,6 @@ impl GeometryPass {
                     current_layout = pipeline.layout;
                 }
 
-                // Push constants и draw — одинаковые для всех шейдеров
                 let model = dc.transform.matrix();
                 let mvp = view_proj * model;
                 let material_id = dc.material.map(|m| m.0).unwrap_or(0);
@@ -202,7 +191,7 @@ impl GeometryPass {
                 };
                 let pc_bytes = std::slice::from_raw_parts(
                     &pc as *const MeshPushConstants as *const u8,
-                    std::mem::size_of::<MeshPushConstants>(),
+                    size_of::<MeshPushConstants>(),
                 );
                 device.cmd_push_constants(
                     cmd,
@@ -227,14 +216,11 @@ impl GeometryPass {
         }
     }
 
-    // Внутренний геттер — не создаёт новый pipeline, только ищет существующий
-    // Нужен внутри record() где нет доступа к registry
     fn get_or_create_pipeline_inner(&self, shader: ShaderHandle) -> Option<&Pipeline> {
         self.pipelines.get(&shader)
     }
 }
 
-// transition остаётся без изменений
 fn transition(
     device: &ash::Device,
     cmd: vk::CommandBuffer,

@@ -1,4 +1,3 @@
-use crate::assets::shader_registry::ShaderHandle;
 use crate::assets::AssetServer;
 use crate::ecs::systems::collect_draw_calls;
 use crate::ecs::GameWorld;
@@ -53,7 +52,6 @@ impl EngineContext {
     pub fn render_world(&mut self, clear_color: [f32; 4]) -> anyhow::Result<()> {
         let ecs_calls = collect_draw_calls(&mut self.world, &self.assets);
 
-        // Сначала создаём все нужные pipeline — здесь assets.shaders mutable
         let device = self.vk.device.handle.clone();
         for dc in &ecs_calls {
             self.renderer.geometry.get_or_create_pipeline(
@@ -63,7 +61,6 @@ impl EngineContext {
             )?;
         }
 
-        // Теперь собираем gpu_calls — assets immutable
         let gpu_calls: Vec<DrawCall<'_>> = ecs_calls
             .iter()
             .filter_map(|dc| {
@@ -77,7 +74,6 @@ impl EngineContext {
             })
             .collect();
 
-        // draw_frame — assets immutable, registry не нужен
         self.renderer.draw_frame(
             &self.vk,
             clear_color,

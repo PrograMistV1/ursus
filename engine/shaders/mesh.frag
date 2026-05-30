@@ -16,9 +16,9 @@ struct MaterialData {
     float roughness;
     vec2  _pad;
     uvec4 tex_indices0;// diffuse, normal, metallic_roughness, emissive
-    uint  tex_occlusion;
-    uvec3 _pad2;
+    uvec4 tex_indices1;// occlusion, pad, pad, pad
 };
+
 layout(set = 1, binding = 0) readonly buffer MaterialBuffer {
     MaterialData materials[];
 };
@@ -41,7 +41,7 @@ void main() {
     vec3 base = mat.base_color.rgb * tex_color.rgb;
 
     vec3 N    = normalize(fragNormal);
-    float diff = max(dot(N, LIGHT_DIR), 0.0);
+    float diff = abs(dot(N, LIGHT_DIR));
     vec3  col  = base * (AMBIENT + (1.0 - AMBIENT) * diff);
 
     uint emissive_idx = mat.tex_indices0.w;

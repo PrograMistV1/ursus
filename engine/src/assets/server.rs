@@ -1,14 +1,14 @@
-use ash::vk;
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-
 use super::loaders;
 use super::material::MaterialDef;
 use super::mesh::{CpuMesh, GpuMesh};
 use super::shader_registry::{ShaderHandle, ShaderRegistry};
+use crate::components::Transform;
 use crate::ecs::components::{MaterialHandle, MeshHandle};
 use crate::vulkan::MaterialBuffer;
 use crate::vulkan::{BindlessSet, GpuTexture};
+use ash::vk;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextureHandle(pub u32);
@@ -16,7 +16,7 @@ pub struct TextureHandle(pub u32);
 pub struct AssetServer {
     cpu_meshes: Vec<CpuMesh>,
     gpu_meshes: Vec<Option<GpuMesh>>,
-    mesh_path_cache: HashMap<PathBuf, MeshHandle>,
+    mesh_path_cache: HashMap<PathBuf, Vec<(MeshHandle, Option<MaterialHandle>, Transform)>>,
 
     cpu_materials: Vec<MaterialDef>,
     material_name_cache: HashMap<String, MaterialHandle>,
@@ -86,9 +86,13 @@ impl AssetServer {
         self.material_buffer.set
     }
 
-    pub fn load_mesh(&mut self, path: impl AsRef<Path>) -> anyhow::Result<Vec<(MeshHandle, Option<MaterialHandle>)>> {
+    pub fn load_mesh(&mut self, path: impl AsRef<Path>) -> anyhow::Result<Vec<(MeshHandle, Option<MaterialHandle>, Transform)>> {
         let path = path.as_ref();
         let canonical = path.to_path_buf();
+
+        if let Some(cached) = self.mesh_path_cache.get(&canonical) {
+            return Ok(cached.clone());
+        }
 
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
 
@@ -96,38 +100,59 @@ impl AssetServer {
             "obj" => {
                 let mesh = loaders::load_obj(path)?;
                 let handle = self.register_mesh(mesh);
-                Ok(vec![(handle, None)])  // один элемент
+
+                let result = vec![(handle, None, Transform::identity())];
+                self.mesh_path_cache.insert(canonical, result.clone());
+                Ok(result)
             }
             "gltf" | "glb" => {
                 let result = loaders::load_gltf(path)?;
                 let mut all = Vec::new();
+                let mut image_cache: HashMap<usize, TextureHandle> = HashMap::new();
 
                 for primitive in result.into_iter() {
                     let mut mat_def = primitive.material.map(|m| {
-                        MaterialDef::new(&m.name, self.shaders.diffuse()).with_color(
-                            m.base_color[0],
-                            m.base_color[1],
-                            m.base_color[2],
-                            m.base_color[3],
-                        ).with_metallic(m.metallic).with_roughness(m.roughness)
+                        MaterialDef::new(&m.name, self.shaders.diffuse())
+                            .with_color(
+                                m.base_color[0], m.base_color[1],
+                                m.base_color[2], m.base_color[3],
+                            )
+                            .with_metallic(m.metallic)
+                            .with_roughness(m.roughness)
                     });
 
-                    for (slot, bytes, width, height, name) in primitive.textures {
-                        match self.upload_texture_raw(&bytes, width, height, vk::Format::R8G8B8A8_SRGB, &name) {
-                            Ok(handle) => {
-                                if let Some(ref mut mat) = mat_def {
-                                    mat.set_texture(slot, handle);
+                    for (slot, bytes, width, height, name, image_index) in primitive.textures {
+                        let handle = if let Some(&cached) = image_cache.get(&image_index) {
+                            cached
+                        } else {
+                            match self.upload_texture_raw(&bytes, width, height, vk::Format::R8G8B8A8_SRGB, &name) {
+                                Ok(h) => {
+                                    image_cache.insert(image_index, h);
+                                    h
+                                }
+                                Err(e) => {
+                                    log::error!("Ошибка загрузки текстуры '{}': {}", name, e);
+                                    continue;
                                 }
                             }
-                            Err(e) => log::error!("Ошибка загрузки текстуры '{}': {}", name, e),
+                        };
+                        if let Some(ref mut mat) = mat_def {
+                            mat.set_texture(slot, handle);
                         }
                     }
 
+                    let node_transform = Transform {
+                        position: glam::Vec3::from(primitive.node_translation),
+                        rotation: glam::Quat::from_array(primitive.node_rotation),
+                        scale: glam::Vec3::from(primitive.node_scale),
+                    };
+
                     let mh = self.register_mesh(primitive.mesh);
                     let mat_handle = mat_def.map(|mat| self.register_material(mat));
-                    all.push((mh, mat_handle));
+                    all.push((mh, mat_handle, node_transform));
                 }
 
+                self.mesh_path_cache.insert(canonical, all.clone());
                 Ok(all)
             }
             _ => anyhow::bail!("Неизвестный формат меша: {:?}", path),

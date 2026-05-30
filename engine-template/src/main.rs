@@ -1,40 +1,39 @@
 use engine::ecs::components::Transform;
 use engine::{App, Engine, EngineContext};
-use glam::{Quat, Vec3};
+use glam::Vec3;
 
 struct MyApp {
     frame: u64,
-    rotation: f32,
 }
 
 impl MyApp {
     fn new() -> Self {
         Self {
-            frame: 0,
-            rotation: 0.0,
+            frame: 0
         }
     }
 }
 
 impl App for MyApp {
     fn on_start(&mut self, ctx: &mut EngineContext) {
-        let center = Vec3::new(13.44, 86.95, -3.70);
+        let center = Vec3::new(0.0, 4.0, 0.0);
         ctx.camera.target = center;
-        ctx.camera.eye = center + Vec3::new(0.0, 0.0, 280.0);
-        ctx.camera.z_far = 1000.0;
+        ctx.camera.eye = Vec3::new(8.0, 4.0, 0.0);
+        ctx.camera.z_near = 0.01;
+        ctx.camera.z_far = 50.0;
 
-        match ctx.assets.load_mesh("assets/duck.glb") {
+        match ctx.assets.load_mesh("assets/sponza/glTF/Sponza.gltf") {
             Ok(primitives) => {
-                for (mesh, material) in primitives {
+                for (mesh, material, transform) in primitives {
                     let mut builder = ctx.world.spawn();
                     builder = builder.insert(mesh);
-                    builder = builder.insert(Transform::at(0.0, 0.0, 0.0));
+                    builder = builder.insert(transform);
                     if let Some(mat) = material {
                         builder = builder.insert(mat);
                     }
                     builder.build();
                 }
-                log::info!("Модель загружена");
+                log::info!("Sponza загружена");
             }
             Err(e) => {
                 log::warn!("Не удалось загрузить модель: {e}, спавним куб");
@@ -47,18 +46,15 @@ impl App for MyApp {
         }
     }
 
-    fn on_update(&mut self, ctx: &mut EngineContext, dt: f32) {
+    fn on_update(&mut self, ctx: &mut EngineContext, _dt: f32) {
         self.frame += 1;
-        self.rotation += dt * 30.0_f32.to_radians();
-
-        for transform in ctx.world.inner.query_mut::<&mut Transform>() {
-            transform.rotation = Quat::from_rotation_y(self.rotation);
-        }
-
-        let center = Vec3::new(13.44, 86.95, -3.70);
         let t = self.frame as f32 * 0.003;
-        ctx.camera.eye = center + Vec3::new(t.sin() * 280.0, 50.0, t.cos() * 280.0);
-        ctx.camera.target = center;
+
+        let eye = Vec3::new(0.0, 2.0, 0.0);
+        let target = Vec3::new(t.cos() * 5.0, 2.0, t.sin() * 5.0);
+
+        ctx.camera.eye = eye;
+        ctx.camera.target = target;
     }
 
     fn on_render(&mut self, ctx: &mut EngineContext) {
