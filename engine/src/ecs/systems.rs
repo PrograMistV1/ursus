@@ -19,7 +19,6 @@ pub fn collect_draw_calls(world: &mut GameWorld, assets: &AssetServer) -> Vec<Dr
         .inner
         .query_mut::<(&MeshHandle, &Transform, Option<&MaterialHandle>)>()
     {
-        // Резолвим шейдер из материала, fallback на diffuse
         let shader = mat
             .and_then(|m| assets.get_material(*m))
             .map(|mat_def| mat_def.shader)

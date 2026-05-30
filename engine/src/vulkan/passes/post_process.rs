@@ -5,7 +5,7 @@ use ash::vk;
 struct PostProcessPC {
     texel_size: [f32; 2],
     exposure: f32,
-    flags: u32,  // bit 0 = fxaa
+    flags: u32,
 }
 
 pub struct PostProcessPass {
@@ -37,7 +37,6 @@ impl PostProcessPass {
             )?
         };
 
-        // Descriptor set layout: binding 0 = combined image sampler
         let binding = vk::DescriptorSetLayoutBinding::default()
             .binding(0)
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
@@ -73,7 +72,6 @@ impl PostProcessPass {
             )?[0]
         };
 
-        // Сразу биндим render target
         let image_info = vk::DescriptorImageInfo::default()
             .sampler(sampler)
             .image_view(render_target.view)
@@ -87,11 +85,10 @@ impl PostProcessPass {
 
         unsafe { device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
 
-        // Pipeline layout с push constants
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .offset(0)
-            .size(std::mem::size_of::<PostProcessPC>() as u32);
+            .size(size_of::<PostProcessPC>() as u32);
 
         let layout = unsafe {
             device.create_pipeline_layout(
@@ -123,7 +120,6 @@ impl PostProcessPass {
                 .name(entry),
         ];
 
-        // Нет vertex input — fullscreen triangle из gl_VertexIndex
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
         let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
@@ -191,7 +187,6 @@ impl PostProcessPass {
         extent: vk::Extent2D,
     ) {
         unsafe {
-            // swapchain: UNDEFINED → COLOR_ATTACHMENT_OPTIMAL
             transition(device, cmd, swapchain_image,
                        vk::ImageLayout::UNDEFINED,
                        vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
@@ -240,7 +235,7 @@ impl PostProcessPass {
             };
             let pc_bytes = std::slice::from_raw_parts(
                 &pc as *const PostProcessPC as *const u8,
-                std::mem::size_of::<PostProcessPC>(),
+                size_of::<PostProcessPC>(),
             );
             device.cmd_push_constants(
                 cmd, self.layout,
@@ -248,12 +243,10 @@ impl PostProcessPass {
                 0, pc_bytes,
             );
 
-            // Fullscreen triangle: 3 вершины, нет vertex buffer
             device.cmd_draw(cmd, 3, 1, 0, 0);
 
             device.cmd_end_rendering(cmd);
 
-            // swapchain: COLOR_ATTACHMENT_OPTIMAL → PRESENT_SRC_KHR
             transition(device, cmd, swapchain_image,
                        vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                        vk::ImageLayout::PRESENT_SRC_KHR,

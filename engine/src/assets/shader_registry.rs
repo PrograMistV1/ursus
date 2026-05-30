@@ -24,8 +24,6 @@ impl TextureSlot {
 
 pub const MAX_TEXTURE_SLOTS: usize = 5;
 
-// Источник байтов шейдера — путь к файлу или уже готовые байты
-// Это позволяет использовать и include_bytes! и загрузку с диска
 pub enum ShaderSource {
     File(PathBuf),
     Bytes(Vec<u8>),
@@ -39,7 +37,6 @@ pub struct ShaderDef {
 }
 
 impl ShaderDef {
-    // Загрузка с диска — для пользовательских шейдеров
     pub fn from_files(
         name: impl Into<String>,
         vert: impl Into<PathBuf>,
@@ -53,7 +50,6 @@ impl ShaderDef {
         }
     }
 
-    // Из байтов — для встроенных шейдеров через include_bytes!
     pub fn from_bytes(
         name: impl Into<String>,
         vert: Vec<u8>,
@@ -76,7 +72,6 @@ impl ShaderDef {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ShaderHandle(pub u32);
 
-// Загруженные байты — кешируются после первой загрузки
 struct CompiledShader {
     vert_spv: Vec<u8>,
     frag_spv: Vec<u8>,
@@ -85,7 +80,6 @@ struct CompiledShader {
 pub struct ShaderRegistry {
     shaders: Vec<ShaderDef>,
     by_name: HashMap<String, ShaderHandle>,
-    // кеш загруженных байтов
     compiled: HashMap<ShaderHandle, CompiledShader>,
 }
 
@@ -97,7 +91,6 @@ impl ShaderRegistry {
             compiled: HashMap::new(),
         };
 
-        // Встроенные шейдеры — байты вшиты в бинарник
         reg.register(ShaderDef::from_bytes(
             "unlit",
             include_bytes!(concat!(env!("OUT_DIR"), "/mesh.vert.spv")).to_vec(),
@@ -136,10 +129,7 @@ impl ShaderRegistry {
         handle
     }
 
-    // Загружает байты шейдера, кеширует результат
-    // Возвращает (vert_spv, frag_spv)
     pub fn load_spv(&mut self, handle: ShaderHandle) -> anyhow::Result<(&[u8], &[u8])> {
-        // Если ещё не загружен — загружаем
         if !self.compiled.contains_key(&handle) {
             let def = self.shaders
                 .get(handle.0 as usize)
@@ -158,7 +148,6 @@ impl ShaderRegistry {
         Ok((&compiled.vert_spv, &compiled.frag_spv))
     }
 
-    // Выгружает кеш — полезно при горячей перезагрузке
     pub fn unload(&mut self, handle: ShaderHandle) {
         self.compiled.remove(&handle);
     }
@@ -182,7 +171,6 @@ impl Default for ShaderRegistry {
     }
 }
 
-// Загружает байты из источника
 fn load_source(source: &ShaderSource) -> anyhow::Result<Vec<u8>> {
     match source {
         ShaderSource::Bytes(bytes) => Ok(bytes.clone()),

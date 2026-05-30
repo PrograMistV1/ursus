@@ -4,7 +4,7 @@ use ash::vk;
 pub struct PipelineDesc<'a> {
     pub vert_spv: &'a [u8],
     pub frag_spv: &'a [u8],
-    pub color_format: vk::Format,
+    pub color_formats: &'a [vk::Format],
     pub depth_format: vk::Format,
     pub cull_mode: vk::CullModeFlags,
     pub depth_test: bool,
@@ -15,12 +15,12 @@ impl<'a> PipelineDesc<'a> {
     pub fn standard(
         vert_spv: &'a [u8],
         frag_spv: &'a [u8],
-        color_format: vk::Format,
+        color_formats: &'a [vk::Format],
     ) -> Self {
         Self {
             vert_spv,
             frag_spv,
-            color_format,
+            color_formats,
             depth_format: vk::Format::D32_SFLOAT,
             cull_mode: vk::CullModeFlags::NONE,
             depth_test: true,
@@ -93,11 +93,15 @@ impl Pipeline {
         let multisampling = vk::PipelineMultisampleStateCreateInfo::default()
             .rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
-        let blend_attachment = vk::PipelineColorBlendAttachmentState::default()
-            .color_write_mask(vk::ColorComponentFlags::RGBA);
+        let blend_attachments = [
+            vk::PipelineColorBlendAttachmentState::default()
+                .color_write_mask(vk::ColorComponentFlags::RGBA),
+            vk::PipelineColorBlendAttachmentState::default()
+                .color_write_mask(vk::ColorComponentFlags::RGBA),
+        ];
 
         let color_blending = vk::PipelineColorBlendStateCreateInfo::default()
-            .attachments(std::slice::from_ref(&blend_attachment));
+            .attachments(&blend_attachments);
 
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
         let dynamic_state = vk::PipelineDynamicStateCreateInfo::default()
@@ -125,7 +129,7 @@ impl Pipeline {
             .stencil_test_enable(false);
 
         let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
-            .color_attachment_formats(std::slice::from_ref(&desc.color_format))
+            .color_attachment_formats(desc.color_formats)
             .depth_attachment_format(desc.depth_format);
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::default()

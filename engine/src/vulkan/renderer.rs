@@ -8,6 +8,8 @@ use super::{
     Device, VulkanContext,
 };
 use crate::assets::AssetServer;
+use crate::vulkan::gbuffer::GBuffer;
+use crate::vulkan::passes::lighting::LightingPass;
 use ash::vk;
 use glam::{Mat4, Vec3};
 use std::sync::Arc;
@@ -48,8 +50,10 @@ impl Camera {
 
 pub struct Renderer {
     pub geometry: GeometryPass,
+    pub lighting: LightingPass,
     pub post_process: PostProcessPass,
     pub commands: Commands,
+    gbuffer: GBuffer,
     render_target: RenderTarget,
     depth: DepthBuffer,
     frames: Vec<FrameSync>,
@@ -74,7 +78,7 @@ impl Renderer {
 
         let geometry = GeometryPass::new(
             &ctx.device.handle,
-            render_target.format,
+            GBuffer::color_formats(),
             assets.bindless.layout,
             assets.material_buffer.layout,
             assets,
@@ -90,19 +94,18 @@ impl Renderer {
             .map(|_| FrameSync::new(&ctx.device.handle))
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        let commands = Commands::new(
-            &ctx.device.handle,
-            ctx.device.graphics_family,
-            FRAMES_IN_FLIGHT,
-        )?;
+        let commands = Commands::new(&ctx.device.handle, ctx.device.graphics_family, FRAMES_IN_FLIGHT)?;
+        let swapchain_loader = ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
 
-        let swapchain_loader =
-            ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
+        let gbuffer = GBuffer::new(&ctx.device.handle, ctx.device.physical, &ctx.instance.handle, w, h)?;
+        let lighting = LightingPass::new(&ctx.device.handle, &gbuffer, &depth, render_target.format)?;
 
         Ok(Self {
             geometry,
+            lighting,
             post_process,
             commands,
+            gbuffer,
             render_target,
             depth,
             frames,
@@ -151,12 +154,16 @@ impl Renderer {
 
             self.geometry.record(
                 device, cmd,
-                &self.render_target,
+                &self.gbuffer,
                 &self.depth,
-                clear_color,
-                view_proj,
-                draw_calls,
-                assets,
+                clear_color, view_proj, draw_calls, assets,
+            );
+
+            self.lighting.record(
+                device, cmd,
+                &self.render_target,
+                camera,
+                swapchain.extent,
             );
 
             self.post_process.record(

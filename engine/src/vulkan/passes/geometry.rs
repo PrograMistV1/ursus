@@ -1,8 +1,9 @@
 use crate::assets::shader_registry::ShaderHandle;
 use crate::assets::{AssetServer, GpuMesh};
 use crate::ecs::components::{MaterialHandle, Transform};
+use crate::vulkan::gbuffer::GBuffer;
 use crate::vulkan::pipeline::PipelineDesc;
-use crate::vulkan::{depth::DepthBuffer, render_target::RenderTarget, Pipeline};
+use crate::vulkan::{depth::DepthBuffer, Pipeline};
 use ash::vk;
 use glam::Mat4;
 use std::collections::HashMap;
@@ -25,13 +26,13 @@ pub struct GeometryPass {
     pipelines: HashMap<ShaderHandle, Pipeline>,
     bindless_layout: vk::DescriptorSetLayout,
     material_layout: vk::DescriptorSetLayout,
-    color_format: vk::Format,
+    color_formats: [vk::Format; 2],
 }
 
 impl GeometryPass {
     pub fn new(
         device: &ash::Device,
-        color_format: vk::Format,
+        color_formats: [vk::Format; 2],
         bindless_layout: vk::DescriptorSetLayout,
         material_layout: vk::DescriptorSetLayout,
         assets: &mut AssetServer,
@@ -40,7 +41,7 @@ impl GeometryPass {
             pipelines: HashMap::new(),
             bindless_layout,
             material_layout,
-            color_format,
+            color_formats,
         };
 
         let default = assets.shaders.diffuse();
@@ -69,7 +70,7 @@ impl GeometryPass {
 
         let pipeline = Pipeline::new(
             device,
-            &PipelineDesc::standard(&vert_spv, &frag_spv, self.color_format),
+            &PipelineDesc::standard(&vert_spv, &frag_spv, &self.color_formats),
             &set_layouts,
         )?;
 
@@ -81,7 +82,7 @@ impl GeometryPass {
         &mut self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,
-        target: &RenderTarget,
+        gbuffer: &GBuffer,
         depth: &DepthBuffer,
         clear_color: [f32; 4],
         view_proj: Mat4,
@@ -89,31 +90,43 @@ impl GeometryPass {
         assets: &AssetServer,
     ) {
         unsafe {
-            transition(device, cmd, target.image,
+            transition(device, cmd, gbuffer.albedo,
                        vk::ImageLayout::UNDEFINED,
                        vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                       vk::ImageAspectFlags::COLOR,
-            );
+                       vk::ImageAspectFlags::COLOR);
+            transition(device, cmd, gbuffer.normal,
+                       vk::ImageLayout::UNDEFINED,
+                       vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                       vk::ImageAspectFlags::COLOR);
             transition(device, cmd, depth.image,
                        vk::ImageLayout::UNDEFINED,
                        vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
-                       vk::ImageAspectFlags::DEPTH,
-            );
+                       vk::ImageAspectFlags::DEPTH);
 
-            let color_attachment = vk::RenderingAttachmentInfo::default()
-                .image_view(target.view)
-                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::STORE)
-                .clear_value(vk::ClearValue {
-                    color: vk::ClearColorValue { float32: clear_color },
-                });
+            let color_attachments = [
+                vk::RenderingAttachmentInfo::default()
+                    .image_view(gbuffer.albedo_view)
+                    .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                    .load_op(vk::AttachmentLoadOp::CLEAR)
+                    .store_op(vk::AttachmentStoreOp::STORE)
+                    .clear_value(vk::ClearValue {
+                        color: vk::ClearColorValue { float32: clear_color },
+                    }),
+                vk::RenderingAttachmentInfo::default()
+                    .image_view(gbuffer.normal_view)
+                    .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                    .load_op(vk::AttachmentLoadOp::CLEAR)
+                    .store_op(vk::AttachmentStoreOp::STORE)
+                    .clear_value(vk::ClearValue {
+                        color: vk::ClearColorValue { float32: [0.0, 0.0, 0.0, 0.0] },
+                    }),
+            ];
 
             let depth_attachment = vk::RenderingAttachmentInfo::default()
                 .image_view(depth.view)
                 .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::DONT_CARE)
+                .store_op(vk::AttachmentStoreOp::STORE)
                 .clear_value(vk::ClearValue {
                     depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 },
                 });
@@ -121,26 +134,23 @@ impl GeometryPass {
             device.cmd_begin_rendering(
                 cmd,
                 &vk::RenderingInfo::default()
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent: target.extent,
-                    })
+                    .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent: gbuffer.extent })
                     .layer_count(1)
-                    .color_attachments(std::slice::from_ref(&color_attachment))
+                    .color_attachments(&color_attachments)
                     .depth_attachment(&depth_attachment),
             );
 
             device.cmd_set_viewport(cmd, 0, &[vk::Viewport {
                 x: 0.0,
                 y: 0.0,
-                width: target.extent.width as f32,
-                height: target.extent.height as f32,
+                width: gbuffer.extent.width as f32,
+                height: gbuffer.extent.height as f32,
                 min_depth: 0.0,
                 max_depth: 1.0,
             }]);
             device.cmd_set_scissor(cmd, 0, &[vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
-                extent: target.extent,
+                extent: gbuffer.extent,
             }]);
 
             let mut sorted: Vec<(usize, &DrawCall)> = draw_calls
@@ -208,10 +218,18 @@ impl GeometryPass {
 
             device.cmd_end_rendering(cmd);
 
-            transition(device, cmd, target.image,
+            transition(device, cmd, gbuffer.albedo,
                        vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                        vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                       vk::ImageAspectFlags::COLOR,
+                       vk::ImageAspectFlags::COLOR);
+            transition(device, cmd, gbuffer.normal,
+                       vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                       vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                       vk::ImageAspectFlags::COLOR);
+            transition(device, cmd, depth.image,
+                       vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+                       vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                       vk::ImageAspectFlags::DEPTH,
             );
         }
     }
@@ -232,16 +250,26 @@ fn transition(
     let (src_stage, src_access, dst_stage, dst_access) = match (from, to) {
         (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) => (
             vk::PipelineStageFlags2::TOP_OF_PIPE, vk::AccessFlags2::empty(),
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
         ),
         (vk::ImageLayout::UNDEFINED, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL) => (
             vk::PipelineStageFlags2::TOP_OF_PIPE, vk::AccessFlags2::empty(),
             vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS,
-            vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ
+                | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
         ),
         (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            vk::PipelineStageFlags2::FRAGMENT_SHADER, vk::AccessFlags2::SHADER_READ,
+            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+            vk::PipelineStageFlags2::FRAGMENT_SHADER,
+            vk::AccessFlags2::SHADER_READ,
+        ),
+        (vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
+            vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
+            vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            vk::PipelineStageFlags2::FRAGMENT_SHADER,
+            vk::AccessFlags2::SHADER_READ,
         ),
         _ => panic!("transition: неизвестная пара {:?} → {:?}", from, to),
     };
