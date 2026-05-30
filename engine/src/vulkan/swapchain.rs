@@ -37,9 +37,14 @@ impl Swapchain {
         let present_modes = unsafe {
             surface_loader.get_physical_device_surface_present_modes(device.physical, surface)?
         };
-        let present_mode = present_modes
-            .into_iter()
-            .find(|&m| m == vk::PresentModeKHR::MAILBOX)
+
+        let present_mode = [
+            vk::PresentModeKHR::IMMEDIATE,
+            vk::PresentModeKHR::MAILBOX,
+            vk::PresentModeKHR::FIFO,
+        ].iter()
+            .find(|&&mode| present_modes.contains(&mode))
+            .copied()
             .unwrap_or(vk::PresentModeKHR::FIFO);
 
         let capabilities = unsafe {

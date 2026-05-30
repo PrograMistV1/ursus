@@ -121,7 +121,12 @@ struct RunningState {
     window: Window,
     ctx: EngineContext,
     last: std::time::Instant,
+    fps_timer: std::time::Instant,
+    fps_frames: u32,
+    tick_accumulator: f32,
 }
+
+const TICK_RATE: f32 = 1.0 / 60.0;
 
 struct EngineHandler {
     app: Box<dyn App>,
@@ -163,6 +168,9 @@ impl ApplicationHandler for EngineHandler {
             window,
             ctx,
             last: std::time::Instant::now(),
+            fps_timer: std::time::Instant::now(),
+            fps_frames: 0,
+            tick_accumulator: 0.0,
         });
     }
 
@@ -184,10 +192,21 @@ impl ApplicationHandler for EngineHandler {
             }
             WindowEvent::RedrawRequested => {
                 let now = std::time::Instant::now();
-                let dt = now.duration_since(state.last).as_secs_f32();
+                let dt = now.duration_since(state.last).as_secs_f32().min(0.1);
                 state.last = now;
+                state.fps_frames += 1;
 
-                self.app.on_update(&mut state.ctx, dt);
+                if now.duration_since(state.fps_timer).as_secs_f32() >= 1.0 {
+                    state.fps_frames = 0;
+                    state.fps_timer = now;
+                }
+
+                state.tick_accumulator += dt;
+                while state.tick_accumulator >= TICK_RATE {
+                    self.app.on_update(&mut state.ctx, TICK_RATE);
+                    state.tick_accumulator -= TICK_RATE;
+                }
+
                 self.app.on_render(&mut state.ctx);
                 state.window.request_redraw();
             }
