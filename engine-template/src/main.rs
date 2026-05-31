@@ -8,9 +8,7 @@ struct MyApp {
 
 impl MyApp {
     fn new() -> Self {
-        Self {
-            frame: 0
-        }
+        Self { frame: 0 }
     }
 }
 

@@ -63,14 +63,20 @@ impl Pipeline {
 
         let attributes = [
             vk::VertexInputAttributeDescription::default()
-                .binding(0).location(0)
-                .format(vk::Format::R32G32B32_SFLOAT).offset(0),
+                .binding(0)
+                .location(0)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .offset(0),
             vk::VertexInputAttributeDescription::default()
-                .binding(0).location(1)
-                .format(vk::Format::R32G32B32_SFLOAT).offset(12),
+                .binding(0)
+                .location(1)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .offset(12),
             vk::VertexInputAttributeDescription::default()
-                .binding(0).location(2)
-                .format(vk::Format::R32G32_SFLOAT).offset(24),
+                .binding(0)
+                .location(2)
+                .format(vk::Format::R32G32_SFLOAT)
+                .offset(24),
         ];
 
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
@@ -100,12 +106,12 @@ impl Pipeline {
                 .color_write_mask(vk::ColorComponentFlags::RGBA),
         ];
 
-        let color_blending = vk::PipelineColorBlendStateCreateInfo::default()
-            .attachments(&blend_attachments);
+        let color_blending =
+            vk::PipelineColorBlendStateCreateInfo::default().attachments(&blend_attachments);
 
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-        let dynamic_state = vk::PipelineDynamicStateCreateInfo::default()
-            .dynamic_states(&dynamic_states);
+        let dynamic_state =
+            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
 
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
@@ -146,11 +152,13 @@ impl Pipeline {
             .push_next(&mut rendering_info);
 
         let handle = unsafe {
-            device.create_graphics_pipelines(
-                vk::PipelineCache::null(),
-                std::slice::from_ref(&pipeline_info),
-                None,
-            ).map_err(|(_, e)| e)?[0]
+            device
+                .create_graphics_pipelines(
+                    vk::PipelineCache::null(),
+                    std::slice::from_ref(&pipeline_info),
+                    None,
+                )
+                .map_err(|(_, e)| e)?[0]
         };
 
         Ok(Self {

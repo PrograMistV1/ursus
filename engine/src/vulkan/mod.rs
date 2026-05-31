@@ -1,20 +1,20 @@
 pub mod bindless;
 pub mod commands;
 mod debug;
+mod depth;
 mod device;
+pub mod frustum;
+pub mod gbuffer;
 mod instance;
 pub mod material_buffer;
+mod passes;
 pub mod pipeline;
+mod render_target;
 pub mod renderer;
 pub mod shader;
 mod swapchain;
 pub mod sync;
 pub mod texture;
-mod depth;
-mod render_target;
-mod passes;
-pub mod frustum;
-pub mod gbuffer;
 
 pub use bindless::BindlessSet;
 pub use debug::DebugMessenger;

@@ -23,15 +23,16 @@ impl RenderTarget {
         let image_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .format(format)
-            .extent(vk::Extent3D { width, height, depth: 1 })
+            .extent(vk::Extent3D {
+                width,
+                height,
+                depth: 1,
+            })
             .mip_levels(1)
             .array_layers(1)
             .samples(vk::SampleCountFlags::TYPE_1)
             .tiling(vk::ImageTiling::OPTIMAL)
-            .usage(
-                vk::ImageUsageFlags::COLOR_ATTACHMENT
-                    | vk::ImageUsageFlags::SAMPLED,
-            )
+            .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .initial_layout(vk::ImageLayout::UNDEFINED);
 
@@ -39,8 +40,11 @@ impl RenderTarget {
         let req = unsafe { device.get_image_memory_requirements(image) };
 
         let mem_props = unsafe { instance.get_physical_device_memory_properties(physical_device) };
-        let mem_type = find_memory_type(&mem_props, req.memory_type_bits,
-                                        vk::MemoryPropertyFlags::DEVICE_LOCAL)?;
+        let mem_type = find_memory_type(
+            &mem_props,
+            req.memory_type_bits,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        )?;
 
         let memory = unsafe {
             device.allocate_memory(
@@ -70,7 +74,14 @@ impl RenderTarget {
         };
 
         log::info!("RenderTarget: {}x{} {:?}", width, height, format);
-        Ok(Self { image, view, memory, format, extent, device: device.clone() })
+        Ok(Self {
+            image,
+            view,
+            memory,
+            format,
+            extent,
+            device: device.clone(),
+        })
     }
 }
 
@@ -91,7 +102,9 @@ fn find_memory_type(
 ) -> anyhow::Result<u32> {
     for i in 0..props.memory_type_count {
         if (type_filter & (1 << i)) != 0
-            && props.memory_types[i as usize].property_flags.contains(required)
+            && props.memory_types[i as usize]
+                .property_flags
+                .contains(required)
         {
             return Ok(i);
         }

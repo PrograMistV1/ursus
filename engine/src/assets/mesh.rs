@@ -31,9 +31,21 @@ impl Aabb {
         for plane in planes {
             let normal = Vec3::new(plane.x, plane.y, plane.z);
             let p = Vec3::new(
-                if normal.x >= 0.0 { self.max.x } else { self.min.x },
-                if normal.y >= 0.0 { self.max.y } else { self.min.y },
-                if normal.z >= 0.0 { self.max.z } else { self.min.z },
+                if normal.x >= 0.0 {
+                    self.max.x
+                } else {
+                    self.min.x
+                },
+                if normal.y >= 0.0 {
+                    self.max.y
+                } else {
+                    self.min.y
+                },
+                if normal.z >= 0.0 {
+                    self.max.z
+                } else {
+                    self.min.z
+                },
             );
             if normal.dot(p) + plane.w < 0.0 {
                 return false;
@@ -267,8 +279,8 @@ fn find_memory_type(
     for i in 0..props.memory_type_count {
         if (type_filter & (1 << i)) != 0
             && props.memory_types[i as usize]
-            .property_flags
-            .contains(properties)
+                .property_flags
+                .contains(properties)
         {
             return Ok(i);
         }

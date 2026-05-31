@@ -1,6 +1,7 @@
 use crate::assets::mesh::{CpuMesh, Vertex};
 use crate::assets::shader_registry::TextureSlot;
 use glam::{Vec2, Vec3};
+use image::DynamicImage;
 
 pub fn load_obj(path: &std::path::Path) -> anyhow::Result<CpuMesh> {
     let (models, _materials) = tobj::load_obj(
@@ -95,14 +96,11 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
         let mesh_base_name = mesh.name().unwrap_or("gltf_mesh").to_string();
 
         for primitive in mesh.primitives() {
-            let reader =
-                primitive.reader(|buf| buffers.get(buf.index()).map(|b| b.0.as_slice()));
+            let reader = primitive.reader(|buf| buffers.get(buf.index()).map(|b| b.0.as_slice()));
 
             let positions: Vec<Vec3> = reader
                 .read_positions()
-                .ok_or_else(|| {
-                    anyhow::anyhow!("Меш '{}' не имеет позиций", mesh_base_name)
-                })?
+                .ok_or_else(|| anyhow::anyhow!("Меш '{}' не имеет позиций", mesh_base_name))?
                 .map(Vec3::from)
                 .collect();
 
@@ -162,32 +160,77 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 });
 
                 if let Some(info) = pbr.base_color_texture() {
-                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
-                        tex_data.push((TextureSlot::Diffuse, bytes, w, h, format!("{}_diffuse", mesh_name), info.texture().source().index()));
+                    if let Some((bytes, w, h)) =
+                        image_bytes(&images, info.texture().source().index())
+                    {
+                        tex_data.push((
+                            TextureSlot::Diffuse,
+                            bytes,
+                            w,
+                            h,
+                            format!("{}_diffuse", mesh_name),
+                            info.texture().source().index(),
+                        ));
                     }
                 }
 
                 if let Some(info) = pbr.metallic_roughness_texture() {
-                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
-                        tex_data.push((TextureSlot::MetallicRoughness, bytes, w, h, format!("{}_metallic_roughness", mesh_name), info.texture().source().index(),));
+                    if let Some((bytes, w, h)) =
+                        image_bytes(&images, info.texture().source().index())
+                    {
+                        tex_data.push((
+                            TextureSlot::MetallicRoughness,
+                            bytes,
+                            w,
+                            h,
+                            format!("{}_metallic_roughness", mesh_name),
+                            info.texture().source().index(),
+                        ));
                     }
                 }
 
                 if let Some(info) = mat.normal_texture() {
-                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
-                        tex_data.push((TextureSlot::Normal, bytes, w, h, format!("{}_normal", mesh_name), info.texture().source().index(),));
+                    if let Some((bytes, w, h)) =
+                        image_bytes(&images, info.texture().source().index())
+                    {
+                        tex_data.push((
+                            TextureSlot::Normal,
+                            bytes,
+                            w,
+                            h,
+                            format!("{}_normal", mesh_name),
+                            info.texture().source().index(),
+                        ));
                     }
                 }
 
                 if let Some(info) = mat.emissive_texture() {
-                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
-                        tex_data.push((TextureSlot::Emissive, bytes, w, h, format!("{}_emissive", mesh_name), info.texture().source().index(),));
+                    if let Some((bytes, w, h)) =
+                        image_bytes(&images, info.texture().source().index())
+                    {
+                        tex_data.push((
+                            TextureSlot::Emissive,
+                            bytes,
+                            w,
+                            h,
+                            format!("{}_emissive", mesh_name),
+                            info.texture().source().index(),
+                        ));
                     }
                 }
 
                 if let Some(info) = mat.occlusion_texture() {
-                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
-                        tex_data.push((TextureSlot::Occlusion, bytes, w, h, format!("{}_occlusion", mesh_name), info.texture().source().index(),));
+                    if let Some((bytes, w, h)) =
+                        image_bytes(&images, info.texture().source().index())
+                    {
+                        tex_data.push((
+                            TextureSlot::Occlusion,
+                            bytes,
+                            w,
+                            h,
+                            format!("{}_occlusion", mesh_name),
+                            info.texture().source().index(),
+                        ));
                     }
                 }
             }
@@ -219,7 +262,7 @@ fn image_bytes(images: &[gltf::image::Data], index: usize) -> Option<(Vec<u8>, u
         data.width,
         data.height
     );
-    use image::DynamicImage;
+
     let img = match data.format {
         gltf::image::Format::R8G8B8A8 => {
             image::RgbaImage::from_raw(data.width, data.height, data.pixels.clone())

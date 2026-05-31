@@ -42,10 +42,11 @@ impl Swapchain {
             vk::PresentModeKHR::IMMEDIATE,
             vk::PresentModeKHR::MAILBOX,
             vk::PresentModeKHR::FIFO,
-        ].iter()
-            .find(|&&mode| present_modes.contains(&mode))
-            .copied()
-            .unwrap_or(vk::PresentModeKHR::FIFO);
+        ]
+        .iter()
+        .find(|&&mode| present_modes.contains(&mode))
+        .copied()
+        .unwrap_or(vk::PresentModeKHR::FIFO);
 
         let capabilities = unsafe {
             surface_loader.get_physical_device_surface_capabilities(device.physical, surface)?

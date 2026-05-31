@@ -90,18 +90,30 @@ impl GeometryPass {
         assets: &AssetServer,
     ) {
         unsafe {
-            transition(device, cmd, gbuffer.albedo,
-                       vk::ImageLayout::UNDEFINED,
-                       vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                       vk::ImageAspectFlags::COLOR);
-            transition(device, cmd, gbuffer.normal,
-                       vk::ImageLayout::UNDEFINED,
-                       vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                       vk::ImageAspectFlags::COLOR);
-            transition(device, cmd, depth.image,
-                       vk::ImageLayout::UNDEFINED,
-                       vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
-                       vk::ImageAspectFlags::DEPTH);
+            transition(
+                device,
+                cmd,
+                gbuffer.albedo,
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                vk::ImageAspectFlags::COLOR,
+            );
+            transition(
+                device,
+                cmd,
+                gbuffer.normal,
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                vk::ImageAspectFlags::COLOR,
+            );
+            transition(
+                device,
+                cmd,
+                depth.image,
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+                vk::ImageAspectFlags::DEPTH,
+            );
 
             let color_attachments = [
                 vk::RenderingAttachmentInfo::default()
@@ -110,7 +122,9 @@ impl GeometryPass {
                     .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::STORE)
                     .clear_value(vk::ClearValue {
-                        color: vk::ClearColorValue { float32: clear_color },
+                        color: vk::ClearColorValue {
+                            float32: clear_color,
+                        },
                     }),
                 vk::RenderingAttachmentInfo::default()
                     .image_view(gbuffer.normal_view)
@@ -118,7 +132,9 @@ impl GeometryPass {
                     .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::STORE)
                     .clear_value(vk::ClearValue {
-                        color: vk::ClearColorValue { float32: [0.0, 0.0, 0.0, 0.0] },
+                        color: vk::ClearColorValue {
+                            float32: [0.0, 0.0, 0.0, 0.0],
+                        },
                     }),
             ];
 
@@ -128,35 +144,46 @@ impl GeometryPass {
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::STORE)
                 .clear_value(vk::ClearValue {
-                    depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 },
+                    depth_stencil: vk::ClearDepthStencilValue {
+                        depth: 1.0,
+                        stencil: 0,
+                    },
                 });
 
             device.cmd_begin_rendering(
                 cmd,
                 &vk::RenderingInfo::default()
-                    .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent: gbuffer.extent })
+                    .render_area(vk::Rect2D {
+                        offset: vk::Offset2D { x: 0, y: 0 },
+                        extent: gbuffer.extent,
+                    })
                     .layer_count(1)
                     .color_attachments(&color_attachments)
                     .depth_attachment(&depth_attachment),
             );
 
-            device.cmd_set_viewport(cmd, 0, &[vk::Viewport {
-                x: 0.0,
-                y: 0.0,
-                width: gbuffer.extent.width as f32,
-                height: gbuffer.extent.height as f32,
-                min_depth: 0.0,
-                max_depth: 1.0,
-            }]);
-            device.cmd_set_scissor(cmd, 0, &[vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent: gbuffer.extent,
-            }]);
+            device.cmd_set_viewport(
+                cmd,
+                0,
+                &[vk::Viewport {
+                    x: 0.0,
+                    y: 0.0,
+                    width: gbuffer.extent.width as f32,
+                    height: gbuffer.extent.height as f32,
+                    min_depth: 0.0,
+                    max_depth: 1.0,
+                }],
+            );
+            device.cmd_set_scissor(
+                cmd,
+                0,
+                &[vk::Rect2D {
+                    offset: vk::Offset2D { x: 0, y: 0 },
+                    extent: gbuffer.extent,
+                }],
+            );
 
-            let mut sorted: Vec<(usize, &DrawCall)> = draw_calls
-                .iter()
-                .enumerate()
-                .collect();
+            let mut sorted: Vec<(usize, &DrawCall)> = draw_calls.iter().enumerate().collect();
             sorted.sort_by_key(|(_, dc)| dc.shader.0);
 
             let mut current_shader: Option<ShaderHandle> = None;
@@ -167,16 +194,15 @@ impl GeometryPass {
                     let pipeline = match self.get_or_create_pipeline_inner(dc.shader) {
                         Some(p) => p,
                         None => {
-                            log::warn!("Pipeline для шейдера {:?} не найден, пропускаем", dc.shader);
+                            log::warn!(
+                                "Pipeline для шейдера {:?} не найден, пропускаем",
+                                dc.shader
+                            );
                             continue;
                         }
                     };
 
-                    device.cmd_bind_pipeline(
-                        cmd,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        pipeline.handle,
-                    );
+                    device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline.handle);
                     device.cmd_bind_descriptor_sets(
                         cmd,
                         vk::PipelineBindPoint::GRAPHICS,
@@ -212,24 +238,40 @@ impl GeometryPass {
                 );
 
                 device.cmd_bind_vertex_buffers(cmd, 0, &[dc.gpu_mesh.vertex_buffer], &[0]);
-                device.cmd_bind_index_buffer(cmd, dc.gpu_mesh.index_buffer, 0, vk::IndexType::UINT32);
+                device.cmd_bind_index_buffer(
+                    cmd,
+                    dc.gpu_mesh.index_buffer,
+                    0,
+                    vk::IndexType::UINT32,
+                );
                 device.cmd_draw_indexed(cmd, dc.gpu_mesh.index_count, 1, 0, 0, 0);
             }
 
             device.cmd_end_rendering(cmd);
 
-            transition(device, cmd, gbuffer.albedo,
-                       vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                       vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                       vk::ImageAspectFlags::COLOR);
-            transition(device, cmd, gbuffer.normal,
-                       vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                       vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                       vk::ImageAspectFlags::COLOR);
-            transition(device, cmd, depth.image,
-                       vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
-                       vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                       vk::ImageAspectFlags::DEPTH,
+            transition(
+                device,
+                cmd,
+                gbuffer.albedo,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                vk::ImageAspectFlags::COLOR,
+            );
+            transition(
+                device,
+                cmd,
+                gbuffer.normal,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                vk::ImageAspectFlags::COLOR,
+            );
+            transition(
+                device,
+                cmd,
+                depth.image,
+                vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                vk::ImageAspectFlags::DEPTH,
             );
         }
     }
@@ -249,12 +291,14 @@ fn transition(
 ) {
     let (src_stage, src_access, dst_stage, dst_access) = match (from, to) {
         (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) => (
-            vk::PipelineStageFlags2::TOP_OF_PIPE, vk::AccessFlags2::empty(),
+            vk::PipelineStageFlags2::TOP_OF_PIPE,
+            vk::AccessFlags2::empty(),
             vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
             vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
         ),
         (vk::ImageLayout::UNDEFINED, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL) => (
-            vk::PipelineStageFlags2::TOP_OF_PIPE, vk::AccessFlags2::empty(),
+            vk::PipelineStageFlags2::TOP_OF_PIPE,
+            vk::AccessFlags2::empty(),
             vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS,
             vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ
                 | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
@@ -275,9 +319,12 @@ fn transition(
     };
 
     let barrier = vk::ImageMemoryBarrier2::default()
-        .src_stage_mask(src_stage).src_access_mask(src_access)
-        .dst_stage_mask(dst_stage).dst_access_mask(dst_access)
-        .old_layout(from).new_layout(to)
+        .src_stage_mask(src_stage)
+        .src_access_mask(src_access)
+        .dst_stage_mask(dst_stage)
+        .dst_access_mask(dst_access)
+        .old_layout(from)
+        .new_layout(to)
         .image(image)
         .subresource_range(vk::ImageSubresourceRange {
             aspect_mask: aspect,
@@ -290,8 +337,7 @@ fn transition(
     unsafe {
         device.cmd_pipeline_barrier2(
             cmd,
-            &vk::DependencyInfo::default()
-                .image_memory_barriers(std::slice::from_ref(&barrier)),
+            &vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&barrier)),
         );
     }
 }

@@ -12,7 +12,6 @@ use winit::{
     window::{Window, WindowAttributes},
 };
 
-
 pub trait App {
     fn on_start(&mut self, ctx: &mut EngineContext);
     fn on_update(&mut self, ctx: &mut EngineContext, dt: f32);
@@ -69,7 +68,11 @@ impl EngineContext {
 
         let device = self.vk.device.handle.clone();
         for dc in &ecs_calls {
-            self.renderer.geometry.get_or_create_pipeline(&device, dc.shader, &mut self.assets.shaders)?;
+            self.renderer.geometry.get_or_create_pipeline(
+                &device,
+                dc.shader,
+                &mut self.assets.shaders,
+            )?;
         }
 
         let gpu_calls: Vec<DrawCall<'_>> = ecs_calls
@@ -83,11 +86,25 @@ impl EngineContext {
                     return None;
                 }
 
-                Some(DrawCall { gpu_mesh: gpu, transform: &dc.transform, material: dc.material, shader: dc.shader })
+                Some(DrawCall {
+                    gpu_mesh: gpu,
+                    transform: &dc.transform,
+                    material: dc.material,
+                    shader: dc.shader,
+                })
             })
             .collect();
 
-        self.renderer.draw_frame(&self.vk, clear_color, &self.camera, &gpu_calls, &self.assets, window, egui, egui_output)
+        self.renderer.draw_frame(
+            &self.vk,
+            clear_color,
+            &self.camera,
+            &gpu_calls,
+            &self.assets,
+            window,
+            egui,
+            egui_output,
+        )
     }
 }
 
@@ -181,7 +198,8 @@ impl ApplicationHandler for EngineHandler {
             ctx.vk.device.physical,
             ctx.vk.device.handle.clone(),
             swapchain.format,
-        ).expect("Failed to create EguiLayer");
+        )
+        .expect("Failed to create EguiLayer");
 
         self.state = Some(RunningState {
             window,
@@ -196,7 +214,12 @@ impl ApplicationHandler for EngineHandler {
         });
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: winit::window::WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
         let Some(state) = &mut self.state else { return };
 
         let consumed = state.egui.handle_window_event(&state.window, &event);
@@ -219,8 +242,8 @@ impl ApplicationHandler for EngineHandler {
                 state.fps_frames += 1;
 
                 if now.duration_since(state.fps_timer).as_secs_f32() >= 1.0 {
-                    state.fps_current = state.fps_frames as f32
-                        / now.duration_since(state.fps_timer).as_secs_f32();
+                    state.fps_current =
+                        state.fps_frames as f32 / now.duration_since(state.fps_timer).as_secs_f32();
                     state.fps_frames = 0;
                     state.fps_timer = now;
                 }
@@ -245,12 +268,15 @@ impl ApplicationHandler for EngineHandler {
 
                 self.app.on_render(&mut state.ctx);
 
-                state.ctx.render_world(
-                    [0.0, 0.0, 0.0, 1.0],
-                    &state.window,
-                    &mut state.egui,
-                    full_output,
-                ).expect("render failed");
+                state
+                    .ctx
+                    .render_world(
+                        [0.0, 0.0, 0.0, 1.0],
+                        &state.window,
+                        &mut state.egui,
+                        full_output,
+                    )
+                    .expect("render failed");
 
                 if state.debug.swapchain_dirty {
                     state.debug.swapchain_dirty = false;

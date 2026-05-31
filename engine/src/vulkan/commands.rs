@@ -26,7 +26,11 @@ impl Commands {
         let buffers = unsafe { device.allocate_command_buffers(&alloc_info)? };
 
         log::info!("Command pool создан ({} буферов)", frames_in_flight);
-        Ok(Self { pool, buffers, device: device.clone() })
+        Ok(Self {
+            pool,
+            buffers,
+            device: device.clone(),
+        })
     }
 }
 

@@ -17,7 +17,6 @@ use std::sync::Arc;
 
 const FRAMES_IN_FLIGHT: u32 = 2;
 
-
 pub struct Camera {
     pub eye: Vec3,
     pub target: Vec3,
@@ -70,8 +69,20 @@ impl Renderer {
         let w = swapchain.extent.width;
         let h = swapchain.extent.height;
 
-        let render_target = RenderTarget::new(&ctx.device.handle, ctx.device.physical, &ctx.instance.handle, w, h)?;
-        let depth = DepthBuffer::new(&ctx.device.handle, ctx.device.physical, &ctx.instance.handle, w, h)?;
+        let render_target = RenderTarget::new(
+            &ctx.device.handle,
+            ctx.device.physical,
+            &ctx.instance.handle,
+            w,
+            h,
+        )?;
+        let depth = DepthBuffer::new(
+            &ctx.device.handle,
+            ctx.device.physical,
+            &ctx.instance.handle,
+            w,
+            h,
+        )?;
 
         let geometry = GeometryPass::new(
             &ctx.device.handle,
@@ -81,11 +92,8 @@ impl Renderer {
             assets,
         )?;
 
-        let post_process = PostProcessPass::new(
-            &ctx.device.handle,
-            swapchain.format,
-            &render_target,
-        )?;
+        let post_process =
+            PostProcessPass::new(&ctx.device.handle, swapchain.format, &render_target)?;
 
         let ui = UiPass;
 
@@ -93,11 +101,23 @@ impl Renderer {
             .map(|_| FrameSync::new(&ctx.device.handle))
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        let commands = Commands::new(&ctx.device.handle, ctx.device.graphics_family, FRAMES_IN_FLIGHT)?;
-        let swapchain_loader = ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
+        let commands = Commands::new(
+            &ctx.device.handle,
+            ctx.device.graphics_family,
+            FRAMES_IN_FLIGHT,
+        )?;
+        let swapchain_loader =
+            ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
 
-        let gbuffer = GBuffer::new(&ctx.device.handle, ctx.device.physical, &ctx.instance.handle, w, h)?;
-        let lighting = LightingPass::new(&ctx.device.handle, &gbuffer, &depth, render_target.format)?;
+        let gbuffer = GBuffer::new(
+            &ctx.device.handle,
+            ctx.device.physical,
+            &ctx.instance.handle,
+            w,
+            h,
+        )?;
+        let lighting =
+            LightingPass::new(&ctx.device.handle, &gbuffer, &depth, render_target.format)?;
 
         Ok(Self {
             geometry,
@@ -141,7 +161,12 @@ impl Renderer {
         }
 
         let (image_index, _) = unsafe {
-            self.swapchain_loader.acquire_next_image(swapchain.handle, u64::MAX, frame.image_available, vk::Fence::null())?
+            self.swapchain_loader.acquire_next_image(
+                swapchain.handle,
+                u64::MAX,
+                frame.image_available,
+                vk::Fence::null(),
+            )?
         };
 
         unsafe {
@@ -153,32 +178,36 @@ impl Renderer {
             )?;
 
             self.geometry.record(
-                device, cmd,
+                device,
+                cmd,
                 &self.gbuffer,
                 &self.depth,
-                clear_color, view_proj, draw_calls, assets,
+                clear_color,
+                view_proj,
+                draw_calls,
+                assets,
             );
 
-            self.lighting.record(
-                device, cmd,
-                &self.render_target,
-                camera,
-                swapchain.extent,
-            );
+            self.lighting
+                .record(device, cmd, &self.render_target, camera, swapchain.extent);
 
             self.post_process.record(
-                device, cmd,
+                device,
+                cmd,
                 swapchain.images[image_index as usize],
                 swapchain.image_views[image_index as usize],
                 swapchain.extent,
             );
 
             self.ui.record(
-                device, cmd,
+                device,
+                cmd,
                 swapchain.images[image_index as usize],
                 swapchain.image_views[image_index as usize],
                 swapchain.extent,
-                window, egui, egui_output,
+                window,
+                egui,
+                egui_output,
                 ctx.device.graphics_queue,
                 self.commands.pool,
             )?;

@@ -138,8 +138,8 @@ impl PostProcessPass {
         let color_blending = vk::PipelineColorBlendStateCreateInfo::default()
             .attachments(std::slice::from_ref(&blend_attachment));
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-        let dynamic_state = vk::PipelineDynamicStateCreateInfo::default()
-            .dynamic_states(&dynamic_states);
+        let dynamic_state =
+            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
 
         let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
             .color_attachment_formats(std::slice::from_ref(&swapchain_format));
@@ -157,11 +157,13 @@ impl PostProcessPass {
             .push_next(&mut rendering_info);
 
         let pipeline = unsafe {
-            device.create_graphics_pipelines(
-                vk::PipelineCache::null(),
-                std::slice::from_ref(&pipeline_info),
-                None,
-            ).map_err(|(_, e)| e)?[0]
+            device
+                .create_graphics_pipelines(
+                    vk::PipelineCache::null(),
+                    std::slice::from_ref(&pipeline_info),
+                    None,
+                )
+                .map_err(|(_, e)| e)?[0]
         };
 
         log::info!("PostProcessPass создан (tonemap ACES + FXAA)");
@@ -187,9 +189,12 @@ impl PostProcessPass {
         extent: vk::Extent2D,
     ) {
         unsafe {
-            transition(device, cmd, swapchain_image,
-                       vk::ImageLayout::UNDEFINED,
-                       vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            transition(
+                device,
+                cmd,
+                swapchain_image,
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             );
 
             let color_attachment = vk::RenderingAttachmentInfo::default()
@@ -209,23 +214,35 @@ impl PostProcessPass {
                     .color_attachments(std::slice::from_ref(&color_attachment)),
             );
 
-            device.cmd_set_viewport(cmd, 0, &[vk::Viewport {
-                x: 0.0,
-                y: 0.0,
-                width: extent.width as f32,
-                height: extent.height as f32,
-                min_depth: 0.0,
-                max_depth: 1.0,
-            }]);
-            device.cmd_set_scissor(cmd, 0, &[vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent,
-            }]);
+            device.cmd_set_viewport(
+                cmd,
+                0,
+                &[vk::Viewport {
+                    x: 0.0,
+                    y: 0.0,
+                    width: extent.width as f32,
+                    height: extent.height as f32,
+                    min_depth: 0.0,
+                    max_depth: 1.0,
+                }],
+            );
+            device.cmd_set_scissor(
+                cmd,
+                0,
+                &[vk::Rect2D {
+                    offset: vk::Offset2D { x: 0, y: 0 },
+                    extent,
+                }],
+            );
 
             device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
             device.cmd_bind_descriptor_sets(
-                cmd, vk::PipelineBindPoint::GRAPHICS, self.layout,
-                0, &[self.descriptor_set], &[],
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.layout,
+                0,
+                &[self.descriptor_set],
+                &[],
             );
 
             let pc = PostProcessPC {
@@ -238,18 +255,23 @@ impl PostProcessPass {
                 size_of::<PostProcessPC>(),
             );
             device.cmd_push_constants(
-                cmd, self.layout,
+                cmd,
+                self.layout,
                 vk::ShaderStageFlags::FRAGMENT,
-                0, pc_bytes,
+                0,
+                pc_bytes,
             );
 
             device.cmd_draw(cmd, 3, 1, 0, 0);
 
             device.cmd_end_rendering(cmd);
 
-            transition(device, cmd, swapchain_image,
-                       vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                       vk::ImageLayout::PRESENT_SRC_KHR,
+            transition(
+                device,
+                cmd,
+                swapchain_image,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                vk::ImageLayout::PRESENT_SRC_KHR,
             );
         }
     }
@@ -260,8 +282,10 @@ impl Drop for PostProcessPass {
         unsafe {
             self.device.destroy_pipeline(self.pipeline, None);
             self.device.destroy_pipeline_layout(self.layout, None);
-            self.device.destroy_descriptor_pool(self.descriptor_pool, None);
-            self.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
+            self.device
+                .destroy_descriptor_pool(self.descriptor_pool, None);
+            self.device
+                .destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             self.device.destroy_sampler(self.sampler, None);
         }
     }
@@ -276,20 +300,30 @@ fn transition(
 ) {
     let (src_stage, src_access, dst_stage, dst_access) = match (from, to) {
         (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) => (
-            vk::PipelineStageFlags2::TOP_OF_PIPE, vk::AccessFlags2::empty(),
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+            vk::PipelineStageFlags2::TOP_OF_PIPE,
+            vk::AccessFlags2::empty(),
+            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
         ),
         (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::PRESENT_SRC_KHR) => (
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            vk::PipelineStageFlags2::BOTTOM_OF_PIPE, vk::AccessFlags2::empty(),
+            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+            vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
+            vk::AccessFlags2::empty(),
         ),
-        _ => panic!("post_process transition: неизвестная пара {:?} → {:?}", from, to),
+        _ => panic!(
+            "post_process transition: неизвестная пара {:?} → {:?}",
+            from, to
+        ),
     };
 
     let barrier = vk::ImageMemoryBarrier2::default()
-        .src_stage_mask(src_stage).src_access_mask(src_access)
-        .dst_stage_mask(dst_stage).dst_access_mask(dst_access)
-        .old_layout(from).new_layout(to)
+        .src_stage_mask(src_stage)
+        .src_access_mask(src_access)
+        .dst_stage_mask(dst_stage)
+        .dst_access_mask(dst_access)
+        .old_layout(from)
+        .new_layout(to)
         .image(image)
         .subresource_range(vk::ImageSubresourceRange {
             aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -302,8 +336,7 @@ fn transition(
     unsafe {
         device.cmd_pipeline_barrier2(
             cmd,
-            &vk::DependencyInfo::default()
-                .image_memory_barriers(std::slice::from_ref(&barrier)),
+            &vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&barrier)),
         );
     }
 }

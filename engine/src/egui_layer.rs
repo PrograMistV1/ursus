@@ -45,10 +45,18 @@ impl EguiLayer {
             },
         )?;
 
-        Ok(Self { ctx, state, renderer })
+        Ok(Self {
+            ctx,
+            state,
+            renderer,
+        })
     }
 
-    pub fn handle_window_event(&mut self, window: &Window, event: &winit::event::WindowEvent) -> bool {
+    pub fn handle_window_event(
+        &mut self,
+        window: &Window,
+        event: &winit::event::WindowEvent,
+    ) -> bool {
         let resp = self.state.on_window_event(window, event);
         resp.consumed
     }
@@ -66,17 +74,24 @@ impl EguiLayer {
         extent: vk::Extent2D,
         output: egui::FullOutput,
     ) -> anyhow::Result<()> {
-        self.state.handle_platform_output(window, output.platform_output.clone());
+        self.state
+            .handle_platform_output(window, output.platform_output.clone());
         let primitives = self.ctx.tessellate(output.shapes, output.pixels_per_point);
 
         if !output.textures_delta.set.is_empty() {
-            self.renderer.set_textures(queue, command_pool, output.textures_delta.set.as_slice())?;
+            self.renderer.set_textures(
+                queue,
+                command_pool,
+                output.textures_delta.set.as_slice(),
+            )?;
         }
 
-        self.renderer.cmd_draw(cmd, extent, output.pixels_per_point, &primitives)?;
+        self.renderer
+            .cmd_draw(cmd, extent, output.pixels_per_point, &primitives)?;
 
         if !output.textures_delta.free.is_empty() {
-            self.renderer.free_textures(output.textures_delta.free.as_slice())?;
+            self.renderer
+                .free_textures(output.textures_delta.free.as_slice())?;
         }
         Ok(())
     }

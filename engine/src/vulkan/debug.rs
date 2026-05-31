@@ -8,10 +8,7 @@ pub struct DebugMessenger {
 
 impl DebugMessenger {
     pub fn new(instance: &Instance) -> anyhow::Result<Self> {
-        let loader = ash::ext::debug_utils::Instance::new(
-            &instance.entry,
-            &instance.handle,
-        );
+        let loader = ash::ext::debug_utils::Instance::new(&instance.entry, &instance.handle);
 
         let create_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
             .message_severity(

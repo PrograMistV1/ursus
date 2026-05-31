@@ -50,11 +50,7 @@ impl ShaderDef {
         }
     }
 
-    pub fn from_bytes(
-        name: impl Into<String>,
-        vert: Vec<u8>,
-        frag: Vec<u8>,
-    ) -> Self {
+    pub fn from_bytes(name: impl Into<String>, vert: Vec<u8>, frag: Vec<u8>) -> Self {
         Self {
             name: name.into(),
             vert: ShaderSource::Bytes(vert),
@@ -103,7 +99,7 @@ impl ShaderRegistry {
                 include_bytes!(concat!(env!("OUT_DIR"), "/mesh.vert.spv")).to_vec(),
                 include_bytes!(concat!(env!("OUT_DIR"), "/mesh.frag.spv")).to_vec(),
             )
-                .with_slot(TextureSlot::Diffuse),
+            .with_slot(TextureSlot::Diffuse),
         );
 
         reg.register(
@@ -112,11 +108,11 @@ impl ShaderRegistry {
                 include_bytes!(concat!(env!("OUT_DIR"), "/mesh.vert.spv")).to_vec(),
                 include_bytes!(concat!(env!("OUT_DIR"), "/mesh.frag.spv")).to_vec(),
             )
-                .with_slot(TextureSlot::Diffuse)
-                .with_slot(TextureSlot::Normal)
-                .with_slot(TextureSlot::MetallicRoughness)
-                .with_slot(TextureSlot::Emissive)
-                .with_slot(TextureSlot::Occlusion),
+            .with_slot(TextureSlot::Diffuse)
+            .with_slot(TextureSlot::Normal)
+            .with_slot(TextureSlot::MetallicRoughness)
+            .with_slot(TextureSlot::Emissive)
+            .with_slot(TextureSlot::Occlusion),
         );
 
         reg
@@ -131,16 +127,20 @@ impl ShaderRegistry {
 
     pub fn load_spv(&mut self, handle: ShaderHandle) -> anyhow::Result<(&[u8], &[u8])> {
         if !self.compiled.contains_key(&handle) {
-            let def = self.shaders
+            let def = self
+                .shaders
                 .get(handle.0 as usize)
                 .ok_or_else(|| anyhow::anyhow!("ShaderHandle {:?} не найден", handle))?;
 
-            let vert_spv = load_source(&def.vert)
-                .map_err(|e| anyhow::anyhow!("Ошибка загрузки vert шейдера '{}': {}", def.name, e))?;
-            let frag_spv = load_source(&def.frag)
-                .map_err(|e| anyhow::anyhow!("Ошибка загрузки frag шейдера '{}': {}", def.name, e))?;
+            let vert_spv = load_source(&def.vert).map_err(|e| {
+                anyhow::anyhow!("Ошибка загрузки vert шейдера '{}': {}", def.name, e)
+            })?;
+            let frag_spv = load_source(&def.frag).map_err(|e| {
+                anyhow::anyhow!("Ошибка загрузки frag шейдера '{}': {}", def.name, e)
+            })?;
 
-            self.compiled.insert(handle, CompiledShader { vert_spv, frag_spv });
+            self.compiled
+                .insert(handle, CompiledShader { vert_spv, frag_spv });
             log::info!("Шейдер '{}' загружен", def.name);
         }
 
@@ -160,9 +160,15 @@ impl ShaderRegistry {
         self.by_name.get(name).copied()
     }
 
-    pub fn diffuse(&self) -> ShaderHandle { ShaderHandle(1) }
-    pub fn pbr(&self) -> ShaderHandle { ShaderHandle(2) }
-    pub fn unlit(&self) -> ShaderHandle { ShaderHandle(0) }
+    pub fn diffuse(&self) -> ShaderHandle {
+        ShaderHandle(1)
+    }
+    pub fn pbr(&self) -> ShaderHandle {
+        ShaderHandle(2)
+    }
+    pub fn unlit(&self) -> ShaderHandle {
+        ShaderHandle(0)
+    }
 }
 
 impl Default for ShaderRegistry {
@@ -174,9 +180,7 @@ impl Default for ShaderRegistry {
 fn load_source(source: &ShaderSource) -> anyhow::Result<Vec<u8>> {
     match source {
         ShaderSource::Bytes(bytes) => Ok(bytes.clone()),
-        ShaderSource::File(path) => {
-            std::fs::read(path)
-                .map_err(|e| anyhow::anyhow!("Не удалось прочитать {:?}: {}", path, e))
-        }
+        ShaderSource::File(path) => std::fs::read(path)
+            .map_err(|e| anyhow::anyhow!("Не удалось прочитать {:?}: {}", path, e)),
     }
 }

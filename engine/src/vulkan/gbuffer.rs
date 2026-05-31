@@ -27,13 +27,21 @@ impl GBuffer {
         let extent = vk::Extent2D { width, height };
 
         let (albedo, albedo_view, albedo_memory) = create_attachment(
-            device, instance, physical_device,
-            Self::ALBEDO_FORMAT, width, height,
+            device,
+            instance,
+            physical_device,
+            Self::ALBEDO_FORMAT,
+            width,
+            height,
         )?;
 
         let (normal, normal_view, normal_memory) = create_attachment(
-            device, instance, physical_device,
-            Self::NORMAL_FORMAT, width, height,
+            device,
+            instance,
+            physical_device,
+            Self::NORMAL_FORMAT,
+            width,
+            height,
         )?;
 
         log::info!("GBuffer: {}x{}", width, height);
@@ -79,7 +87,11 @@ fn create_attachment(
     let image_info = vk::ImageCreateInfo::default()
         .image_type(vk::ImageType::TYPE_2D)
         .format(format)
-        .extent(vk::Extent3D { width, height, depth: 1 })
+        .extent(vk::Extent3D {
+            width,
+            height,
+            depth: 1,
+        })
         .mip_levels(1)
         .array_layers(1)
         .samples(vk::SampleCountFlags::TYPE_1)
@@ -92,8 +104,11 @@ fn create_attachment(
     let req = unsafe { device.get_image_memory_requirements(image) };
 
     let mem_props = unsafe { instance.get_physical_device_memory_properties(physical_device) };
-    let mem_type = find_memory_type(&mem_props, req.memory_type_bits,
-                                    vk::MemoryPropertyFlags::DEVICE_LOCAL)?;
+    let mem_type = find_memory_type(
+        &mem_props,
+        req.memory_type_bits,
+        vk::MemoryPropertyFlags::DEVICE_LOCAL,
+    )?;
 
     let memory = unsafe {
         device.allocate_memory(
@@ -132,7 +147,9 @@ fn find_memory_type(
 ) -> anyhow::Result<u32> {
     for i in 0..props.memory_type_count {
         if (type_filter & (1 << i)) != 0
-            && props.memory_types[i as usize].property_flags.contains(required)
+            && props.memory_types[i as usize]
+                .property_flags
+                .contains(required)
         {
             return Ok(i);
         }

@@ -131,9 +131,13 @@ impl LightingPass {
         extent: vk::Extent2D,
     ) {
         unsafe {
-            transition_color(device, cmd, hdr_target.image,
-                             vk::ImageLayout::UNDEFINED,
-                             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+            transition_color(
+                device,
+                cmd,
+                hdr_target.image,
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            );
 
             let color_attachment = vk::RenderingAttachmentInfo::default()
                 .image_view(hdr_target.view)
@@ -144,33 +148,49 @@ impl LightingPass {
             device.cmd_begin_rendering(
                 cmd,
                 &vk::RenderingInfo::default()
-                    .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent })
+                    .render_area(vk::Rect2D {
+                        offset: vk::Offset2D { x: 0, y: 0 },
+                        extent,
+                    })
                     .layer_count(1)
                     .color_attachments(std::slice::from_ref(&color_attachment)),
             );
 
-            device.cmd_set_viewport(cmd, 0, &[vk::Viewport {
-                x: 0.0,
-                y: 0.0,
-                width: extent.width as f32,
-                height: extent.height as f32,
-                min_depth: 0.0,
-                max_depth: 1.0,
-            }]);
-            device.cmd_set_scissor(cmd, 0, &[vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent,
-            }]);
+            device.cmd_set_viewport(
+                cmd,
+                0,
+                &[vk::Viewport {
+                    x: 0.0,
+                    y: 0.0,
+                    width: extent.width as f32,
+                    height: extent.height as f32,
+                    min_depth: 0.0,
+                    max_depth: 1.0,
+                }],
+            );
+            device.cmd_set_scissor(
+                cmd,
+                0,
+                &[vk::Rect2D {
+                    offset: vk::Offset2D { x: 0, y: 0 },
+                    extent,
+                }],
+            );
 
             device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
             device.cmd_bind_descriptor_sets(
-                cmd, vk::PipelineBindPoint::GRAPHICS, self.layout,
-                0, &[self.descriptor_set], &[],
+                cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.layout,
+                0,
+                &[self.descriptor_set],
+                &[],
             );
 
             let aspect = extent.width as f32 / extent.height as f32;
             let view = glam::Mat4::look_at_rh(camera.eye, camera.target, camera.up);
-            let mut proj = glam::Mat4::perspective_rh(camera.fov_y, aspect, camera.z_near, camera.z_far);
+            let mut proj =
+                glam::Mat4::perspective_rh(camera.fov_y, aspect, camera.z_near, camera.z_far);
             proj.y_axis.y *= -1.0;
 
             let pc = LightingPC {
@@ -186,13 +206,23 @@ impl LightingPass {
                 size_of::<LightingPC>(),
             );
             device.cmd_push_constants(
-                cmd, self.layout, vk::ShaderStageFlags::FRAGMENT, 0, pc_bytes,
+                cmd,
+                self.layout,
+                vk::ShaderStageFlags::FRAGMENT,
+                0,
+                pc_bytes,
             );
 
             device.cmd_draw(cmd, 3, 1, 0, 0);
             device.cmd_end_rendering(cmd);
 
-            transition_color(device, cmd, hdr_target.image, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+            transition_color(
+                device,
+                cmd,
+                hdr_target.image,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            );
         }
     }
 }
@@ -202,8 +232,10 @@ impl Drop for LightingPass {
         unsafe {
             self.device.destroy_pipeline(self.pipeline, None);
             self.device.destroy_pipeline_layout(self.layout, None);
-            self.device.destroy_descriptor_pool(self.descriptor_pool, None);
-            self.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
+            self.device
+                .destroy_descriptor_pool(self.descriptor_pool, None);
+            self.device
+                .destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             self.device.destroy_sampler(self.sampler, None);
         }
     }
@@ -245,7 +277,8 @@ fn transition_color(
 ) {
     let (src_stage, src_access, dst_stage, dst_access) = match (from, to) {
         (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) => (
-            vk::PipelineStageFlags2::TOP_OF_PIPE, vk::AccessFlags2::empty(),
+            vk::PipelineStageFlags2::TOP_OF_PIPE,
+            vk::AccessFlags2::empty(),
             vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
             vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
         ),
@@ -258,9 +291,12 @@ fn transition_color(
         _ => panic!("lighting transition: неизвестная пара"),
     };
     let barrier = vk::ImageMemoryBarrier2::default()
-        .src_stage_mask(src_stage).src_access_mask(src_access)
-        .dst_stage_mask(dst_stage).dst_access_mask(dst_access)
-        .old_layout(from).new_layout(to)
+        .src_stage_mask(src_stage)
+        .src_access_mask(src_access)
+        .dst_stage_mask(dst_stage)
+        .dst_access_mask(dst_access)
+        .old_layout(from)
+        .new_layout(to)
         .image(image)
         .subresource_range(vk::ImageSubresourceRange {
             aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -272,8 +308,7 @@ fn transition_color(
     unsafe {
         device.cmd_pipeline_barrier2(
             cmd,
-            &vk::DependencyInfo::default()
-                .image_memory_barriers(std::slice::from_ref(&barrier)),
+            &vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&barrier)),
         );
     }
 }
@@ -288,15 +323,20 @@ fn build_fullscreen_pipeline(
     let entry = c"main";
     let stages = [
         vk::PipelineShaderStageCreateInfo::default()
-            .stage(vk::ShaderStageFlags::VERTEX).module(vert.handle).name(entry),
+            .stage(vk::ShaderStageFlags::VERTEX)
+            .module(vert.handle)
+            .name(entry),
         vk::PipelineShaderStageCreateInfo::default()
-            .stage(vk::ShaderStageFlags::FRAGMENT).module(frag.handle).name(entry),
+            .stage(vk::ShaderStageFlags::FRAGMENT)
+            .module(frag.handle)
+            .name(entry),
     ];
     let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
     let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
         .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
     let viewport_state = vk::PipelineViewportStateCreateInfo::default()
-        .viewport_count(1).scissor_count(1);
+        .viewport_count(1)
+        .scissor_count(1);
     let rasterizer = vk::PipelineRasterizationStateCreateInfo::default()
         .polygon_mode(vk::PolygonMode::FILL)
         .cull_mode(vk::CullModeFlags::NONE)
@@ -309,8 +349,8 @@ fn build_fullscreen_pipeline(
     let color_blending = vk::PipelineColorBlendStateCreateInfo::default()
         .attachments(std::slice::from_ref(&blend_attachment));
     let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-    let dynamic_state = vk::PipelineDynamicStateCreateInfo::default()
-        .dynamic_states(&dynamic_states);
+    let dynamic_state =
+        vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
     let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
         .depth_test_enable(false)
         .depth_write_enable(false);
@@ -329,11 +369,13 @@ fn build_fullscreen_pipeline(
         .layout(layout)
         .push_next(&mut rendering_info);
     let pipeline = unsafe {
-        device.create_graphics_pipelines(
-            vk::PipelineCache::null(),
-            std::slice::from_ref(&pipeline_info),
-            None,
-        ).map_err(|(_, e)| e)?[0]
+        device
+            .create_graphics_pipelines(
+                vk::PipelineCache::null(),
+                std::slice::from_ref(&pipeline_info),
+                None,
+            )
+            .map_err(|(_, e)| e)?[0]
     };
     Ok(pipeline)
 }
