@@ -10,6 +10,7 @@ use super::{
 use crate::assets::AssetServer;
 use crate::vulkan::gbuffer::GBuffer;
 use crate::vulkan::passes::lighting::LightingPass;
+use crate::vulkan::passes::ui::UiPass;
 use ash::vk;
 use glam::{Mat4, Vec3};
 use std::sync::Arc;
@@ -52,6 +53,7 @@ pub struct Renderer {
     pub geometry: GeometryPass,
     pub lighting: LightingPass,
     pub post_process: PostProcessPass,
+    pub ui: UiPass,
     pub commands: Commands,
     gbuffer: GBuffer,
     render_target: RenderTarget,
@@ -68,13 +70,8 @@ impl Renderer {
         let w = swapchain.extent.width;
         let h = swapchain.extent.height;
 
-        let render_target = RenderTarget::new(
-            &ctx.device.handle, ctx.device.physical, &ctx.instance.handle, w, h,
-        )?;
-
-        let depth = DepthBuffer::new(
-            &ctx.device.handle, ctx.device.physical, &ctx.instance.handle, w, h,
-        )?;
+        let render_target = RenderTarget::new(&ctx.device.handle, ctx.device.physical, &ctx.instance.handle, w, h)?;
+        let depth = DepthBuffer::new(&ctx.device.handle, ctx.device.physical, &ctx.instance.handle, w, h)?;
 
         let geometry = GeometryPass::new(
             &ctx.device.handle,
@@ -90,6 +87,8 @@ impl Renderer {
             &render_target,
         )?;
 
+        let ui = UiPass;
+
         let frames: Vec<_> = (0..FRAMES_IN_FLIGHT)
             .map(|_| FrameSync::new(&ctx.device.handle))
             .collect::<anyhow::Result<Vec<_>>>()?;
@@ -104,6 +103,7 @@ impl Renderer {
             geometry,
             lighting,
             post_process,
+            ui,
             commands,
             gbuffer,
             render_target,
@@ -122,6 +122,9 @@ impl Renderer {
         camera: &Camera,
         draw_calls: &[DrawCall<'_>],
         assets: &AssetServer,
+        window: &winit::window::Window,
+        egui: &mut crate::egui_layer::EguiLayer,
+        egui_output: egui::FullOutput,
     ) -> anyhow::Result<()> {
         let frame = &self.frames[self.current_frame];
         let cmd = self.commands.buffers[self.current_frame];
@@ -138,10 +141,7 @@ impl Renderer {
         }
 
         let (image_index, _) = unsafe {
-            self.swapchain_loader.acquire_next_image(
-                swapchain.handle, u64::MAX,
-                frame.image_available, vk::Fence::null(),
-            )?
+            self.swapchain_loader.acquire_next_image(swapchain.handle, u64::MAX, frame.image_available, vk::Fence::null())?
         };
 
         unsafe {
@@ -172,6 +172,16 @@ impl Renderer {
                 swapchain.image_views[image_index as usize],
                 swapchain.extent,
             );
+
+            self.ui.record(
+                device, cmd,
+                swapchain.images[image_index as usize],
+                swapchain.image_views[image_index as usize],
+                swapchain.extent,
+                window, egui, egui_output,
+                ctx.device.graphics_queue,
+                self.commands.pool,
+            )?;
 
             device.end_command_buffer(cmd)?;
         }

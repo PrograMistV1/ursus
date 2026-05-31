@@ -54,10 +54,7 @@ impl App for MyApp {
         ctx.camera.target = center;
     }
 
-    fn on_render(&mut self, ctx: &mut EngineContext) {
-        ctx.render_world([0.0, 0.0, 0.0, 1.0])
-            .expect("render_world failed");
-    }
+    fn on_render(&mut self, _ctx: &mut EngineContext) {}
 
     fn on_stop(&mut self, _ctx: &mut EngineContext) {
         log::info!("Stopped after {} frames", self.frame);

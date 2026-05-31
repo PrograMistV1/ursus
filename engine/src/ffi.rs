@@ -264,10 +264,7 @@ impl crate::app::App for FfiApp {
         }
     }
 
-    fn on_render(&mut self, ctx: &mut EngineContext) {
-        let clear = unsafe { (*self.handle).clear_color };
-        ctx.render_world(clear).expect("render_world failed");
-    }
+    fn on_render(&mut self, _ctx: &mut EngineContext) {}
 
     fn on_stop(&mut self, ctx: &mut EngineContext) {
         let _ = ctx;

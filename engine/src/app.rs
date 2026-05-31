@@ -1,6 +1,8 @@
 use crate::assets::AssetServer;
+use crate::debug_ui::{self, DebugUiState};
 use crate::ecs::systems::collect_draw_calls;
 use crate::ecs::GameWorld;
+use crate::egui_layer::EguiLayer;
 use crate::vulkan::frustum::transform_aabb;
 use crate::vulkan::{Camera, DrawCall, Renderer, VulkanContext};
 use winit::{
@@ -9,6 +11,7 @@ use winit::{
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowAttributes},
 };
+
 
 pub trait App {
     fn on_start(&mut self, ctx: &mut EngineContext);
@@ -50,7 +53,13 @@ impl EngineContext {
         })
     }
 
-    pub fn render_world(&mut self, clear_color: [f32; 4]) -> anyhow::Result<()> {
+    pub fn render_world(
+        &mut self,
+        clear_color: [f32; 4],
+        window: &Window,
+        egui: &mut EguiLayer,
+        egui_output: egui::FullOutput,
+    ) -> anyhow::Result<()> {
         let ecs_calls = collect_draw_calls(&mut self.world, &self.assets);
 
         let swapchain = self.vk.swapchain.as_ref().unwrap();
@@ -78,7 +87,7 @@ impl EngineContext {
             })
             .collect();
 
-        self.renderer.draw_frame(&self.vk, clear_color, &self.camera, &gpu_calls, &self.assets)
+        self.renderer.draw_frame(&self.vk, clear_color, &self.camera, &gpu_calls, &self.assets, window, egui, egui_output)
     }
 }
 
@@ -117,11 +126,14 @@ impl Engine {
 
 struct RunningState {
     window: Window,
-    ctx: EngineContext,
     last: std::time::Instant,
     fps_timer: std::time::Instant,
     fps_frames: u32,
+    fps_current: f32,
     tick_accumulator: f32,
+    debug: DebugUiState,
+    egui: EguiLayer,
+    ctx: EngineContext,
 }
 
 const TICK_RATE: f32 = 1.0 / 60.0;
@@ -162,23 +174,35 @@ impl ApplicationHandler for EngineHandler {
             ctx.assets.texture_count(),
         );
 
+        let swapchain = ctx.vk.swapchain.as_ref().unwrap();
+        let egui = EguiLayer::new(
+            &window,
+            &ctx.vk.instance.handle,
+            ctx.vk.device.physical,
+            ctx.vk.device.handle.clone(),
+            swapchain.format,
+        ).expect("Failed to create EguiLayer");
+
         self.state = Some(RunningState {
             window,
             ctx,
             last: std::time::Instant::now(),
             fps_timer: std::time::Instant::now(),
             fps_frames: 0,
+            fps_current: 0.0,
             tick_accumulator: 0.0,
+            egui,
+            debug: DebugUiState::default(),
         });
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: winit::window::WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: winit::window::WindowId, event: WindowEvent) {
         let Some(state) = &mut self.state else { return };
+
+        let consumed = state.egui.handle_window_event(&state.window, &event);
+        if consumed {
+            return;
+        }
 
         match event {
             WindowEvent::CloseRequested => {
@@ -195,6 +219,8 @@ impl ApplicationHandler for EngineHandler {
                 state.fps_frames += 1;
 
                 if now.duration_since(state.fps_timer).as_secs_f32() >= 1.0 {
+                    state.fps_current = state.fps_frames as f32
+                        / now.duration_since(state.fps_timer).as_secs_f32();
                     state.fps_frames = 0;
                     state.fps_timer = now;
                 }
@@ -205,7 +231,32 @@ impl ApplicationHandler for EngineHandler {
                     state.tick_accumulator -= TICK_RATE;
                 }
 
+                let raw_input = state.egui.begin_frame(&state.window);
+                let full_output = state.egui.ctx.run(raw_input, |ctx| {
+                    let entity_count = state.ctx.world.entity_count();
+                    debug_ui::draw(ctx, &mut state.debug, state.fps_current, entity_count);
+                });
+
+                {
+                    let pp = &mut state.ctx.renderer.post_process;
+                    pp.exposure = state.debug.exposure;
+                    pp.fxaa_enabled = state.debug.fxaa_enabled;
+                }
+
                 self.app.on_render(&mut state.ctx);
+
+                state.ctx.render_world(
+                    [0.0, 0.0, 0.0, 1.0],
+                    &state.window,
+                    &mut state.egui,
+                    full_output,
+                ).expect("render failed");
+
+                if state.debug.swapchain_dirty {
+                    state.debug.swapchain_dirty = false;
+                    // TODO: пересоздать swapchain с новым present mode
+                }
+
                 state.window.request_redraw();
             }
             _ => {}
