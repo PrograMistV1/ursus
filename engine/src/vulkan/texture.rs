@@ -27,7 +27,6 @@ impl GpuTexture {
         let name = name.into();
         let size = pixels.len() as vk::DeviceSize;
 
-        // ── Staging buffer ────────────────────────────────────────────────────
         let (staging, staging_mem) = alloc_buffer(
             device,
             instance,

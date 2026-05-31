@@ -184,12 +184,16 @@ impl GeometryPass {
             );
 
             let mut sorted: Vec<(usize, &DrawCall)> = draw_calls.iter().enumerate().collect();
-            sorted.sort_by_key(|(_, dc)| dc.shader.0);
+            {
+                puffin::profile_scope!("sort_draw_calls");
+                sorted.sort_by_key(|(_, dc)| dc.shader.0);
+            }
 
             let mut current_shader: Option<ShaderHandle> = None;
             let mut current_layout: vk::PipelineLayout = vk::PipelineLayout::null();
 
             for (_i, dc) in &sorted {
+                puffin::profile_scope!("draw_call");
                 if current_shader != Some(dc.shader) {
                     let pipeline = match self.get_or_create_pipeline_inner(dc.shader) {
                         Some(p) => p,

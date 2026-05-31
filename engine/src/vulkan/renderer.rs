@@ -146,6 +146,7 @@ impl Renderer {
         egui: &mut crate::egui_layer::EguiLayer,
         egui_output: egui::FullOutput,
     ) -> anyhow::Result<()> {
+        puffin::profile_function!();
         let frame = &self.frames[self.current_frame];
         let cmd = self.commands.buffers[self.current_frame];
         let device = &ctx.device.handle;
@@ -177,40 +178,52 @@ impl Renderer {
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )?;
 
-            self.geometry.record(
-                device,
-                cmd,
-                &self.gbuffer,
-                &self.depth,
-                clear_color,
-                view_proj,
-                draw_calls,
-                assets,
-            );
+            {
+                puffin::profile_scope!("geometry_pass");
+                self.geometry.record(
+                    device,
+                    cmd,
+                    &self.gbuffer,
+                    &self.depth,
+                    clear_color,
+                    view_proj,
+                    draw_calls,
+                    assets,
+                );
+            }
 
-            self.lighting
-                .record(device, cmd, &self.render_target, camera, swapchain.extent);
+            {
+                puffin::profile_scope!("lighting_pass");
+                self.lighting
+                    .record(device, cmd, &self.render_target, camera, swapchain.extent);
+            }
 
-            self.post_process.record(
-                device,
-                cmd,
-                swapchain.images[image_index as usize],
-                swapchain.image_views[image_index as usize],
-                swapchain.extent,
-            );
+            {
+                puffin::profile_scope!("post_process_pass");
+                self.post_process.record(
+                    device,
+                    cmd,
+                    swapchain.images[image_index as usize],
+                    swapchain.image_views[image_index as usize],
+                    swapchain.extent,
+                );
+            }
 
-            self.ui.record(
-                device,
-                cmd,
-                swapchain.images[image_index as usize],
-                swapchain.image_views[image_index as usize],
-                swapchain.extent,
-                window,
-                egui,
-                egui_output,
-                ctx.device.graphics_queue,
-                self.commands.pool,
-            )?;
+            {
+                puffin::profile_scope!("ui_pass");
+                self.ui.record(
+                    device,
+                    cmd,
+                    swapchain.images[image_index as usize],
+                    swapchain.image_views[image_index as usize],
+                    swapchain.extent,
+                    window,
+                    egui,
+                    egui_output,
+                    ctx.device.graphics_queue,
+                    self.commands.pool,
+                )?;
+            }
 
             device.end_command_buffer(cmd)?;
         }

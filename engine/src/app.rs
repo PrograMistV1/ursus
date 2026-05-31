@@ -124,6 +124,7 @@ pub struct Engine;
 
 impl Engine {
     pub fn run(app: impl App + 'static) -> anyhow::Result<()> {
+        crate::profiler::init();
         env_logger::builder()
             .filter_level(log::LevelFilter::Info)
             .parse_default_env()
@@ -230,12 +231,18 @@ impl ApplicationHandler for EngineHandler {
         match event {
             WindowEvent::CloseRequested => {
                 self.app.on_stop(&mut state.ctx);
+                unsafe {
+                    state.ctx.vk.device.handle.device_wait_idle().ok();
+                }
+                self.state = None;
                 event_loop.exit();
             }
             WindowEvent::Resized(_) => {
                 // TODO: пересоздать swapchain
             }
             WindowEvent::RedrawRequested => {
+                crate::profiler::new_frame();
+
                 let now = std::time::Instant::now();
                 let dt = now.duration_since(state.last).as_secs_f32().min(0.1);
                 state.last = now;
@@ -248,17 +255,24 @@ impl ApplicationHandler for EngineHandler {
                     state.fps_timer = now;
                 }
 
-                state.tick_accumulator += dt;
-                while state.tick_accumulator >= TICK_RATE {
-                    self.app.on_update(&mut state.ctx, TICK_RATE);
-                    state.tick_accumulator -= TICK_RATE;
+                {
+                    puffin::profile_scope!("tick_accumulator");
+                    state.tick_accumulator += dt;
+                    while state.tick_accumulator >= TICK_RATE {
+                        puffin::profile_scope!("on_update");
+                        self.app.on_update(&mut state.ctx, TICK_RATE);
+                        state.tick_accumulator -= TICK_RATE;
+                    }
                 }
 
-                let raw_input = state.egui.begin_frame(&state.window);
-                let full_output = state.egui.ctx.run(raw_input, |ctx| {
-                    let entity_count = state.ctx.world.entity_count();
-                    debug_ui::draw(ctx, &mut state.debug, state.fps_current, entity_count);
-                });
+                let full_output = {
+                    puffin::profile_scope!("egui_build");
+                    let raw_input = state.egui.begin_frame(&state.window);
+                    state.egui.ctx.run(raw_input, |ctx| {
+                        let entity_count = state.ctx.world.entity_count();
+                        debug_ui::draw(ctx, &mut state.debug, state.fps_current, entity_count);
+                    })
+                };
 
                 {
                     let pp = &mut state.ctx.renderer.post_process;
@@ -268,15 +282,18 @@ impl ApplicationHandler for EngineHandler {
 
                 self.app.on_render(&mut state.ctx);
 
-                state
-                    .ctx
-                    .render_world(
-                        [0.0, 0.0, 0.0, 1.0],
-                        &state.window,
-                        &mut state.egui,
-                        full_output,
-                    )
-                    .expect("render failed");
+                {
+                    puffin::profile_scope!("render_world");
+                    state
+                        .ctx
+                        .render_world(
+                            [0.0, 0.0, 0.0, 1.0],
+                            &state.window,
+                            &mut state.egui,
+                            full_output,
+                        )
+                        .expect("render failed");
+                }
 
                 if state.debug.swapchain_dirty {
                     state.debug.swapchain_dirty = false;

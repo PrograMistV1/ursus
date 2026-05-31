@@ -2,6 +2,7 @@
 pub struct DebugUiState {
     pub show_overlay: bool,
     pub show_settings: bool,
+    pub show_profiler: bool,
     pub vsync: bool,
     pub exposure: f32,
     pub fxaa_enabled: bool,
@@ -13,6 +14,7 @@ impl Default for DebugUiState {
         Self {
             show_overlay: true,
             show_settings: false,
+            show_profiler: false,
             vsync: false,
             exposure: 0.5,
             fxaa_enabled: true,
@@ -33,8 +35,11 @@ pub fn draw(ctx: &egui::Context, state: &mut DebugUiState, fps: f32, entity_coun
                 ui.label(format!("ms   {:.2}", 1000.0 / fps.max(0.001)));
                 ui.label(format!("ents {entity_count}"));
                 ui.separator();
-                if ui.small_button("⚙ Settings").clicked() {
+                if ui.small_button("Settings").clicked() {
                     state.show_settings = !state.show_settings;
+                }
+                if ui.small_button("Profiler").clicked() {
+                    state.show_profiler = !state.show_profiler;
                 }
             });
     }
@@ -67,5 +72,9 @@ pub fn draw(ctx: &egui::Context, state: &mut DebugUiState, fps: f32, entity_coun
                     state.show_settings = false;
                 }
             });
+    }
+
+    if state.show_profiler {
+        puffin_egui::profiler_window(ctx);
     }
 }

@@ -11,6 +11,7 @@ pub struct DrawCall {
 }
 
 pub fn collect_draw_calls(world: &mut GameWorld, assets: &AssetServer) -> Vec<DrawCall> {
+    puffin::profile_function!();
     let default_shader = assets.shaders.diffuse();
 
     let mut calls = Vec::new();
