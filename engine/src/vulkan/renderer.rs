@@ -116,8 +116,14 @@ impl Renderer {
             w,
             h,
         )?;
-        let lighting =
-            LightingPass::new(&ctx.device.handle, &gbuffer, &depth, render_target.format)?;
+        let lighting = LightingPass::new(
+            &ctx.device.handle,
+            ctx.device.physical,
+            &ctx.instance.handle,
+            &gbuffer,
+            &depth,
+            render_target.format,
+        )?;
 
         Ok(Self {
             geometry,
@@ -304,6 +310,8 @@ impl Renderer {
         )?;
         self.lighting = LightingPass::new(
             &ctx.device.handle,
+            ctx.device.physical,
+            &ctx.instance.handle,
             &self.gbuffer,
             &self.depth,
             self.render_target.format,

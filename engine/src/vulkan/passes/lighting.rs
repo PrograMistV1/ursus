@@ -1,5 +1,6 @@
 use crate::vulkan::depth::DepthBuffer;
 use crate::vulkan::gbuffer::GBuffer;
+use crate::vulkan::lights::LightBuffer;
 use crate::vulkan::render_target::RenderTarget;
 use ash::vk;
 
@@ -7,8 +8,6 @@ use ash::vk;
 struct LightingPC {
     inv_proj: [[f32; 4]; 4],
     inv_view: [[f32; 4]; 4],
-    light_pos: [f32; 4],
-    light_color: [f32; 4],
     viewport: [f32; 2],
     _pad: [f32; 2],
 }
@@ -20,16 +19,21 @@ pub struct LightingPass {
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_set: vk::DescriptorSet,
     pub sampler: vk::Sampler,
+    pub light_buffer: LightBuffer,
     device: ash::Device,
 }
 
 impl LightingPass {
     pub fn new(
         device: &ash::Device,
+        physical_device: vk::PhysicalDevice,
+        instance: &ash::Instance,
         gbuffer: &GBuffer,
         depth: &DepthBuffer,
         hdr_format: vk::Format,
     ) -> anyhow::Result<Self> {
+        let light_buffer = LightBuffer::new(device, physical_device, instance)?;
+
         let sampler = unsafe {
             device.create_sampler(
                 &vk::SamplerCreateInfo::default()
@@ -41,10 +45,16 @@ impl LightingPass {
             )?
         };
 
+        // binding 0,1,2 = gbuffer samplers; binding 3 = light UBO
         let bindings = [
-            make_binding(0, vk::DescriptorType::COMBINED_IMAGE_SAMPLER),
-            make_binding(1, vk::DescriptorType::COMBINED_IMAGE_SAMPLER),
-            make_binding(2, vk::DescriptorType::COMBINED_IMAGE_SAMPLER),
+            make_image_binding(0),
+            make_image_binding(1),
+            make_image_binding(2),
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(3)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::FRAGMENT),
         ];
         let descriptor_set_layout = unsafe {
             device.create_descriptor_set_layout(
@@ -53,10 +63,16 @@ impl LightingPass {
             )?
         };
 
-        let pool_sizes = [vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            descriptor_count: 3,
-        }];
+        let pool_sizes = [
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                descriptor_count: 3,
+            },
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::UNIFORM_BUFFER,
+                descriptor_count: 1,
+            },
+        ];
         let descriptor_pool = unsafe {
             device.create_descriptor_pool(
                 &vk::DescriptorPoolCreateInfo::default()
@@ -74,14 +90,26 @@ impl LightingPass {
             )?[0]
         };
 
+        // пишем gbuffer images
         let albedo_info = image_info(sampler, gbuffer.albedo_view);
         let normal_info = image_info(sampler, gbuffer.normal_view);
         let depth_info = image_info(sampler, depth.view);
 
+        // пишем UBO
+        let buf_info = vk::DescriptorBufferInfo::default()
+            .buffer(light_buffer.buffer)
+            .offset(0)
+            .range(std::mem::size_of::<crate::vulkan::lights::LightingUbo>() as vk::DeviceSize);
+
         let writes = [
-            make_write(descriptor_set, 0, &albedo_info),
-            make_write(descriptor_set, 1, &normal_info),
-            make_write(descriptor_set, 2, &depth_info),
+            make_image_write(descriptor_set, 0, &albedo_info),
+            make_image_write(descriptor_set, 1, &normal_info),
+            make_image_write(descriptor_set, 2, &depth_info),
+            vk::WriteDescriptorSet::default()
+                .dst_set(descriptor_set)
+                .dst_binding(3)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                .buffer_info(std::slice::from_ref(&buf_info)),
         ];
         unsafe { device.update_descriptor_sets(&writes, &[]) };
 
@@ -118,8 +146,13 @@ impl LightingPass {
             descriptor_set_layout,
             descriptor_set,
             sampler,
+            light_buffer,
             device: device.clone(),
         })
+    }
+
+    pub fn upload_lights(&self, data: &crate::vulkan::lights::LightingUbo) {
+        self.light_buffer.upload(data);
     }
 
     pub fn record(
@@ -196,14 +229,12 @@ impl LightingPass {
             let pc = LightingPC {
                 inv_proj: proj.inverse().to_cols_array_2d(),
                 inv_view: view.inverse().to_cols_array_2d(),
-                light_pos: [2.0, 4.0, 2.0, 1.0],
-                light_color: [1.0, 0.95, 0.9, 5.0],
                 viewport: [extent.width as f32, extent.height as f32],
                 _pad: [0.0; 2],
             };
             let pc_bytes = std::slice::from_raw_parts(
                 &pc as *const LightingPC as *const u8,
-                size_of::<LightingPC>(),
+                std::mem::size_of::<LightingPC>(),
             );
             device.cmd_push_constants(
                 cmd,
@@ -241,10 +272,11 @@ impl Drop for LightingPass {
     }
 }
 
-fn make_binding(binding: u32, ty: vk::DescriptorType) -> vk::DescriptorSetLayoutBinding<'static> {
+// helpers
+fn make_image_binding(binding: u32) -> vk::DescriptorSetLayoutBinding<'static> {
     vk::DescriptorSetLayoutBinding::default()
         .binding(binding)
-        .descriptor_type(ty)
+        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
         .descriptor_count(1)
         .stage_flags(vk::ShaderStageFlags::FRAGMENT)
 }
@@ -256,7 +288,7 @@ fn image_info(sampler: vk::Sampler, view: vk::ImageView) -> vk::DescriptorImageI
         .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
 }
 
-fn make_write<'a>(
+fn make_image_write<'a>(
     set: vk::DescriptorSet,
     binding: u32,
     info: &'a vk::DescriptorImageInfo,

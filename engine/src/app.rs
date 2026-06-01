@@ -4,6 +4,7 @@ use crate::ecs::systems::collect_draw_calls;
 use crate::ecs::GameWorld;
 use crate::egui_layer::EguiLayer;
 use crate::vulkan::frustum::transform_aabb;
+use crate::vulkan::lights::LightingUbo;
 use crate::vulkan::{Camera, DrawCall, Renderer, VulkanContext};
 use winit::{
     application::ApplicationHandler,
@@ -26,6 +27,7 @@ pub struct EngineContext {
     pub vk: VulkanContext,
     pub camera: Camera,
     temp_pool: ash::vk::CommandPool,
+    pub lighting: LightingUbo,
 }
 
 impl EngineContext {
@@ -49,6 +51,7 @@ impl EngineContext {
             vk,
             camera: Camera::default(),
             temp_pool,
+            lighting: LightingUbo::default(),
         })
     }
 
@@ -94,6 +97,8 @@ impl EngineContext {
                 })
             })
             .collect();
+
+        self.renderer.lighting.upload_lights(&self.lighting);
 
         self.renderer.draw_frame(
             &self.vk,

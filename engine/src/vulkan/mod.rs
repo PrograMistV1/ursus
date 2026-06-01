@@ -6,6 +6,7 @@ mod device;
 pub mod frustum;
 pub mod gbuffer;
 mod instance;
+pub mod lights;
 pub mod material_buffer;
 mod passes;
 pub mod pipeline;
