@@ -236,8 +236,19 @@ impl ApplicationHandler for EngineHandler {
                 self.state = None;
                 event_loop.exit();
             }
-            WindowEvent::Resized(_) => {
-                // TODO: пересоздать swapchain
+            WindowEvent::Resized(size) => {
+                if size.width == 0 || size.height == 0 {
+                    return;
+                }
+                unsafe { state.ctx.vk.device.handle.device_wait_idle().ok() };
+                if let Err(e) =
+                    state
+                        .ctx
+                        .vk
+                        .recreate_swapchain(size.width, size.height, state.debug.vsync)
+                {
+                    log::error!("Ошибка при пересоздании swapchain: {e}");
+                }
             }
             WindowEvent::RedrawRequested => {
                 puffin::GlobalProfiler::lock().new_frame();
@@ -297,7 +308,15 @@ impl ApplicationHandler for EngineHandler {
 
                 if state.debug.swapchain_dirty {
                     state.debug.swapchain_dirty = false;
-                    // TODO: пересоздать swapchain с новым present mode
+                    let size = state.window.inner_size();
+                    if let Err(e) =
+                        state
+                            .ctx
+                            .vk
+                            .recreate_swapchain(size.width, size.height, state.debug.vsync)
+                    {
+                        log::error!("Ошибка при смене present mode: {e}");
+                    }
                 }
 
                 state.window.request_redraw();

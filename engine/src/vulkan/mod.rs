@@ -63,7 +63,8 @@ impl VulkanContext {
 
         let device = Arc::new(Device::new(&instance, surface)?);
         let size = window.inner_size();
-        let swapchain = Swapchain::new(&instance, &device, surface, size.width, size.height)?;
+        let swapchain =
+            Swapchain::new(&instance, &device, surface, size.width, size.height, false)?;
 
         Ok(Self {
             swapchain: Some(swapchain),
@@ -72,6 +73,25 @@ impl VulkanContext {
             _debug: debug,
             instance,
         })
+    }
+
+    pub fn recreate_swapchain(
+        &mut self,
+        width: u32,
+        height: u32,
+        vsync: bool,
+    ) -> anyhow::Result<()> {
+        unsafe { self.device.handle.device_wait_idle()? };
+        drop(self.swapchain.take());
+        self.swapchain = Some(Swapchain::new(
+            &self.instance,
+            &self.device,
+            self.surface,
+            width,
+            height,
+            vsync,
+        )?);
+        Ok(())
     }
 }
 

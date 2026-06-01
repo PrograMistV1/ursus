@@ -18,6 +18,7 @@ impl Swapchain {
         surface: vk::SurfaceKHR,
         width: u32,
         height: u32,
+        vsync: bool,
     ) -> anyhow::Result<Self> {
         let surface_loader = ash::khr::surface::Instance::new(&instance.entry, &instance.handle);
         let loader = ash::khr::swapchain::Device::new(&instance.handle, &device.handle);
@@ -38,15 +39,19 @@ impl Swapchain {
             surface_loader.get_physical_device_surface_present_modes(device.physical, surface)?
         };
 
-        let present_mode = [
-            vk::PresentModeKHR::IMMEDIATE,
-            vk::PresentModeKHR::MAILBOX,
-            vk::PresentModeKHR::FIFO,
-        ]
-        .iter()
-        .find(|&&mode| present_modes.contains(&mode))
-        .copied()
-        .unwrap_or(vk::PresentModeKHR::FIFO);
+        let present_mode = if vsync {
+            vk::PresentModeKHR::FIFO
+        } else {
+            [
+                vk::PresentModeKHR::IMMEDIATE,
+                vk::PresentModeKHR::MAILBOX,
+                vk::PresentModeKHR::FIFO,
+            ]
+            .iter()
+            .find(|&&mode| present_modes.contains(&mode))
+            .copied()
+            .unwrap_or(vk::PresentModeKHR::FIFO)
+        };
 
         let capabilities = unsafe {
             surface_loader.get_physical_device_surface_capabilities(device.physical, surface)?
