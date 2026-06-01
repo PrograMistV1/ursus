@@ -35,6 +35,10 @@ void main() {
     uint diffuse_idx = mat.tex_indices0.x;
     vec4 tex_color   = texture(sampler2D(textures[nonuniformEXT(diffuse_idx)], samp), fragUV);
 
+    vec4 albedo = vec4(mat.base_color.rgb * tex_color.rgb, mat.base_color.a * tex_color.a);
+
+    if (albedo.a < 0.5) discard;
+
     outAlbedo = vec4(mat.base_color.rgb * tex_color.rgb, mat.base_color.a * tex_color.a);
 
     vec3 N = normalize(fragNormal);
