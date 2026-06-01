@@ -32,7 +32,10 @@ pub fn draw(ctx: &egui::Context, state: &mut DebugUiState, fps: f32, entity_coun
             .frame(egui::Frame::window(&ctx.style()).multiply_with_opacity(0.6))
             .show(ctx, |ui| {
                 ui.label(format!("FPS  {fps:.0}"));
-                ui.label(format!("ms   {:.2}", 1000.0 / fps.max(0.001)));
+                ui.label(format!(
+                    "ms   {:.2}",
+                    if fps > 0.0 { 1000.0 / fps } else { 0.0 }
+                ));
                 ui.label(format!("ents {entity_count}"));
                 ui.separator();
                 if ui.small_button("Settings").clicked() {

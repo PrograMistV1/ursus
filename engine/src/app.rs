@@ -124,7 +124,6 @@ pub struct Engine;
 
 impl Engine {
     pub fn run(app: impl App + 'static) -> anyhow::Result<()> {
-        crate::profiler::init();
         env_logger::builder()
             .filter_level(log::LevelFilter::Info)
             .parse_default_env()
@@ -241,7 +240,7 @@ impl ApplicationHandler for EngineHandler {
                 // TODO: пересоздать swapchain
             }
             WindowEvent::RedrawRequested => {
-                crate::profiler::new_frame();
+                puffin::GlobalProfiler::lock().new_frame();
 
                 let now = std::time::Instant::now();
                 let dt = now.duration_since(state.last).as_secs_f32().min(0.1);
@@ -273,6 +272,7 @@ impl ApplicationHandler for EngineHandler {
                         debug_ui::draw(ctx, &mut state.debug, state.fps_current, entity_count);
                     })
                 };
+                puffin::set_scopes_on(state.debug.show_profiler);
 
                 {
                     let pp = &mut state.ctx.renderer.post_process;
