@@ -166,7 +166,7 @@ impl PostProcessPass {
                 .map_err(|(_, e)| e)?[0]
         };
 
-        log::info!("PostProcessPass создан (tonemap ACES + FXAA)");
+        log::debug!("PostProcessPass создан (tonemap ACES + FXAA)");
         Ok(Self {
             pipeline,
             layout,

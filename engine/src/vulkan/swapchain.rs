@@ -43,8 +43,8 @@ impl Swapchain {
             vk::PresentModeKHR::FIFO
         } else {
             [
-                vk::PresentModeKHR::IMMEDIATE,
                 vk::PresentModeKHR::MAILBOX,
+                vk::PresentModeKHR::IMMEDIATE,
                 vk::PresentModeKHR::FIFO,
             ]
             .iter()
@@ -125,7 +125,7 @@ impl Swapchain {
             .collect();
         let image_views = image_views?;
 
-        log::info!(
+        log::debug!(
             "Swapchain: {}x{} {:?} ({} images, {:?})",
             extent.width,
             extent.height,

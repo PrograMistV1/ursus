@@ -110,7 +110,7 @@ impl LightingPass {
 
         let pipeline = build_fullscreen_pipeline(device, &vert, &frag, layout, hdr_format)?;
 
-        log::info!("LightingPass создан");
+        log::debug!("LightingPass создан");
         Ok(Self {
             pipeline,
             layout,

@@ -58,7 +58,7 @@ impl EngineContext {
         window: &Window,
         egui: &mut EguiLayer,
         egui_output: egui::FullOutput,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<bool> {
         let ecs_calls = collect_draw_calls(&mut self.world, &self.assets);
 
         let swapchain = self.vk.swapchain.as_ref().unwrap();
@@ -240,14 +240,8 @@ impl ApplicationHandler for EngineHandler {
                 if size.width == 0 || size.height == 0 {
                     return;
                 }
-                unsafe { state.ctx.vk.device.handle.device_wait_idle().ok() };
-                if let Err(e) =
-                    state
-                        .ctx
-                        .vk
-                        .recreate_swapchain(size.width, size.height, state.debug.vsync)
-                {
-                    log::error!("Ошибка при пересоздании swapchain: {e}");
+                if let Err(e) = handle_resize(state, size.width, size.height, state.debug.vsync) {
+                    log::error!("Resize failed: {e}");
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -295,7 +289,7 @@ impl ApplicationHandler for EngineHandler {
 
                 {
                     puffin::profile_scope!("render_world");
-                    state
+                    let needs_recreate = state
                         .ctx
                         .render_world(
                             [0.0, 0.0, 0.0, 1.0],
@@ -304,18 +298,23 @@ impl ApplicationHandler for EngineHandler {
                             full_output,
                         )
                         .expect("render failed");
+
+                    if needs_recreate {
+                        let size = state.window.inner_size();
+                        if let Err(e) =
+                            handle_resize(state, size.width, size.height, state.debug.vsync)
+                        {
+                            log::error!("Swapchain recreate failed: {e}");
+                        }
+                    }
                 }
 
                 if state.debug.swapchain_dirty {
                     state.debug.swapchain_dirty = false;
                     let size = state.window.inner_size();
-                    if let Err(e) =
-                        state
-                            .ctx
-                            .vk
-                            .recreate_swapchain(size.width, size.height, state.debug.vsync)
+                    if let Err(e) = handle_resize(state, size.width, size.height, state.debug.vsync)
                     {
-                        log::error!("Ошибка при смене present mode: {e}");
+                        log::error!("VSync toggle failed: {e}");
                     }
                 }
 
@@ -337,4 +336,16 @@ fn create_temp_pool(vk: &VulkanContext) -> anyhow::Result<ash::vk::CommandPool> 
         )?
     };
     Ok(pool)
+}
+
+fn handle_resize(
+    state: &mut RunningState,
+    width: u32,
+    height: u32,
+    vsync: bool,
+) -> anyhow::Result<()> {
+    unsafe { state.ctx.vk.device.handle.device_wait_idle()? };
+    state.ctx.vk.recreate_swapchain(width, height, vsync)?;
+    state.ctx.renderer.resize(&state.ctx.vk)?;
+    Ok(())
 }

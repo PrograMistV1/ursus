@@ -145,7 +145,7 @@ impl Renderer {
         window: &winit::window::Window,
         egui: &mut crate::egui_layer::EguiLayer,
         egui_output: egui::FullOutput,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<bool> {
         puffin::profile_function!();
         let frame = &self.frames[self.current_frame];
         let cmd = self.commands.buffers[self.current_frame];
@@ -157,18 +157,27 @@ impl Renderer {
         assets.upload_materials();
 
         unsafe {
+            puffin::profile_scope!("wait_for_fences");
             device.wait_for_fences(&[frame.render_fence], true, u64::MAX)?;
-            device.reset_fences(&[frame.render_fence])?;
         }
 
-        let (image_index, _) = unsafe {
+        let (image_index, suboptimal) = match unsafe {
             self.swapchain_loader.acquire_next_image(
                 swapchain.handle,
                 u64::MAX,
                 frame.image_available,
                 vk::Fence::null(),
-            )?
+            )
+        } {
+            Ok(result) => result,
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => return Ok(true),
+            Err(e) => return Err(e.into()),
         };
+
+        puffin::profile_scope!("record_commands");
+        unsafe {
+            device.reset_fences(&[frame.render_fence])?;
+        }
 
         unsafe {
             device.reset_command_buffer(cmd, vk::CommandBufferResetFlags::empty())?;
@@ -234,6 +243,7 @@ impl Renderer {
         let cmds = [cmd];
 
         unsafe {
+            puffin::profile_scope!("queue_submit");
             device.queue_submit(
                 ctx.device.graphics_queue,
                 &[vk::SubmitInfo::default()
@@ -243,17 +253,65 @@ impl Renderer {
                     .signal_semaphores(&signal_semaphores)],
                 frame.render_fence,
             )?;
-
+        }
+        let needs_recreate = match unsafe {
+            puffin::profile_scope!("queue_present");
             self.swapchain_loader.queue_present(
                 ctx.device.present_queue,
                 &vk::PresentInfoKHR::default()
                     .wait_semaphores(&signal_semaphores)
                     .swapchains(&[swapchain.handle])
                     .image_indices(&[image_index]),
-            )?;
-        }
+            )
+        } {
+            Ok(false) => false,
+            Ok(true) => true,
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => true,
+            Err(e) => return Err(e.into()),
+        };
 
         self.current_frame = (self.current_frame + 1) % FRAMES_IN_FLIGHT as usize;
+        Ok(needs_recreate || suboptimal)
+    }
+
+    pub fn resize(&mut self, ctx: &VulkanContext) -> anyhow::Result<()> {
+        unsafe { self.device.handle.device_wait_idle()? };
+
+        let swapchain = ctx.swapchain.as_ref().unwrap();
+        let w = swapchain.extent.width;
+        let h = swapchain.extent.height;
+
+        self.render_target = RenderTarget::new(
+            &ctx.device.handle,
+            ctx.device.physical,
+            &ctx.instance.handle,
+            w,
+            h,
+        )?;
+        self.depth = DepthBuffer::new(
+            &ctx.device.handle,
+            ctx.device.physical,
+            &ctx.instance.handle,
+            w,
+            h,
+        )?;
+        self.gbuffer = GBuffer::new(
+            &ctx.device.handle,
+            ctx.device.physical,
+            &ctx.instance.handle,
+            w,
+            h,
+        )?;
+        self.lighting = LightingPass::new(
+            &ctx.device.handle,
+            &self.gbuffer,
+            &self.depth,
+            self.render_target.format,
+        )?;
+        self.post_process =
+            PostProcessPass::new(&ctx.device.handle, swapchain.format, &self.render_target)?;
+
+        log::debug!("Renderer resized to {}x{}", w, h);
         Ok(())
     }
 }

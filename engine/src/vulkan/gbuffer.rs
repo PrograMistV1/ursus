@@ -44,7 +44,7 @@ impl GBuffer {
             height,
         )?;
 
-        log::info!("GBuffer: {}x{}", width, height);
+        log::debug!("GBuffer: {}x{}", width, height);
         Ok(Self {
             albedo,
             albedo_view,

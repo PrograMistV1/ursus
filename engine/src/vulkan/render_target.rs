@@ -73,7 +73,7 @@ impl RenderTarget {
             )?
         };
 
-        log::info!("RenderTarget: {}x{} {:?}", width, height, format);
+        log::debug!("RenderTarget: {}x{} {:?}", width, height, format);
         Ok(Self {
             image,
             view,
