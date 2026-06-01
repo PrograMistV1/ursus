@@ -23,6 +23,7 @@ pub struct LightingUbo {
     pub point_lights: [GpuPointLight; MAX_POINT_LIGHTS],
     pub point_light_count: u32,
     pub _pad: [u32; 3],
+    pub light_space_matrix: [[f32; 4]; 4],
 }
 
 impl Default for LightingUbo {
@@ -38,6 +39,7 @@ impl Default for LightingUbo {
             }; MAX_POINT_LIGHTS],
             point_light_count: 0,
             _pad: [0; 3],
+            light_space_matrix: glam::Mat4::IDENTITY.to_cols_array_2d(),
         }
     }
 }
@@ -128,4 +130,23 @@ fn find_memory_type(
         }
     }
     anyhow::bail!("Не найден подходящий тип памяти для LightBuffer")
+}
+
+pub fn compute_light_view_proj(
+    direction: [f32; 3],
+    scene_center: glam::Vec3,
+    scene_radius: f32,
+) -> glam::Mat4 {
+    let dir = glam::Vec3::from(direction).normalize();
+    let light_pos = scene_center - dir * scene_radius;
+    let view = glam::Mat4::look_at_rh(light_pos, scene_center, glam::Vec3::Y);
+    let ortho = glam::Mat4::orthographic_rh(
+        -scene_radius,
+        scene_radius,
+        -scene_radius,
+        scene_radius,
+        0.1,
+        scene_radius * 2.0,
+    );
+    ortho * view
 }

@@ -20,6 +20,8 @@ layout(set = 0, binding = 3) uniform LightingUBO {
     DirectionalLight dir_light;
     PointLight point_lights[16];
     uint point_light_count;
+    uint _pad[3];
+    mat4 light_space_matrix;
 } lights;
 
 layout(push_constant) uniform PC {
@@ -30,6 +32,28 @@ layout(push_constant) uniform PC {
 } pc;
 
 const float AMBIENT = 0.04;
+
+layout(set = 0, binding = 4) uniform sampler2DShadow shadowMap;
+
+float shadow_pcf(vec3 world_pos) {
+    vec4 light_space = vec4(lights.light_space_matrix * vec4(world_pos, 1.0));
+    vec3 proj = light_space.xyz / light_space.w;
+
+    vec2 uv = proj.xy * 0.5 + 0.5;
+    float depth = proj.z;
+
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || depth > 1.0)
+    return 1.0;
+
+    float shadow = 0.0;
+    vec2 texel = 1.0 / vec2(2048.0);
+    for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+            shadow += texture(shadowMap, vec3(uv + vec2(x, y) * texel, depth - 0.005));
+        }
+    }
+    return shadow / 9.0;
+}
 
 vec3 reconstruct_world_pos(vec2 uv, float depth) {
     vec4 ndc = vec4(uv * 2.0 - 1.0, depth, 1.0);
@@ -57,9 +81,11 @@ void main() {
 
     vec3 color = albedo * AMBIENT;
 
+    float shadow = shadow_pcf(world_pos);
+
     // Directional light
     vec3 L_dir = normalize(-lights.dir_light.direction.xyz);
-    float diff_dir = max(dot(N, L_dir), 0.0);
+    float diff_dir = max(dot(N, L_dir), 0.0) * shadow;
     color += albedo * diff_dir * lights.dir_light.color.rgb * lights.dir_light.color.a;
 
     // Point lights

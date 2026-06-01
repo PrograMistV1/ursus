@@ -10,7 +10,9 @@ use super::{
 use crate::assets::AssetServer;
 use crate::vulkan::gbuffer::GBuffer;
 use crate::vulkan::passes::lighting::LightingPass;
+use crate::vulkan::passes::shadow::{ShadowDrawCall, ShadowPass};
 use crate::vulkan::passes::ui::UiPass;
+use crate::vulkan::shadow::ShadowMap;
 use ash::vk;
 use glam::{Mat4, Vec3};
 use std::sync::Arc;
@@ -49,6 +51,9 @@ impl Camera {
 }
 
 pub struct Renderer {
+    pub shadow_pass: ShadowPass,
+    pub shadow_map: ShadowMap,
+    shadow_sampler: vk::Sampler,
     pub geometry: GeometryPass,
     pub lighting: LightingPass,
     pub post_process: PostProcessPass,
@@ -82,6 +87,14 @@ impl Renderer {
             &ctx.instance.handle,
             w,
             h,
+        )?;
+
+        let shadow_pass = ShadowPass::new(&ctx.device.handle)?;
+
+        let shadow_map = ShadowMap::new(
+            &ctx.device.handle,
+            ctx.device.physical,
+            &ctx.instance.handle,
         )?;
 
         let geometry = GeometryPass::new(
@@ -125,7 +138,25 @@ impl Renderer {
             render_target.format,
         )?;
 
+        let shadow_sampler = unsafe {
+            ctx.device.handle.create_sampler(
+                &vk::SamplerCreateInfo::default()
+                    .mag_filter(vk::Filter::LINEAR)
+                    .min_filter(vk::Filter::LINEAR)
+                    .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_BORDER)
+                    .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_BORDER)
+                    .border_color(vk::BorderColor::FLOAT_OPAQUE_WHITE)
+                    .compare_enable(true)
+                    .compare_op(vk::CompareOp::LESS_OR_EQUAL),
+                None,
+            )?
+        };
+        lighting.bind_shadow_map(&shadow_map, shadow_sampler);
+
         Ok(Self {
+            shadow_pass,
+            shadow_map,
+            shadow_sampler,
             geometry,
             lighting,
             post_process,
@@ -151,6 +182,7 @@ impl Renderer {
         window: &winit::window::Window,
         egui: &mut crate::egui_layer::EguiLayer,
         egui_output: egui::FullOutput,
+        light_view_proj: Mat4,
     ) -> anyhow::Result<bool> {
         puffin::profile_function!();
         let frame = &self.frames[self.current_frame];
@@ -192,6 +224,24 @@ impl Renderer {
                 &vk::CommandBufferBeginInfo::default()
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )?;
+
+            {
+                puffin::profile_scope!("shadow_pass");
+                let shadow_draw_calls: Vec<ShadowDrawCall> = draw_calls
+                    .iter()
+                    .map(|dc| ShadowDrawCall {
+                        gpu_mesh: dc.gpu_mesh,
+                        transform: dc.transform,
+                    })
+                    .collect();
+                self.shadow_pass.record(
+                    device,
+                    cmd,
+                    &self.shadow_map,
+                    light_view_proj,
+                    &shadow_draw_calls,
+                );
+            }
 
             {
                 puffin::profile_scope!("geometry_pass");
@@ -316,6 +366,8 @@ impl Renderer {
             &self.depth,
             self.render_target.format,
         )?;
+        self.lighting
+            .bind_shadow_map(&self.shadow_map, self.shadow_sampler);
         self.post_process =
             PostProcessPass::new(&ctx.device.handle, swapchain.format, &self.render_target)?;
 
@@ -326,6 +378,11 @@ impl Renderer {
 
 impl Drop for Renderer {
     fn drop(&mut self) {
-        unsafe { self.device.handle.device_wait_idle().ok() };
+        unsafe {
+            self.device.handle.device_wait_idle().ok();
+            self.device
+                .handle
+                .destroy_sampler(self.shadow_sampler, None);
+        };
     }
 }

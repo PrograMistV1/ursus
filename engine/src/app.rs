@@ -4,7 +4,7 @@ use crate::ecs::systems::collect_draw_calls;
 use crate::ecs::GameWorld;
 use crate::egui_layer::EguiLayer;
 use crate::vulkan::frustum::transform_aabb;
-use crate::vulkan::lights::LightingUbo;
+use crate::vulkan::lights::{compute_light_view_proj, LightingUbo};
 use crate::vulkan::{Camera, DrawCall, Renderer, VulkanContext};
 use winit::{
     application::ApplicationHandler,
@@ -99,6 +99,14 @@ impl EngineContext {
             .collect();
 
         self.renderer.lighting.upload_lights(&self.lighting);
+        let light_view_proj = compute_light_view_proj(
+            self.lighting.directional.direction[0..3].try_into()?,
+            glam::Vec3::new(0.0, 2.0, 0.0),
+            20.0,
+        );
+
+        self.lighting.light_space_matrix = light_view_proj.to_cols_array_2d();
+        self.renderer.lighting.upload_lights(&self.lighting);
 
         self.renderer.draw_frame(
             &self.vk,
@@ -109,6 +117,7 @@ impl EngineContext {
             window,
             egui,
             egui_output,
+            light_view_proj,
         )
     }
 }

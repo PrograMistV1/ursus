@@ -13,6 +13,7 @@ pub mod pipeline;
 mod render_target;
 pub mod renderer;
 pub mod shader;
+pub mod shadow;
 mod swapchain;
 pub mod sync;
 pub mod texture;

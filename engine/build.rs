@@ -15,6 +15,7 @@ fn compile_shaders() {
         ("shaders/post_process.vert", "post_process.vert.spv"),
         ("shaders/post_process.frag", "post_process.frag.spv"),
         ("shaders/lighting.frag", "lighting.frag.spv"),
+        ("shaders/shadow.vert", "shadow.vert.spv"),
     ];
 
     for (src, dst) in &shaders {

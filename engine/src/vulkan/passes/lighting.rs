@@ -55,6 +55,11 @@ impl LightingPass {
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                 .descriptor_count(1)
                 .stage_flags(vk::ShaderStageFlags::FRAGMENT),
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(4)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::FRAGMENT),
         ];
         let descriptor_set_layout = unsafe {
             device.create_descriptor_set_layout(
@@ -66,7 +71,7 @@ impl LightingPass {
         let pool_sizes = [
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                descriptor_count: 3,
+                descriptor_count: 4,
             },
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::UNIFORM_BUFFER,
@@ -99,7 +104,7 @@ impl LightingPass {
         let buf_info = vk::DescriptorBufferInfo::default()
             .buffer(light_buffer.buffer)
             .offset(0)
-            .range(std::mem::size_of::<crate::vulkan::lights::LightingUbo>() as vk::DeviceSize);
+            .range(size_of::<crate::vulkan::lights::LightingUbo>() as vk::DeviceSize);
 
         let writes = [
             make_image_write(descriptor_set, 0, &albedo_info),
@@ -255,6 +260,28 @@ impl LightingPass {
                 vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             );
         }
+    }
+
+    pub fn bind_shadow_map(
+        &self,
+        shadow_map: &crate::vulkan::shadow::ShadowMap,
+        sampler: vk::Sampler,
+    ) {
+        let image_info = vk::DescriptorImageInfo::default()
+            .sampler(sampler)
+            .image_view(shadow_map.view)
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+
+        let write = vk::WriteDescriptorSet::default()
+            .dst_set(self.descriptor_set)
+            .dst_binding(4)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(std::slice::from_ref(&image_info));
+
+        unsafe {
+            self.device
+                .update_descriptor_sets(std::slice::from_ref(&write), &[])
+        };
     }
 }
 
