@@ -1,6 +1,6 @@
 use crate::assets::GpuMesh;
 use crate::ecs::components::Transform;
-use crate::vulkan::shadow::{ShadowMap, SHADOW_MAP_SIZE};
+use crate::vulkan::resources::shadow_map::{ShadowMap, SHADOW_MAP_SIZE};
 use ash::vk;
 use glam::Mat4;
 
@@ -35,7 +35,7 @@ impl ShadowPass {
             )?
         };
 
-        let vert = crate::vulkan::shader::ShaderModule::from_bytes(
+        let vert = crate::vulkan::pipeline::shader::ShaderModule::from_bytes(
             device,
             include_bytes!(concat!(env!("OUT_DIR"), "/shadow.vert.spv")),
         )?;

@@ -1,4 +1,5 @@
 use crate::assets::material::MaterialData;
+use crate::vulkan::core::memory::find_memory_type;
 use ash::vk;
 
 pub struct MaterialBuffer {
@@ -33,9 +34,9 @@ impl MaterialBuffer {
 
         let req = unsafe { device.get_buffer_memory_requirements(buffer) };
 
-        let mem_props = unsafe { instance.get_physical_device_memory_properties(physical_device) };
         let mem_type = find_memory_type(
-            &mem_props,
+            instance,
+            physical_device,
             req.memory_type_bits,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
@@ -138,21 +139,4 @@ impl Drop for MaterialBuffer {
             self.device.destroy_descriptor_set_layout(self.layout, None);
         }
     }
-}
-
-fn find_memory_type(
-    props: &vk::PhysicalDeviceMemoryProperties,
-    type_filter: u32,
-    required: vk::MemoryPropertyFlags,
-) -> anyhow::Result<u32> {
-    for i in 0..props.memory_type_count {
-        if (type_filter & (1 << i)) != 0
-            && props.memory_types[i as usize]
-                .property_flags
-                .contains(required)
-        {
-            return Ok(i);
-        }
-    }
-    anyhow::bail!("Не найден подходящий тип памяти для MaterialBuffer")
 }

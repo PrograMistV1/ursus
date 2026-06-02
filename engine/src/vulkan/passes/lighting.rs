@@ -1,7 +1,7 @@
-use crate::vulkan::depth::DepthBuffer;
-use crate::vulkan::gbuffer::GBuffer;
-use crate::vulkan::lights::LightBuffer;
-use crate::vulkan::render_target::RenderTarget;
+use crate::lighting::buffer::LightBuffer;
+use crate::vulkan::resources::depth::DepthBuffer;
+use crate::vulkan::resources::gbuffer::GBuffer;
+use crate::vulkan::resources::render_target::RenderTarget;
 use ash::vk;
 
 #[repr(C)]
@@ -104,7 +104,7 @@ impl LightingPass {
         let buf_info = vk::DescriptorBufferInfo::default()
             .buffer(light_buffer.buffer)
             .offset(0)
-            .range(size_of::<crate::vulkan::lights::LightingUbo>() as vk::DeviceSize);
+            .range(size_of::<crate::lighting::buffer::LightingUbo>() as vk::DeviceSize);
 
         let writes = [
             make_image_write(descriptor_set, 0, &albedo_info),
@@ -132,11 +132,11 @@ impl LightingPass {
             )?
         };
 
-        let vert = crate::vulkan::shader::ShaderModule::from_bytes(
+        let vert = crate::vulkan::pipeline::shader::ShaderModule::from_bytes(
             device,
             include_bytes!(concat!(env!("OUT_DIR"), "/post_process.vert.spv")),
         )?;
-        let frag = crate::vulkan::shader::ShaderModule::from_bytes(
+        let frag = crate::vulkan::pipeline::shader::ShaderModule::from_bytes(
             device,
             include_bytes!(concat!(env!("OUT_DIR"), "/lighting.frag.spv")),
         )?;
@@ -156,7 +156,7 @@ impl LightingPass {
         })
     }
 
-    pub fn upload_lights(&self, data: &crate::vulkan::lights::LightingUbo) {
+    pub fn upload_lights(&self, data: &crate::lighting::buffer::LightingUbo) {
         self.light_buffer.upload(data);
     }
 
@@ -264,7 +264,7 @@ impl LightingPass {
 
     pub fn bind_shadow_map(
         &self,
-        shadow_map: &crate::vulkan::shadow::ShadowMap,
+        shadow_map: &crate::vulkan::resources::shadow_map::ShadowMap,
         sampler: vk::Sampler,
     ) {
         let image_info = vk::DescriptorImageInfo::default()
@@ -374,8 +374,8 @@ fn transition_color(
 
 fn build_fullscreen_pipeline(
     device: &ash::Device,
-    vert: &crate::vulkan::shader::ShaderModule,
-    frag: &crate::vulkan::shader::ShaderModule,
+    vert: &crate::vulkan::pipeline::shader::ShaderModule,
+    frag: &crate::vulkan::pipeline::shader::ShaderModule,
     layout: vk::PipelineLayout,
     color_format: vk::Format,
 ) -> anyhow::Result<vk::Pipeline> {

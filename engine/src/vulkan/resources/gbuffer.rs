@@ -1,3 +1,4 @@
+use crate::vulkan::core::memory::find_memory_type;
 use ash::vk;
 
 pub struct GBuffer {
@@ -103,9 +104,9 @@ fn create_attachment(
     let image = unsafe { device.create_image(&image_info, None)? };
     let req = unsafe { device.get_image_memory_requirements(image) };
 
-    let mem_props = unsafe { instance.get_physical_device_memory_properties(physical_device) };
     let mem_type = find_memory_type(
-        &mem_props,
+        instance,
+        physical_device,
         req.memory_type_bits,
         vk::MemoryPropertyFlags::DEVICE_LOCAL,
     )?;
@@ -138,21 +139,4 @@ fn create_attachment(
     };
 
     Ok((image, view, memory))
-}
-
-fn find_memory_type(
-    props: &vk::PhysicalDeviceMemoryProperties,
-    type_filter: u32,
-    required: vk::MemoryPropertyFlags,
-) -> anyhow::Result<u32> {
-    for i in 0..props.memory_type_count {
-        if (type_filter & (1 << i)) != 0
-            && props.memory_types[i as usize]
-                .property_flags
-                .contains(required)
-        {
-            return Ok(i);
-        }
-    }
-    anyhow::bail!("Не найден тип памяти для GBuffer attachment")
 }

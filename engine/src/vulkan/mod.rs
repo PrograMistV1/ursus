@@ -1,32 +1,18 @@
-pub mod bindless;
-pub mod commands;
-mod debug;
-mod depth;
-mod device;
-pub mod frustum;
-pub mod gbuffer;
-mod instance;
-pub mod lights;
-pub mod material_buffer;
+pub mod core;
 mod passes;
 pub mod pipeline;
-mod render_target;
 pub mod renderer;
-pub mod shader;
-pub mod shadow;
-mod swapchain;
-pub mod sync;
-pub mod texture;
+pub mod resources;
 
-pub use bindless::BindlessSet;
-pub use debug::DebugMessenger;
-pub use device::Device;
-pub use instance::Instance;
-pub use material_buffer::MaterialBuffer;
+pub use core::debug::DebugMessenger;
+pub use core::device::Device;
+pub use core::instance::Instance;
+pub use core::swapchain::Swapchain;
+pub use pipeline::material_buffer::MaterialBuffer;
 pub use pipeline::Pipeline;
 pub use renderer::Renderer;
-pub use swapchain::Swapchain;
-pub use texture::GpuTexture;
+pub use resources::bindless::BindlessSet;
+pub use resources::texture::GpuTexture;
 
 pub use passes::geometry::DrawCall;
 pub use renderer::Camera;
@@ -34,8 +20,9 @@ pub use renderer::Camera;
 use ash::vk;
 use std::sync::Arc;
 
-pub use depth::DepthBuffer;
-pub use render_target::RenderTarget;
+pub use resources::depth::DepthBuffer;
+pub use resources::render_target::RenderTarget;
+
 pub struct VulkanContext {
     pub swapchain: Option<Swapchain>,
     pub device: Arc<Device>,

@@ -1,4 +1,4 @@
-use super::{Device, Instance};
+use crate::vulkan::{Device, Instance};
 use ash::vk;
 
 pub struct Swapchain {

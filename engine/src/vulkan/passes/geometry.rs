@@ -1,9 +1,10 @@
 use crate::assets::shader_registry::ShaderHandle;
 use crate::assets::{AssetServer, GpuMesh};
 use crate::ecs::components::{MaterialHandle, Transform};
-use crate::vulkan::gbuffer::GBuffer;
-use crate::vulkan::pipeline::PipelineDesc;
-use crate::vulkan::{depth::DepthBuffer, Pipeline};
+use crate::vulkan::pipeline::pipeline::PipelineDesc;
+use crate::vulkan::resources::depth::DepthBuffer;
+use crate::vulkan::resources::gbuffer::GBuffer;
+use crate::vulkan::Pipeline;
 use ash::vk;
 use glam::Mat4;
 use std::collections::HashMap;

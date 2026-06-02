@@ -3,9 +3,10 @@ use crate::debug_ui::{self, DebugUiState};
 use crate::ecs::systems::collect_draw_calls;
 use crate::ecs::GameWorld;
 use crate::egui_layer::EguiLayer;
-use crate::vulkan::frustum::transform_aabb;
-use crate::vulkan::lights::{compute_light_view_proj, LightingUbo};
+use crate::lighting::{compute_light_view_proj, LightingUbo};
+use crate::math::frustum::{extract_planes, transform_aabb};
 use crate::vulkan::{Camera, DrawCall, Renderer, VulkanContext};
+
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -67,7 +68,7 @@ impl EngineContext {
         let swapchain = self.vk.swapchain.as_ref().unwrap();
         let aspect = swapchain.extent.width as f32 / swapchain.extent.height as f32;
         let view_proj = self.camera.view_proj(aspect);
-        let frustum_planes = crate::vulkan::frustum::extract_planes(view_proj);
+        let frustum_planes = extract_planes(view_proj);
 
         let device = self.vk.device.handle.clone();
         for dc in &ecs_calls {

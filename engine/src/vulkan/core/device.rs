@@ -1,4 +1,4 @@
-use super::Instance;
+use crate::vulkan::Instance;
 use ash::vk;
 
 pub struct Device {

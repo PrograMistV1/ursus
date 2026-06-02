@@ -1,4 +1,4 @@
-use crate::vulkan::render_target::RenderTarget;
+use crate::vulkan::resources::render_target::RenderTarget;
 use ash::vk;
 
 #[repr(C)]
@@ -99,11 +99,11 @@ impl PostProcessPass {
             )?
         };
 
-        let vert = crate::vulkan::shader::ShaderModule::from_bytes(
+        let vert = crate::vulkan::pipeline::shader::ShaderModule::from_bytes(
             device,
             include_bytes!(concat!(env!("OUT_DIR"), "/post_process.vert.spv")),
         )?;
-        let frag = crate::vulkan::shader::ShaderModule::from_bytes(
+        let frag = crate::vulkan::pipeline::shader::ShaderModule::from_bytes(
             device,
             include_bytes!(concat!(env!("OUT_DIR"), "/post_process.frag.spv")),
         )?;

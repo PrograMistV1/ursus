@@ -1,18 +1,18 @@
 use super::{
-    commands::Commands,
-    depth::DepthBuffer,
     passes::geometry::{DrawCall, GeometryPass},
     passes::post_process::PostProcessPass,
-    render_target::RenderTarget,
-    sync::FrameSync,
     Device, VulkanContext,
 };
 use crate::assets::AssetServer;
-use crate::vulkan::gbuffer::GBuffer;
+use crate::vulkan::core::commands::Commands;
+use crate::vulkan::core::sync::FrameSync;
 use crate::vulkan::passes::lighting::LightingPass;
 use crate::vulkan::passes::shadow::{ShadowDrawCall, ShadowPass};
 use crate::vulkan::passes::ui::UiPass;
-use crate::vulkan::shadow::ShadowMap;
+use crate::vulkan::resources::depth::DepthBuffer;
+use crate::vulkan::resources::gbuffer::GBuffer;
+use crate::vulkan::resources::render_target::RenderTarget;
+use crate::vulkan::resources::shadow_map::ShadowMap;
 use ash::vk;
 use glam::{Mat4, Vec3};
 use std::sync::Arc;

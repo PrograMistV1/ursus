@@ -1,8 +1,7 @@
+use crate::vulkan::core::memory::find_memory_type;
 use ash::vk;
 
-pub const SHADOW_MAP_SIZE: u32 = 2048;
-
-pub struct ShadowMap {
+pub struct DepthBuffer {
     pub image: vk::Image,
     pub view: vk::ImageView,
     pub memory: vk::DeviceMemory,
@@ -10,11 +9,13 @@ pub struct ShadowMap {
     device: ash::Device,
 }
 
-impl ShadowMap {
+impl DepthBuffer {
     pub fn new(
         device: &ash::Device,
         physical_device: vk::PhysicalDevice,
         instance: &ash::Instance,
+        width: u32,
+        height: u32,
     ) -> anyhow::Result<Self> {
         let format = vk::Format::D32_SFLOAT;
 
@@ -22,8 +23,8 @@ impl ShadowMap {
             .image_type(vk::ImageType::TYPE_2D)
             .format(format)
             .extent(vk::Extent3D {
-                width: SHADOW_MAP_SIZE,
-                height: SHADOW_MAP_SIZE,
+                width,
+                height,
                 depth: 1,
             })
             .mip_levels(1)
@@ -37,9 +38,9 @@ impl ShadowMap {
         let image = unsafe { device.create_image(&image_info, None)? };
         let req = unsafe { device.get_image_memory_requirements(image) };
 
-        let mem_props = unsafe { instance.get_physical_device_memory_properties(physical_device) };
         let mem_type = find_memory_type(
-            &mem_props,
+            instance,
+            physical_device,
             req.memory_type_bits,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         )?;
@@ -71,7 +72,6 @@ impl ShadowMap {
             )?
         };
 
-        log::debug!("ShadowMap: {}x{}", SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
         Ok(Self {
             image,
             view,
@@ -82,7 +82,7 @@ impl ShadowMap {
     }
 }
 
-impl Drop for ShadowMap {
+impl Drop for DepthBuffer {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_image_view(self.view, None);
@@ -90,21 +90,4 @@ impl Drop for ShadowMap {
             self.device.free_memory(self.memory, None);
         }
     }
-}
-
-fn find_memory_type(
-    props: &vk::PhysicalDeviceMemoryProperties,
-    type_filter: u32,
-    required: vk::MemoryPropertyFlags,
-) -> anyhow::Result<u32> {
-    for i in 0..props.memory_type_count {
-        if (type_filter & (1 << i)) != 0
-            && props.memory_types[i as usize]
-                .property_flags
-                .contains(required)
-        {
-            return Ok(i);
-        }
-    }
-    anyhow::bail!("Не найден тип памяти для ShadowMap")
 }
