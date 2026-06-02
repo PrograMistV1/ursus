@@ -28,6 +28,8 @@ impl GpuTexture {
         let name = name.into();
         let size = pixels.len() as vk::DeviceSize;
 
+        let mip_levels = (width.max(height) as f32).log2().floor() as u32 + 1;
+
         let (staging, staging_mem) = alloc_buffer(
             device,
             instance,
@@ -51,11 +53,15 @@ impl GpuTexture {
                 height,
                 depth: 1,
             })
-            .mip_levels(1)
+            .mip_levels(mip_levels)
             .array_layers(1)
             .samples(vk::SampleCountFlags::TYPE_1)
             .tiling(vk::ImageTiling::OPTIMAL)
-            .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
+            .usage(
+                vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::TRANSFER_SRC
+                    | vk::ImageUsageFlags::SAMPLED,
+            )
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .initial_layout(vk::ImageLayout::UNDEFINED);
 
@@ -80,6 +86,8 @@ impl GpuTexture {
                 image,
                 vk::ImageLayout::UNDEFINED,
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                0,
+                mip_levels,
             );
 
             let region = vk::BufferImageCopy::default()
@@ -107,12 +115,86 @@ impl GpuTexture {
                 std::slice::from_ref(&region),
             );
 
+            let mut mip_w = width as i32;
+            let mut mip_h = height as i32;
+
+            for level in 1..mip_levels {
+                transition_image_layout(
+                    device,
+                    cmd,
+                    image,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    level - 1,
+                    1,
+                );
+
+                let blit = vk::ImageBlit::default()
+                    .src_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: level - 1,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    })
+                    .src_offsets([
+                        vk::Offset3D { x: 0, y: 0, z: 0 },
+                        vk::Offset3D {
+                            x: mip_w,
+                            y: mip_h,
+                            z: 1,
+                        },
+                    ])
+                    .dst_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: level,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    })
+                    .dst_offsets([
+                        vk::Offset3D { x: 0, y: 0, z: 0 },
+                        vk::Offset3D {
+                            x: if mip_w > 1 { mip_w / 2 } else { 1 },
+                            y: if mip_h > 1 { mip_h / 2 } else { 1 },
+                            z: 1,
+                        },
+                    ]);
+
+                device.cmd_blit_image(
+                    cmd,
+                    image,
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    image,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    std::slice::from_ref(&blit),
+                    vk::Filter::LINEAR,
+                );
+
+                transition_image_layout(
+                    device,
+                    cmd,
+                    image,
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                    level - 1,
+                    1,
+                );
+
+                if mip_w > 1 {
+                    mip_w /= 2;
+                }
+                if mip_h > 1 {
+                    mip_h /= 2;
+                }
+            }
+
             transition_image_layout(
                 device,
                 cmd,
                 image,
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                mip_levels - 1,
+                1,
             );
         })?;
 
@@ -128,7 +210,7 @@ impl GpuTexture {
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: vk::ImageAspectFlags::COLOR,
                 base_mip_level: 0,
-                level_count: 1,
+                level_count: mip_levels,
                 base_array_layer: 0,
                 layer_count: 1,
             });
@@ -166,6 +248,8 @@ fn transition_image_layout(
     image: vk::Image,
     from: vk::ImageLayout,
     to: vk::ImageLayout,
+    base_mip: u32,
+    level_count: u32,
 ) {
     let (src_stage, src_access, dst_stage, dst_access) = match (from, to) {
         (vk::ImageLayout::UNDEFINED, vk::ImageLayout::TRANSFER_DST_OPTIMAL) => (
@@ -173,6 +257,18 @@ fn transition_image_layout(
             vk::AccessFlags2::empty(),
             vk::PipelineStageFlags2::TRANSFER,
             vk::AccessFlags2::TRANSFER_WRITE,
+        ),
+        (vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::TRANSFER_SRC_OPTIMAL) => (
+            vk::PipelineStageFlags2::TRANSFER,
+            vk::AccessFlags2::TRANSFER_WRITE,
+            vk::PipelineStageFlags2::TRANSFER,
+            vk::AccessFlags2::TRANSFER_READ,
+        ),
+        (vk::ImageLayout::TRANSFER_SRC_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
+            vk::PipelineStageFlags2::TRANSFER,
+            vk::AccessFlags2::TRANSFER_READ,
+            vk::PipelineStageFlags2::FRAGMENT_SHADER,
+            vk::AccessFlags2::SHADER_READ,
         ),
         (vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
             vk::PipelineStageFlags2::TRANSFER,
@@ -196,8 +292,8 @@ fn transition_image_layout(
         .image(image)
         .subresource_range(vk::ImageSubresourceRange {
             aspect_mask: vk::ImageAspectFlags::COLOR,
-            base_mip_level: 0,
-            level_count: 1,
+            base_mip_level: base_mip,
+            level_count,
             base_array_layer: 0,
             layer_count: 1,
         });
