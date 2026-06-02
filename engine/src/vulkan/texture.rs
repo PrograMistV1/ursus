@@ -133,7 +133,7 @@ impl GpuTexture {
             });
         let view = unsafe { device.create_image_view(&view_info, None)? };
 
-        log::info!("GpuTexture '{}': {}x{} {:?}", name, width, height, format);
+        log::debug!("GpuTexture '{}': {}x{} {:?}", name, width, height, format);
 
         Ok(Self {
             image,

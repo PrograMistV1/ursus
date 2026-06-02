@@ -30,7 +30,7 @@ impl Default for LightingUbo {
     fn default() -> Self {
         Self {
             directional: DirectionalLight {
-                direction: [-0.3, -1.0, -0.5, 0.0],
+                direction: [-0.3, -1.0, -0.2, 0.0],
                 color: [1.0, 0.95, 0.85, 2.0],
             },
             point_lights: [GpuPointLight {
@@ -139,7 +139,14 @@ pub fn compute_light_view_proj(
 ) -> glam::Mat4 {
     let dir = glam::Vec3::from(direction).normalize();
     let light_pos = scene_center - dir * scene_radius;
-    let view = glam::Mat4::look_at_rh(light_pos, scene_center, glam::Vec3::Y);
+
+    let up = [glam::Vec3::Y, glam::Vec3::Z, glam::Vec3::X]
+        .iter()
+        .find(|&&u| dir.cross(u).length() > 0.01)
+        .copied()
+        .unwrap_or(glam::Vec3::Y);
+
+    let view = glam::Mat4::look_at_rh(light_pos, scene_center, up);
     let ortho = glam::Mat4::orthographic_rh(
         -scene_radius,
         scene_radius,

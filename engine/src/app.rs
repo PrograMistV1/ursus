@@ -82,13 +82,11 @@ impl EngineContext {
             .iter()
             .filter_map(|dc| {
                 let gpu = self.assets.get_gpu_mesh(dc.mesh)?;
-
                 let model = dc.transform.matrix();
                 let world_aabb = transform_aabb(&gpu.aabb, model);
                 if !world_aabb.intersects_frustum(&frustum_planes) {
                     return None;
                 }
-
                 Some(DrawCall {
                     gpu_mesh: gpu,
                     transform: &dc.transform,
@@ -98,7 +96,19 @@ impl EngineContext {
             })
             .collect();
 
-        self.renderer.lighting.upload_lights(&self.lighting);
+        let shadow_calls: Vec<DrawCall<'_>> = ecs_calls
+            .iter()
+            .filter_map(|dc| {
+                let gpu = self.assets.get_gpu_mesh(dc.mesh)?;
+                Some(DrawCall {
+                    gpu_mesh: gpu,
+                    transform: &dc.transform,
+                    material: dc.material,
+                    shader: dc.shader,
+                })
+            })
+            .collect();
+
         let light_view_proj = compute_light_view_proj(
             self.lighting.directional.direction[0..3].try_into()?,
             glam::Vec3::new(0.0, 2.0, 0.0),
@@ -113,6 +123,7 @@ impl EngineContext {
             clear_color,
             &self.camera,
             &gpu_calls,
+            &shadow_calls,
             &self.assets,
             window,
             egui,
@@ -254,9 +265,9 @@ impl ApplicationHandler for EngineHandler {
                 if size.width == 0 || size.height == 0 {
                     return;
                 }
-                if let Err(e) = handle_resize(state, size.width, size.height, state.debug.vsync) {
+                /*if let Err(e) = handle_resize(state, size.width, size.height, state.debug.vsync) {
                     log::error!("Resize failed: {e}");
-                }
+                }*/
             }
             WindowEvent::RedrawRequested => {
                 puffin::GlobalProfiler::lock().new_frame();

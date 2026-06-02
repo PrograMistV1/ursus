@@ -37,7 +37,7 @@ impl EguiLayer {
                 depth_attachment_format: None,
             },
             Options {
-                in_flight_frames: 2,
+                in_flight_frames: 3,
                 srgb_framebuffer: swapchain_format == vk::Format::B8G8R8A8_SRGB
                     || swapchain_format == vk::Format::R8G8B8A8_SRGB,
                 enable_depth_test: false,

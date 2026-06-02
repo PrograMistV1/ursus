@@ -20,7 +20,6 @@ layout(set = 0, binding = 3) uniform LightingUBO {
     DirectionalLight dir_light;
     PointLight point_lights[16];
     uint point_light_count;
-    uint _pad[3];
     mat4 light_space_matrix;
 } lights;
 

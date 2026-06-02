@@ -17,7 +17,7 @@ use ash::vk;
 use glam::{Mat4, Vec3};
 use std::sync::Arc;
 
-const FRAMES_IN_FLIGHT: u32 = 2;
+const FRAMES_IN_FLIGHT: u32 = 3;
 
 pub struct Camera {
     pub eye: Vec3,
@@ -178,6 +178,7 @@ impl Renderer {
         clear_color: [f32; 4],
         camera: &Camera,
         draw_calls: &[DrawCall<'_>],
+        shadow_calls: &[DrawCall<'_>],
         assets: &AssetServer,
         window: &winit::window::Window,
         egui: &mut crate::egui_layer::EguiLayer,
@@ -227,7 +228,7 @@ impl Renderer {
 
             {
                 puffin::profile_scope!("shadow_pass");
-                let shadow_draw_calls: Vec<ShadowDrawCall> = draw_calls
+                let shadow_draw_calls: Vec<ShadowDrawCall> = shadow_calls
                     .iter()
                     .map(|dc| ShadowDrawCall {
                         gpu_mesh: dc.gpu_mesh,

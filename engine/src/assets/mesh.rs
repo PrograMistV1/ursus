@@ -236,7 +236,7 @@ impl GpuMesh {
             queue,
         )?;
 
-        log::info!(
+        log::debug!(
             "GpuMesh '{}': {} verts, {} idx",
             cpu_mesh.name,
             cpu_mesh.vertex_count(),

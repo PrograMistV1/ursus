@@ -133,7 +133,7 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 mesh_base_name.clone()
             };
 
-            log::info!(
+            log::debug!(
                 "glTF '{}': {} вершин, {} индексов",
                 mesh_name,
                 vertices.len(),
@@ -255,7 +255,7 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
 
 fn image_bytes(images: &[gltf::image::Data], index: usize) -> Option<(Vec<u8>, u32, u32)> {
     let data = images.get(index)?;
-    log::info!(
+    log::debug!(
         "image_bytes: index={} format={:?} {}x{}",
         index,
         data.format,
