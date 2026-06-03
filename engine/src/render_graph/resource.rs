@@ -440,12 +440,6 @@ impl LayoutTracker {
         }
     }
 
-    pub fn reset(&mut self) {
-        for v in self.layouts.values_mut() {
-            *v = vk::ImageLayout::UNDEFINED;
-        }
-    }
-
     pub fn current(&self, handle: ResourceHandle) -> vk::ImageLayout {
         self.layouts
             .get(&handle)
@@ -492,6 +486,12 @@ impl LayoutTracker {
         }
 
         true
+    }
+
+    pub fn invalidate(&mut self, handles: &[ResourceHandle]) {
+        for h in handles {
+            self.layouts.insert(*h, vk::ImageLayout::UNDEFINED);
+        }
     }
 }
 
@@ -626,6 +626,15 @@ fn layout_transition_masks(
             S::FRAGMENT_SHADER,
             A::SHADER_READ,
         ),
+        (L::TRANSFER_SRC_OPTIMAL, L::COLOR_ATTACHMENT_OPTIMAL) => (
+            S::TRANSFER,
+            A::TRANSFER_READ,
+            S::COLOR_ATTACHMENT_OUTPUT,
+            A::COLOR_ATTACHMENT_WRITE,
+        ),
+        (L::UNDEFINED, L::TRANSFER_SRC_OPTIMAL) => {
+            (S::TOP_OF_PIPE, A::empty(), S::TRANSFER, A::TRANSFER_READ)
+        }
 
         other => panic!(
             "layout_transition_masks: неизвестная пара {:?} (kind={:?})",

@@ -56,6 +56,7 @@ pub struct PassNode {
     pub accesses: Vec<PassAccess>,
     pub record: RecordFn,
     pub enabled: bool,
+    pub depends_on: Vec<PassHandle>,
 }
 
 impl PassNode {
@@ -65,6 +66,7 @@ impl PassNode {
             accesses,
             record,
             enabled: true,
+            depends_on: Vec::new(),
         }
     }
 }
@@ -159,6 +161,16 @@ impl RenderGraph {
             }
         }
 
+        for (i, node) in self.nodes.iter().enumerate() {
+            for &dep_handle in &node.depends_on {
+                let dep = dep_handle.0 as usize;
+                if dep != i && !adj[dep].contains(&i) {
+                    adj[dep].insert(i);
+                    in_degree[i] += 1;
+                }
+            }
+        }
+
         let mut queue: VecDeque<usize> = (0..n).filter(|&i| in_degree[i] == 0).collect();
         let mut order = Vec::with_capacity(n);
 
@@ -228,8 +240,6 @@ impl RenderGraph {
     ) -> anyhow::Result<()> {
         assert!(self.compiled, "RenderGraph::compile() не был вызван");
 
-        self.tracker.reset();
-
         for &idx in &self.sorted_order {
             let node = &self.nodes[idx];
             if !node.enabled {
@@ -264,6 +274,7 @@ impl RenderGraph {
 
         let affected: Vec<ResourceHandle> = self.pool.output_handles().collect();
         self.bindings.flush(&self.pool, &affected);
+        self.tracker.invalidate(&affected);
         Ok(())
     }
 
@@ -274,6 +285,7 @@ impl RenderGraph {
 
         let affected: Vec<ResourceHandle> = self.pool.internal_handles().collect();
         self.bindings.flush(&self.pool, &affected);
+        self.tracker.invalidate(&affected);
         Ok(())
     }
 
@@ -294,6 +306,7 @@ pub struct PassBuilder {
     name: String,
     accesses: Vec<PassAccess>,
     deferred_bindings: Vec<DescriptorBinding>,
+    explicit_deps: Vec<PassHandle>,
 }
 
 impl PassBuilder {
@@ -302,6 +315,7 @@ impl PassBuilder {
             name: name.into(),
             accesses: Vec::new(),
             deferred_bindings: Vec::new(),
+            explicit_deps: Vec::new(),
         }
     }
 
@@ -368,9 +382,17 @@ impl PassBuilder {
         F: FnMut(vk::CommandBuffer, &ResourcePool, *mut ()) -> anyhow::Result<()> + Send + 'static,
     {
         PassNodeReady {
-            node: PassNode::new(self.name, self.accesses, Box::new(f)),
+            node: PassNode {
+                depends_on: self.explicit_deps,
+                ..PassNode::new(self.name, self.accesses, Box::new(f))
+            },
             deferred_bindings: self.deferred_bindings,
         }
+    }
+
+    pub fn after(mut self, handle: PassHandle) -> Self {
+        self.explicit_deps.push(handle);
+        self
     }
 }
 

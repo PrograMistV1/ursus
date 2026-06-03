@@ -251,6 +251,20 @@ impl Renderer {
             })
             .build(&mut graph);
 
+        pass("post_process")
+            .read(h.hdr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .write(h.ldr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .bind_sampled(h.hdr, post_pass.descriptor_set, 0, post_pass.sampler)
+            .record({
+                move |cmd, pool, ctx_ptr| {
+                    let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
+                    let ldr = pool.image(h.ldr);
+                    post_pass.record_to_target(ctx.device, cmd, ldr, ctx.exposure);
+                    Ok(())
+                }
+            })
+            .build(&mut graph);
+
         let fsr_pass = Arc::new(FsrPass::new(&ctx.device.handle, LDR_FORMAT)?);
 
         let fsr_easu_descriptor_set = fsr_pass.easu_descriptor_set;
@@ -295,7 +309,7 @@ impl Renderer {
             })
             .build(&mut graph);
 
-        pass("blit_to_swapchain")
+        let blit_handle = pass("blit_to_swapchain")
             .read(h.fsr_rcas, vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
             .record({
                 move |cmd, pool, ctx_ptr| {
@@ -393,22 +407,8 @@ impl Renderer {
             })
             .build(&mut graph);
 
-        pass("post_process")
-            .read(h.hdr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .write(h.ldr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .bind_sampled(h.hdr, post_pass.descriptor_set, 0, post_pass.sampler)
-            .record({
-                move |cmd, pool, ctx_ptr| {
-                    let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
-                    let ldr = pool.image(h.ldr);
-                    post_pass.record_to_target(ctx.device, cmd, ldr, ctx.exposure);
-                    Ok(())
-                }
-            })
-            .build(&mut graph);
-
         pass("ui")
-            .read(h.fsr_rcas, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .after(blit_handle)
             .record({
                 move |cmd, _pool, ctx_ptr| {
                     let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };

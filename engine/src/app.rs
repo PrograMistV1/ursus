@@ -118,6 +118,7 @@ struct RunningState {
     fps_frames: u32,
     fps_current: f32,
     tick_accumulator: f32,
+    paced_frame_time: f64,
 }
 
 const TICK_RATE: f32 = 1.0 / 60.0;
@@ -178,6 +179,7 @@ impl ApplicationHandler for EngineHandler {
             fps_frames: 0,
             fps_current: 0.0,
             tick_accumulator: 0.0,
+            paced_frame_time: 1.0 / 120.0,
         });
     }
 
@@ -216,6 +218,7 @@ impl ApplicationHandler for EngineHandler {
             }
 
             WindowEvent::RedrawRequested => {
+                let frame_start = std::time::Instant::now();
                 puffin::GlobalProfiler::lock().new_frame();
 
                 let now = std::time::Instant::now();
@@ -280,6 +283,16 @@ impl ApplicationHandler for EngineHandler {
                 }
 
                 state.window.request_redraw();
+
+                let render_time = frame_start.elapsed();
+                state.paced_frame_time =
+                    state.paced_frame_time * 0.9 + render_time.as_secs_f64() * 0.1;
+
+                let pace = std::time::Duration::from_secs_f64(state.paced_frame_time * 0.5);
+                let elapsed = frame_start.elapsed();
+                if pace > elapsed + std::time::Duration::from_micros(500) {
+                    std::thread::sleep(pace - elapsed - std::time::Duration::from_micros(500));
+                }
             }
 
             _ => {}
