@@ -1,4 +1,3 @@
-use crate::vulkan::resources::render_target::RenderTarget;
 use ash::vk;
 
 #[repr(C)]

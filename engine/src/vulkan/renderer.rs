@@ -242,6 +242,7 @@ impl Renderer {
             .build(&mut graph);
 
         pass("ui")
+            .read(h.hdr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .record({
                 move |cmd, _pool, ctx_ptr| {
                     let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
@@ -358,6 +359,9 @@ impl Renderer {
             20.0,
         );
 
+        let mut lighting_frame = *lighting;
+        lighting_frame.light_space_matrix = light_view_proj.to_cols_array_2d();
+
         unsafe {
             puffin::profile_scope!("wait_for_fences");
             device.wait_for_fences(&[frame.render_fence], true, u64::MAX)?;
@@ -393,7 +397,7 @@ impl Renderer {
             camera,
             view_proj,
             light_view_proj,
-            lighting,
+            lighting: &lighting_frame,
             swapchain_image: swapchain.images[image_index as usize],
             swapchain_view: swapchain.image_views[image_index as usize],
             swapchain_extent: swapchain.extent,
