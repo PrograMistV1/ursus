@@ -1,6 +1,7 @@
 use crate::assets::GpuMesh;
 use crate::ecs::components::Transform;
-use crate::vulkan::resources::shadow_map::{ShadowMap, SHADOW_MAP_SIZE};
+use crate::render_graph::resource::TransientImage;
+use crate::vulkan::resources::shadow_map::SHADOW_MAP_SIZE;
 use ash::vk;
 use glam::Mat4;
 
@@ -9,15 +10,15 @@ pub struct ShadowPC {
     pub light_space_mvp: [[f32; 4]; 4],
 }
 
+pub struct ShadowDrawCall<'a> {
+    pub gpu_mesh: &'a GpuMesh,
+    pub transform: &'a Transform,
+}
+
 pub struct ShadowPass {
     pub pipeline: vk::Pipeline,
     pub layout: vk::PipelineLayout,
     device: ash::Device,
-}
-
-pub struct ShadowDrawCall<'a> {
-    pub gpu_mesh: &'a GpuMesh,
-    pub transform: &'a Transform,
 }
 
 impl ShadowPass {
@@ -42,7 +43,7 @@ impl ShadowPass {
 
         let binding = vk::VertexInputBindingDescription::default()
             .binding(0)
-            .stride(32) // size_of::<Vertex>()
+            .stride(32)
             .input_rate(vk::VertexInputRate::VERTEX);
 
         let attributes = [vk::VertexInputAttributeDescription::default()
@@ -64,7 +65,7 @@ impl ShadowPass {
 
         let rasterizer = vk::PipelineRasterizationStateCreateInfo::default()
             .polygon_mode(vk::PolygonMode::FILL)
-            .cull_mode(vk::CullModeFlags::FRONT) // front-face culling для теней
+            .cull_mode(vk::CullModeFlags::FRONT)
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .depth_bias_enable(true)
             .depth_bias_constant_factor(2.0)
@@ -128,7 +129,7 @@ impl ShadowPass {
         &self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,
-        shadow_map: &ShadowMap,
+        shadow_map: &TransientImage,
         light_view_proj: Mat4,
         draw_calls: &[ShadowDrawCall<'_>],
     ) {
@@ -138,15 +139,6 @@ impl ShadowPass {
         };
 
         unsafe {
-            // UNDEFINED -> DEPTH_ATTACHMENT
-            transition_depth(
-                device,
-                cmd,
-                shadow_map.image,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
-            );
-
             let depth_attachment = vk::RenderingAttachmentInfo::default()
                 .image_view(shadow_map.view)
                 .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
@@ -200,7 +192,7 @@ impl ShadowPass {
                 };
                 let pc_bytes = std::slice::from_raw_parts(
                     &pc as *const ShadowPC as *const u8,
-                    std::mem::size_of::<ShadowPC>(),
+                    size_of::<ShadowPC>(),
                 );
                 device.cmd_push_constants(
                     cmd,
@@ -209,7 +201,6 @@ impl ShadowPass {
                     0,
                     pc_bytes,
                 );
-
                 device.cmd_bind_vertex_buffers(cmd, 0, &[dc.gpu_mesh.vertex_buffer], &[0]);
                 device.cmd_bind_index_buffer(
                     cmd,
@@ -221,15 +212,6 @@ impl ShadowPass {
             }
 
             device.cmd_end_rendering(cmd);
-
-            // DEPTH_ATTACHMENT -> SHADER_READ_ONLY
-            transition_depth(
-                device,
-                cmd,
-                shadow_map.image,
-                vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
-                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            );
         }
     }
 }
@@ -240,53 +222,5 @@ impl Drop for ShadowPass {
             self.device.destroy_pipeline(self.pipeline, None);
             self.device.destroy_pipeline_layout(self.layout, None);
         }
-    }
-}
-
-fn transition_depth(
-    device: &ash::Device,
-    cmd: vk::CommandBuffer,
-    image: vk::Image,
-    from: vk::ImageLayout,
-    to: vk::ImageLayout,
-) {
-    let (src_stage, src_access, dst_stage, dst_access) = match (from, to) {
-        (vk::ImageLayout::UNDEFINED, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL) => (
-            vk::PipelineStageFlags2::TOP_OF_PIPE,
-            vk::AccessFlags2::empty(),
-            vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS,
-            vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ
-                | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
-        ),
-        (vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
-            vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
-            vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
-            vk::PipelineStageFlags2::FRAGMENT_SHADER,
-            vk::AccessFlags2::SHADER_READ,
-        ),
-        _ => panic!("shadow transition: неизвестная пара {:?} -> {:?}", from, to),
-    };
-
-    let barrier = vk::ImageMemoryBarrier2::default()
-        .src_stage_mask(src_stage)
-        .src_access_mask(src_access)
-        .dst_stage_mask(dst_stage)
-        .dst_access_mask(dst_access)
-        .old_layout(from)
-        .new_layout(to)
-        .image(image)
-        .subresource_range(vk::ImageSubresourceRange {
-            aspect_mask: vk::ImageAspectFlags::DEPTH,
-            base_mip_level: 0,
-            level_count: 1,
-            base_array_layer: 0,
-            layer_count: 1,
-        });
-
-    unsafe {
-        device.cmd_pipeline_barrier2(
-            cmd,
-            &vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&barrier)),
-        );
     }
 }

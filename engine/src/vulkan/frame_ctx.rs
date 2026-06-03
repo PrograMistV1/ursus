@@ -1,0 +1,50 @@
+use crate::assets::AssetServer;
+use crate::lighting::LightingUbo;
+use crate::vulkan::passes::geometry::DrawCall;
+use crate::vulkan::Camera;
+use ash::vk;
+use glam::Mat4;
+
+pub use crate::vulkan::passes::geometry::DrawCall as FrameDrawCall;
+
+pub struct FrameCtx<'a> {
+    pub device: &'a ash::Device,
+
+    pub draw_calls: Vec<DrawCall<'a>>,
+    pub shadow_calls: Vec<DrawCall<'a>>,
+
+    pub camera: &'a Camera,
+    pub view_proj: Mat4,
+    pub light_view_proj: Mat4,
+
+    pub lighting: &'a LightingUbo,
+
+    pub swapchain_image: vk::Image,
+    pub swapchain_view: vk::ImageView,
+    pub swapchain_extent: vk::Extent2D,
+
+    pub exposure: f32,
+    pub fxaa_enabled: bool,
+    pub clear_color: [f32; 4],
+
+    pub assets: &'a AssetServer,
+
+    pub egui: *mut crate::egui_layer::EguiLayer,
+    pub egui_output: Option<egui::FullOutput>,
+
+    pub window: *const winit::window::Window,
+
+    pub graphics_queue: vk::Queue,
+    pub command_pool: vk::CommandPool,
+}
+
+impl<'a> FrameCtx<'a> {
+    #[inline]
+    pub unsafe fn from_ptr<'b>(ptr: *mut ()) -> &'b mut FrameCtx<'b> {
+        &mut *(ptr as *mut FrameCtx<'b>)
+    }
+
+    pub fn as_ptr(&mut self) -> *mut () {
+        self as *mut FrameCtx as *mut ()
+    }
+}

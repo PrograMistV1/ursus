@@ -15,17 +15,11 @@ pub struct PostProcessPass {
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_set: vk::DescriptorSet,
     pub sampler: vk::Sampler,
-    pub fxaa_enabled: bool,
-    pub exposure: f32,
     device: ash::Device,
 }
 
 impl PostProcessPass {
-    pub fn new(
-        device: &ash::Device,
-        swapchain_format: vk::Format,
-        render_target: &RenderTarget,
-    ) -> anyhow::Result<Self> {
+    pub fn new(device: &ash::Device, swapchain_format: vk::Format) -> anyhow::Result<Self> {
         let sampler = unsafe {
             device.create_sampler(
                 &vk::SamplerCreateInfo::default()
@@ -72,19 +66,6 @@ impl PostProcessPass {
             )?[0]
         };
 
-        let image_info = vk::DescriptorImageInfo::default()
-            .sampler(sampler)
-            .image_view(render_target.view)
-            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-
-        let write = vk::WriteDescriptorSet::default()
-            .dst_set(descriptor_set)
-            .dst_binding(0)
-            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .image_info(std::slice::from_ref(&image_info));
-
-        unsafe { device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
-
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .offset(0)
@@ -119,7 +100,6 @@ impl PostProcessPass {
                 .module(frag.handle)
                 .name(entry),
         ];
-
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
         let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
@@ -140,7 +120,6 @@ impl PostProcessPass {
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
         let dynamic_state =
             vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-
         let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
             .color_attachment_formats(std::slice::from_ref(&swapchain_format));
 
@@ -166,7 +145,7 @@ impl PostProcessPass {
                 .map_err(|(_, e)| e)?[0]
         };
 
-        log::debug!("PostProcessPass создан (tonemap ACES + FXAA)");
+        log::debug!("PostProcessPass создан");
         Ok(Self {
             pipeline,
             layout,
@@ -174,8 +153,6 @@ impl PostProcessPass {
             descriptor_set_layout,
             descriptor_set,
             sampler,
-            fxaa_enabled: true,
-            exposure: 0.5,
             device: device.clone(),
         })
     }
@@ -187,9 +164,11 @@ impl PostProcessPass {
         swapchain_image: vk::Image,
         swapchain_view: vk::ImageView,
         extent: vk::Extent2D,
+        exposure: f32,
+        fxaa_enabled: bool,
     ) {
         unsafe {
-            transition(
+            transition_swapchain(
                 device,
                 cmd,
                 swapchain_image,
@@ -247,8 +226,8 @@ impl PostProcessPass {
 
             let pc = PostProcessPC {
                 texel_size: [1.0 / extent.width as f32, 1.0 / extent.height as f32],
-                exposure: self.exposure,
-                flags: if self.fxaa_enabled { 1 } else { 0 },
+                exposure,
+                flags: if fxaa_enabled { 1 } else { 0 },
             };
             let pc_bytes = std::slice::from_raw_parts(
                 &pc as *const PostProcessPC as *const u8,
@@ -263,10 +242,9 @@ impl PostProcessPass {
             );
 
             device.cmd_draw(cmd, 3, 1, 0, 0);
-
             device.cmd_end_rendering(cmd);
 
-            transition(
+            transition_swapchain(
                 device,
                 cmd,
                 swapchain_image,
@@ -291,30 +269,30 @@ impl Drop for PostProcessPass {
     }
 }
 
-fn transition(
+fn transition_swapchain(
     device: &ash::Device,
     cmd: vk::CommandBuffer,
     image: vk::Image,
     from: vk::ImageLayout,
     to: vk::ImageLayout,
 ) {
+    use vk::AccessFlags2 as A;
+    use vk::PipelineStageFlags2 as S;
+
     let (src_stage, src_access, dst_stage, dst_access) = match (from, to) {
         (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) => (
-            vk::PipelineStageFlags2::TOP_OF_PIPE,
-            vk::AccessFlags2::empty(),
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+            S::TOP_OF_PIPE,
+            A::empty(),
+            S::COLOR_ATTACHMENT_OUTPUT,
+            A::COLOR_ATTACHMENT_WRITE,
         ),
         (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::PRESENT_SRC_KHR) => (
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
-            vk::AccessFlags2::empty(),
+            S::COLOR_ATTACHMENT_OUTPUT,
+            A::COLOR_ATTACHMENT_WRITE,
+            S::BOTTOM_OF_PIPE,
+            A::empty(),
         ),
-        _ => panic!(
-            "post_process transition: неизвестная пара {:?} → {:?}",
-            from, to
-        ),
+        other => panic!("post_process transition: неизвестная пара {:?}", other),
     };
 
     let barrier = vk::ImageMemoryBarrier2::default()

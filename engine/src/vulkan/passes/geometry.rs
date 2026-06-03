@@ -1,9 +1,9 @@
 use crate::assets::shader_registry::ShaderHandle;
-use crate::assets::{AssetServer, GpuMesh};
+use crate::assets::AssetServer;
+use crate::assets::GpuMesh;
 use crate::ecs::components::{MaterialHandle, Transform};
+use crate::render_graph::resource::TransientImage;
 use crate::vulkan::pipeline::pipeline::PipelineDesc;
-use crate::vulkan::resources::depth::DepthBuffer;
-use crate::vulkan::resources::gbuffer::GBuffer;
 use crate::vulkan::Pipeline;
 use ash::vk;
 use glam::Mat4;
@@ -44,10 +44,8 @@ impl GeometryPass {
             material_layout,
             color_formats,
         };
-
         let default = assets.shaders.diffuse();
         pass.get_or_create_pipeline(device, default, &mut assets.shaders)?;
-
         Ok(pass)
     }
 
@@ -60,21 +58,16 @@ impl GeometryPass {
         if self.pipelines.contains_key(&shader) {
             return Ok(&self.pipelines[&shader]);
         }
-
         log::info!("Создаём pipeline для шейдера {:?}", shader);
-
         let (vert_spv, frag_spv) = registry.load_spv(shader)?;
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.to_vec();
-
         let set_layouts = [self.bindless_layout, self.material_layout];
-
         let pipeline = Pipeline::new(
             device,
             &PipelineDesc::standard(&vert_spv, &frag_spv, &self.color_formats),
             &set_layouts,
         )?;
-
         self.pipelines.insert(shader, pipeline);
         Ok(&self.pipelines[&shader])
     }
@@ -83,42 +76,20 @@ impl GeometryPass {
         &mut self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,
-        gbuffer: &GBuffer,
-        depth: &DepthBuffer,
+        albedo: &TransientImage,
+        normal: &TransientImage,
+        depth: &TransientImage,
         clear_color: [f32; 4],
         view_proj: Mat4,
         draw_calls: &[DrawCall<'_>],
         assets: &AssetServer,
     ) {
-        unsafe {
-            transition(
-                device,
-                cmd,
-                gbuffer.albedo,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                vk::ImageAspectFlags::COLOR,
-            );
-            transition(
-                device,
-                cmd,
-                gbuffer.normal,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                vk::ImageAspectFlags::COLOR,
-            );
-            transition(
-                device,
-                cmd,
-                depth.image,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
-                vk::ImageAspectFlags::DEPTH,
-            );
+        let extent = albedo.extent;
 
+        unsafe {
             let color_attachments = [
                 vk::RenderingAttachmentInfo::default()
-                    .image_view(gbuffer.albedo_view)
+                    .image_view(albedo.view)
                     .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                     .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::STORE)
@@ -128,14 +99,12 @@ impl GeometryPass {
                         },
                     }),
                 vk::RenderingAttachmentInfo::default()
-                    .image_view(gbuffer.normal_view)
+                    .image_view(normal.view)
                     .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                     .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::STORE)
                     .clear_value(vk::ClearValue {
-                        color: vk::ClearColorValue {
-                            float32: [0.0, 0.0, 0.0, 0.0],
-                        },
+                        color: vk::ClearColorValue { float32: [0.0; 4] },
                     }),
             ];
 
@@ -156,7 +125,7 @@ impl GeometryPass {
                 &vk::RenderingInfo::default()
                     .render_area(vk::Rect2D {
                         offset: vk::Offset2D { x: 0, y: 0 },
-                        extent: gbuffer.extent,
+                        extent,
                     })
                     .layer_count(1)
                     .color_attachments(&color_attachments)
@@ -169,8 +138,8 @@ impl GeometryPass {
                 &[vk::Viewport {
                     x: 0.0,
                     y: 0.0,
-                    width: gbuffer.extent.width as f32,
-                    height: gbuffer.extent.height as f32,
+                    width: extent.width as f32,
+                    height: extent.height as f32,
                     min_depth: 0.0,
                     max_depth: 1.0,
                 }],
@@ -180,33 +149,29 @@ impl GeometryPass {
                 0,
                 &[vk::Rect2D {
                     offset: vk::Offset2D { x: 0, y: 0 },
-                    extent: gbuffer.extent,
+                    extent,
                 }],
             );
 
-            let mut sorted: Vec<(usize, &DrawCall)> = draw_calls.iter().enumerate().collect();
+            let mut sorted: Vec<&DrawCall> = draw_calls.iter().collect();
             {
                 puffin::profile_scope!("sort_draw_calls");
-                sorted.sort_by_key(|(_, dc)| dc.shader.0);
+                sorted.sort_by_key(|dc| dc.shader.0);
             }
 
             let mut current_shader: Option<ShaderHandle> = None;
-            let mut current_layout: vk::PipelineLayout = vk::PipelineLayout::null();
+            let mut current_layout = vk::PipelineLayout::null();
 
-            for (_i, dc) in &sorted {
+            for dc in &sorted {
                 puffin::profile_scope!("draw_call");
                 if current_shader != Some(dc.shader) {
-                    let pipeline = match self.get_or_create_pipeline_inner(dc.shader) {
+                    let pipeline = match self.pipelines.get(&dc.shader) {
                         Some(p) => p,
                         None => {
-                            log::warn!(
-                                "Pipeline для шейдера {:?} не найден, пропускаем",
-                                dc.shader
-                            );
+                            log::warn!("Pipeline для шейдера {:?} не найден", dc.shader);
                             continue;
                         }
                     };
-
                     device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline.handle);
                     device.cmd_bind_descriptor_sets(
                         cmd,
@@ -216,19 +181,16 @@ impl GeometryPass {
                         &[assets.bindless.set, assets.material_buffer_set()],
                         &[],
                     );
-
                     current_shader = Some(dc.shader);
                     current_layout = pipeline.layout;
                 }
 
                 let model = dc.transform.matrix();
                 let mvp = view_proj * model;
-                let material_id = dc.material.map(|m| m.0).unwrap_or(0);
-
                 let pc = MeshPushConstants {
                     mvp: mvp.to_cols_array_2d(),
                     model: model.to_cols_array_2d(),
-                    material_id,
+                    material_id: dc.material.map(|m| m.0).unwrap_or(0),
                 };
                 let pc_bytes = std::slice::from_raw_parts(
                     &pc as *const MeshPushConstants as *const u8,
@@ -241,7 +203,6 @@ impl GeometryPass {
                     0,
                     pc_bytes,
                 );
-
                 device.cmd_bind_vertex_buffers(cmd, 0, &[dc.gpu_mesh.vertex_buffer], &[0]);
                 device.cmd_bind_index_buffer(
                     cmd,
@@ -253,96 +214,6 @@ impl GeometryPass {
             }
 
             device.cmd_end_rendering(cmd);
-
-            transition(
-                device,
-                cmd,
-                gbuffer.albedo,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                vk::ImageAspectFlags::COLOR,
-            );
-            transition(
-                device,
-                cmd,
-                gbuffer.normal,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                vk::ImageAspectFlags::COLOR,
-            );
-            transition(
-                device,
-                cmd,
-                depth.image,
-                vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
-                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                vk::ImageAspectFlags::DEPTH,
-            );
         }
-    }
-
-    fn get_or_create_pipeline_inner(&self, shader: ShaderHandle) -> Option<&Pipeline> {
-        self.pipelines.get(&shader)
-    }
-}
-
-fn transition(
-    device: &ash::Device,
-    cmd: vk::CommandBuffer,
-    image: vk::Image,
-    from: vk::ImageLayout,
-    to: vk::ImageLayout,
-    aspect: vk::ImageAspectFlags,
-) {
-    let (src_stage, src_access, dst_stage, dst_access) = match (from, to) {
-        (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) => (
-            vk::PipelineStageFlags2::TOP_OF_PIPE,
-            vk::AccessFlags2::empty(),
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-        ),
-        (vk::ImageLayout::UNDEFINED, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL) => (
-            vk::PipelineStageFlags2::TOP_OF_PIPE,
-            vk::AccessFlags2::empty(),
-            vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS,
-            vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ
-                | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
-        ),
-        (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            vk::PipelineStageFlags2::FRAGMENT_SHADER,
-            vk::AccessFlags2::SHADER_READ,
-        ),
-        (vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
-            vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
-            vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
-            vk::PipelineStageFlags2::FRAGMENT_SHADER,
-            vk::AccessFlags2::SHADER_READ,
-        ),
-        _ => panic!("transition: неизвестная пара {:?} → {:?}", from, to),
-    };
-
-    let barrier = vk::ImageMemoryBarrier2::default()
-        .src_stage_mask(src_stage)
-        .src_access_mask(src_access)
-        .dst_stage_mask(dst_stage)
-        .dst_access_mask(dst_access)
-        .old_layout(from)
-        .new_layout(to)
-        .image(image)
-        .subresource_range(vk::ImageSubresourceRange {
-            aspect_mask: aspect,
-            base_mip_level: 0,
-            level_count: 1,
-            base_array_layer: 0,
-            layer_count: 1,
-        });
-
-    unsafe {
-        device.cmd_pipeline_barrier2(
-            cmd,
-            &vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&barrier)),
-        );
     }
 }

@@ -6,6 +6,7 @@ pub mod egui_layer;
 pub mod ffi;
 pub mod lighting;
 pub mod math;
+pub mod render_graph;
 pub mod vulkan;
 
 pub use app::{App, Engine, EngineContext};

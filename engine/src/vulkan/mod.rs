@@ -1,4 +1,5 @@
 pub mod core;
+pub mod frame_ctx;
 mod passes;
 pub mod pipeline;
 pub mod renderer;

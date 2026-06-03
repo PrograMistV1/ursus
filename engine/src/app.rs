@@ -1,11 +1,9 @@
 use crate::assets::AssetServer;
 use crate::debug_ui::{self, DebugUiState};
-use crate::ecs::systems::collect_draw_calls;
 use crate::ecs::GameWorld;
 use crate::egui_layer::EguiLayer;
-use crate::lighting::{compute_light_view_proj, LightingUbo};
-use crate::math::frustum::{extract_planes, transform_aabb};
-use crate::vulkan::{Camera, DrawCall, Renderer, VulkanContext};
+use crate::lighting::LightingUbo;
+use crate::vulkan::{Camera, Renderer, VulkanContext};
 
 use winit::{
     application::ApplicationHandler,
@@ -27,8 +25,8 @@ pub struct EngineContext {
     pub renderer: Renderer,
     pub vk: VulkanContext,
     pub camera: Camera,
-    temp_pool: ash::vk::CommandPool,
     pub lighting: LightingUbo,
+    temp_pool: ash::vk::CommandPool,
 }
 
 impl EngineContext {
@@ -51,85 +49,28 @@ impl EngineContext {
             renderer,
             vk,
             camera: Camera::default(),
-            temp_pool,
             lighting: LightingUbo::default(),
+            temp_pool,
         })
     }
 
-    pub fn render_world(
+    pub fn render_frame(
         &mut self,
-        clear_color: [f32; 4],
         window: &Window,
         egui: &mut EguiLayer,
         egui_output: egui::FullOutput,
+        clear_color: [f32; 4],
     ) -> anyhow::Result<bool> {
-        let ecs_calls = collect_draw_calls(&mut self.world, &self.assets);
-
-        let swapchain = self.vk.swapchain.as_ref().unwrap();
-        let aspect = swapchain.extent.width as f32 / swapchain.extent.height as f32;
-        let view_proj = self.camera.view_proj(aspect);
-        let frustum_planes = extract_planes(view_proj);
-
-        let device = self.vk.device.handle.clone();
-        for dc in &ecs_calls {
-            self.renderer.geometry.get_or_create_pipeline(
-                &device,
-                dc.shader,
-                &mut self.assets.shaders,
-            )?;
-        }
-
-        let gpu_calls: Vec<DrawCall<'_>> = ecs_calls
-            .iter()
-            .filter_map(|dc| {
-                let gpu = self.assets.get_gpu_mesh(dc.mesh)?;
-                let model = dc.transform.matrix();
-                let world_aabb = transform_aabb(&gpu.aabb, model);
-                if !world_aabb.intersects_frustum(&frustum_planes) {
-                    return None;
-                }
-                Some(DrawCall {
-                    gpu_mesh: gpu,
-                    transform: &dc.transform,
-                    material: dc.material,
-                    shader: dc.shader,
-                })
-            })
-            .collect();
-
-        let shadow_calls: Vec<DrawCall<'_>> = ecs_calls
-            .iter()
-            .filter_map(|dc| {
-                let gpu = self.assets.get_gpu_mesh(dc.mesh)?;
-                Some(DrawCall {
-                    gpu_mesh: gpu,
-                    transform: &dc.transform,
-                    material: dc.material,
-                    shader: dc.shader,
-                })
-            })
-            .collect();
-
-        let light_view_proj = compute_light_view_proj(
-            self.lighting.directional.direction[0..3].try_into()?,
-            glam::Vec3::new(0.0, 2.0, 0.0),
-            20.0,
-        );
-
-        self.lighting.light_space_matrix = light_view_proj.to_cols_array_2d();
-        self.renderer.lighting.upload_lights(&self.lighting);
-
         self.renderer.draw_frame(
             &self.vk,
-            clear_color,
-            &self.camera,
-            &gpu_calls,
-            &shadow_calls,
+            &mut self.world,
             &self.assets,
-            window,
+            &self.camera,
+            &self.lighting,
             egui,
             egui_output,
-            light_view_proj,
+            window,
+            clear_color,
         )
     }
 }
@@ -169,14 +110,14 @@ impl Engine {
 
 struct RunningState {
     window: Window,
+    ctx: EngineContext,
+    egui: EguiLayer,
+    debug: DebugUiState,
     last: std::time::Instant,
     fps_timer: std::time::Instant,
     fps_frames: u32,
     fps_current: f32,
     tick_accumulator: f32,
-    debug: DebugUiState,
-    egui: EguiLayer,
-    ctx: EngineContext,
 }
 
 const TICK_RATE: f32 = 1.0 / 60.0;
@@ -230,13 +171,13 @@ impl ApplicationHandler for EngineHandler {
         self.state = Some(RunningState {
             window,
             ctx,
+            egui,
+            debug: DebugUiState::default(),
             last: std::time::Instant::now(),
             fps_timer: std::time::Instant::now(),
             fps_frames: 0,
             fps_current: 0.0,
             tick_accumulator: 0.0,
-            egui,
-            debug: DebugUiState::default(),
         });
     }
 
@@ -256,20 +197,20 @@ impl ApplicationHandler for EngineHandler {
         match event {
             WindowEvent::CloseRequested => {
                 self.app.on_stop(&mut state.ctx);
-                unsafe {
-                    state.ctx.vk.device.handle.device_wait_idle().ok();
-                }
+                unsafe { state.ctx.vk.device.handle.device_wait_idle().ok() };
                 self.state = None;
                 event_loop.exit();
             }
+
             WindowEvent::Resized(size) => {
                 if size.width == 0 || size.height == 0 {
                     return;
                 }
-                /*if let Err(e) = handle_resize(state, size.width, size.height, state.debug.vsync) {
+                if let Err(e) = handle_resize(state, size.width, size.height) {
                     log::error!("Resize failed: {e}");
-                }*/
+                }
             }
+
             WindowEvent::RedrawRequested => {
                 puffin::GlobalProfiler::lock().new_frame();
 
@@ -295,57 +236,49 @@ impl ApplicationHandler for EngineHandler {
                     }
                 }
 
-                let full_output = {
+                let egui_output = {
                     puffin::profile_scope!("egui_build");
-                    let raw_input = state.egui.begin_frame(&state.window);
-                    state.egui.ctx.run(raw_input, |ctx| {
-                        let entity_count = state.ctx.world.entity_count();
-                        debug_ui::draw(ctx, &mut state.debug, state.fps_current, entity_count);
+                    let raw = state.egui.begin_frame(&state.window);
+                    state.egui.ctx.run(raw, |ctx| {
+                        debug_ui::draw(
+                            ctx,
+                            &mut state.debug,
+                            state.fps_current,
+                            state.ctx.world.entity_count(),
+                        );
                     })
                 };
                 puffin::set_scopes_on(state.debug.show_profiler);
 
-                {
-                    let pp = &mut state.ctx.renderer.post_process;
-                    pp.exposure = state.debug.exposure;
-                    pp.fxaa_enabled = state.debug.fxaa_enabled;
-                }
+                state.ctx.renderer.exposure = state.debug.exposure;
+                state.ctx.renderer.fxaa_enabled = state.debug.fxaa_enabled;
 
                 self.app.on_render(&mut state.ctx);
 
-                {
-                    puffin::profile_scope!("render_world");
-                    let needs_recreate = state
+                let needs_recreate = {
+                    puffin::profile_scope!("render_frame");
+                    state
                         .ctx
-                        .render_world(
-                            [0.0, 0.0, 0.0, 1.0],
+                        .render_frame(
                             &state.window,
                             &mut state.egui,
-                            full_output,
+                            egui_output,
+                            [0.0, 0.0, 0.0, 1.0],
                         )
-                        .expect("render failed");
+                        .expect("render failed")
+                };
 
-                    if needs_recreate {
-                        let size = state.window.inner_size();
-                        if let Err(e) =
-                            handle_resize(state, size.width, size.height, state.debug.vsync)
-                        {
-                            log::error!("Swapchain recreate failed: {e}");
-                        }
-                    }
-                }
-
-                if state.debug.swapchain_dirty {
+                if needs_recreate || state.debug.swapchain_dirty {
                     state.debug.swapchain_dirty = false;
                     let size = state.window.inner_size();
-                    if let Err(e) = handle_resize(state, size.width, size.height, state.debug.vsync)
-                    {
-                        log::error!("VSync toggle failed: {e}");
+                    if let Err(e) = handle_resize(state, size.width, size.height) {
+                        log::error!("Swapchain recreate failed: {e}");
                     }
                 }
 
                 state.window.request_redraw();
             }
+
             _ => {}
         }
     }
@@ -364,14 +297,15 @@ fn create_temp_pool(vk: &VulkanContext) -> anyhow::Result<ash::vk::CommandPool> 
     Ok(pool)
 }
 
-fn handle_resize(
-    state: &mut RunningState,
-    width: u32,
-    height: u32,
-    vsync: bool,
-) -> anyhow::Result<()> {
+fn handle_resize(state: &mut RunningState, width: u32, height: u32) -> anyhow::Result<()> {
     unsafe { state.ctx.vk.device.handle.device_wait_idle()? };
-    state.ctx.vk.recreate_swapchain(width, height, vsync)?;
-    state.ctx.renderer.resize(&state.ctx.vk)?;
+
+    state
+        .ctx
+        .vk
+        .recreate_swapchain(width, height, state.debug.vsync)?;
+
+    state.ctx.renderer.resize_output(width, height)?;
+
     Ok(())
 }

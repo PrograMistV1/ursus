@@ -1,7 +1,6 @@
 use crate::lighting::buffer::LightBuffer;
-use crate::vulkan::resources::depth::DepthBuffer;
-use crate::vulkan::resources::gbuffer::GBuffer;
-use crate::vulkan::resources::render_target::RenderTarget;
+use crate::render_graph::resource::TransientImage;
+use crate::vulkan::Camera;
 use ash::vk;
 
 #[repr(C)]
@@ -19,6 +18,7 @@ pub struct LightingPass {
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_set: vk::DescriptorSet,
     pub sampler: vk::Sampler,
+    pub shadow_sampler: vk::Sampler,
     pub light_buffer: LightBuffer,
     device: ash::Device,
 }
@@ -28,8 +28,6 @@ impl LightingPass {
         device: &ash::Device,
         physical_device: vk::PhysicalDevice,
         instance: &ash::Instance,
-        gbuffer: &GBuffer,
-        depth: &DepthBuffer,
         hdr_format: vk::Format,
     ) -> anyhow::Result<Self> {
         let light_buffer = LightBuffer::new(device, physical_device, instance)?;
@@ -45,22 +43,32 @@ impl LightingPass {
             )?
         };
 
-        // binding 0,1,2 = gbuffer samplers; binding 3 = light UBO
+        let shadow_sampler = unsafe {
+            device.create_sampler(
+                &vk::SamplerCreateInfo::default()
+                    .mag_filter(vk::Filter::LINEAR)
+                    .min_filter(vk::Filter::LINEAR)
+                    .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_BORDER)
+                    .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_BORDER)
+                    .border_color(vk::BorderColor::FLOAT_OPAQUE_WHITE)
+                    .compare_enable(true)
+                    .compare_op(vk::CompareOp::LESS_OR_EQUAL),
+                None,
+            )?
+        };
+
         let bindings = [
-            make_image_binding(0),
-            make_image_binding(1),
-            make_image_binding(2),
+            make_image_binding(0), // albedo
+            make_image_binding(1), // normal
+            make_image_binding(2), // depth
             vk::DescriptorSetLayoutBinding::default()
                 .binding(3)
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                 .descriptor_count(1)
                 .stage_flags(vk::ShaderStageFlags::FRAGMENT),
-            vk::DescriptorSetLayoutBinding::default()
-                .binding(4)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT),
+            make_image_binding(4), // shadow map
         ];
+
         let descriptor_set_layout = unsafe {
             device.create_descriptor_set_layout(
                 &vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings),
@@ -95,33 +103,23 @@ impl LightingPass {
             )?[0]
         };
 
-        // пишем gbuffer images
-        let albedo_info = image_info(sampler, gbuffer.albedo_view);
-        let normal_info = image_info(sampler, gbuffer.normal_view);
-        let depth_info = image_info(sampler, depth.view);
-
-        // пишем UBO
         let buf_info = vk::DescriptorBufferInfo::default()
             .buffer(light_buffer.buffer)
             .offset(0)
             .range(size_of::<crate::lighting::buffer::LightingUbo>() as vk::DeviceSize);
 
-        let writes = [
-            make_image_write(descriptor_set, 0, &albedo_info),
-            make_image_write(descriptor_set, 1, &normal_info),
-            make_image_write(descriptor_set, 2, &depth_info),
-            vk::WriteDescriptorSet::default()
-                .dst_set(descriptor_set)
-                .dst_binding(3)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(std::slice::from_ref(&buf_info)),
-        ];
-        unsafe { device.update_descriptor_sets(&writes, &[]) };
+        let ubo_write = vk::WriteDescriptorSet::default()
+            .dst_set(descriptor_set)
+            .dst_binding(3)
+            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+            .buffer_info(std::slice::from_ref(&buf_info));
+
+        unsafe { device.update_descriptor_sets(&[ubo_write], &[]) };
 
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .offset(0)
-            .size(std::mem::size_of::<LightingPC>() as u32);
+            .size(size_of::<LightingPC>() as u32);
 
         let layout = unsafe {
             device.create_pipeline_layout(
@@ -151,6 +149,7 @@ impl LightingPass {
             descriptor_set_layout,
             descriptor_set,
             sampler,
+            shadow_sampler,
             light_buffer,
             device: device.clone(),
         })
@@ -164,21 +163,14 @@ impl LightingPass {
         &self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,
-        hdr_target: &RenderTarget,
-        camera: &crate::vulkan::Camera,
-        extent: vk::Extent2D,
+        hdr: &TransientImage,
+        camera: &Camera,
     ) {
-        unsafe {
-            transition_color(
-                device,
-                cmd,
-                hdr_target.image,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            );
+        let extent = hdr.extent;
 
+        unsafe {
             let color_attachment = vk::RenderingAttachmentInfo::default()
-                .image_view(hdr_target.view)
+                .image_view(hdr.view)
                 .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                 .load_op(vk::AttachmentLoadOp::DONT_CARE)
                 .store_op(vk::AttachmentStoreOp::STORE);
@@ -239,7 +231,7 @@ impl LightingPass {
             };
             let pc_bytes = std::slice::from_raw_parts(
                 &pc as *const LightingPC as *const u8,
-                std::mem::size_of::<LightingPC>(),
+                size_of::<LightingPC>(),
             );
             device.cmd_push_constants(
                 cmd,
@@ -251,37 +243,7 @@ impl LightingPass {
 
             device.cmd_draw(cmd, 3, 1, 0, 0);
             device.cmd_end_rendering(cmd);
-
-            transition_color(
-                device,
-                cmd,
-                hdr_target.image,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            );
         }
-    }
-
-    pub fn bind_shadow_map(
-        &self,
-        shadow_map: &crate::vulkan::resources::shadow_map::ShadowMap,
-        sampler: vk::Sampler,
-    ) {
-        let image_info = vk::DescriptorImageInfo::default()
-            .sampler(sampler)
-            .image_view(shadow_map.view)
-            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-
-        let write = vk::WriteDescriptorSet::default()
-            .dst_set(self.descriptor_set)
-            .dst_binding(4)
-            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .image_info(std::slice::from_ref(&image_info));
-
-        unsafe {
-            self.device
-                .update_descriptor_sets(std::slice::from_ref(&write), &[])
-        };
     }
 }
 
@@ -295,81 +257,17 @@ impl Drop for LightingPass {
             self.device
                 .destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             self.device.destroy_sampler(self.sampler, None);
+            self.device.destroy_sampler(self.shadow_sampler, None);
         }
     }
 }
 
-// helpers
 fn make_image_binding(binding: u32) -> vk::DescriptorSetLayoutBinding<'static> {
     vk::DescriptorSetLayoutBinding::default()
         .binding(binding)
         .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
         .descriptor_count(1)
         .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-}
-
-fn image_info(sampler: vk::Sampler, view: vk::ImageView) -> vk::DescriptorImageInfo {
-    vk::DescriptorImageInfo::default()
-        .sampler(sampler)
-        .image_view(view)
-        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-}
-
-fn make_image_write<'a>(
-    set: vk::DescriptorSet,
-    binding: u32,
-    info: &'a vk::DescriptorImageInfo,
-) -> vk::WriteDescriptorSet<'a> {
-    vk::WriteDescriptorSet::default()
-        .dst_set(set)
-        .dst_binding(binding)
-        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-        .image_info(std::slice::from_ref(info))
-}
-
-fn transition_color(
-    device: &ash::Device,
-    cmd: vk::CommandBuffer,
-    image: vk::Image,
-    from: vk::ImageLayout,
-    to: vk::ImageLayout,
-) {
-    let (src_stage, src_access, dst_stage, dst_access) = match (from, to) {
-        (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) => (
-            vk::PipelineStageFlags2::TOP_OF_PIPE,
-            vk::AccessFlags2::empty(),
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-        ),
-        (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            vk::PipelineStageFlags2::FRAGMENT_SHADER,
-            vk::AccessFlags2::SHADER_READ,
-        ),
-        _ => panic!("lighting transition: неизвестная пара"),
-    };
-    let barrier = vk::ImageMemoryBarrier2::default()
-        .src_stage_mask(src_stage)
-        .src_access_mask(src_access)
-        .dst_stage_mask(dst_stage)
-        .dst_access_mask(dst_access)
-        .old_layout(from)
-        .new_layout(to)
-        .image(image)
-        .subresource_range(vk::ImageSubresourceRange {
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            base_mip_level: 0,
-            level_count: 1,
-            base_array_layer: 0,
-            layer_count: 1,
-        });
-    unsafe {
-        device.cmd_pipeline_barrier2(
-            cmd,
-            &vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&barrier)),
-        );
-    }
 }
 
 fn build_fullscreen_pipeline(
