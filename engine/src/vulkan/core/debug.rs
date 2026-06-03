@@ -1,8 +1,9 @@
 use crate::vulkan::Instance;
+use ash::ext::debug_utils;
 use ash::vk;
 
 pub struct DebugMessenger {
-    loader: ash::ext::debug_utils::Instance,
+    loader: debug_utils::Instance,
     handle: vk::DebugUtilsMessengerEXT,
 }
 
@@ -33,6 +34,28 @@ impl Drop for DebugMessenger {
     fn drop(&mut self) {
         unsafe { self.loader.destroy_debug_utils_messenger(self.handle, None) };
     }
+}
+
+pub fn cmd_begin_label(debug_utils: &debug_utils::Device, cmd: vk::CommandBuffer, name: &str) {
+    let name = std::ffi::CString::new(name).unwrap();
+    let label = vk::DebugUtilsLabelEXT::default().label_name(&name);
+    unsafe { debug_utils.cmd_begin_debug_utils_label(cmd, &label) };
+}
+
+pub fn cmd_end_label(debug_utils: &debug_utils::Device, cmd: vk::CommandBuffer) {
+    unsafe { debug_utils.cmd_end_debug_utils_label(cmd) };
+}
+
+pub fn set_object_name(
+    debug_utils: &ash::ext::debug_utils::Device,
+    object: impl vk::Handle,
+    name: &str,
+) {
+    let name = std::ffi::CString::new(name).unwrap();
+    let info = vk::DebugUtilsObjectNameInfoEXT::default()
+        .object_handle(object)
+        .object_name(&name);
+    unsafe { debug_utils.set_debug_utils_object_name(&info).ok() };
 }
 
 unsafe extern "system" fn debug_callback(

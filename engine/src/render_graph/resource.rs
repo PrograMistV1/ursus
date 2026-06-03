@@ -1,6 +1,9 @@
+use crate::vulkan::core::debug::set_object_name;
 use crate::vulkan::core::memory::find_memory_type;
+use ash::ext::debug_utils;
 use ash::vk;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ResourceHandle(pub(crate) u32);
@@ -191,6 +194,8 @@ pub struct ResourcePool {
     device: ash::Device,
     physical_device: vk::PhysicalDevice,
     instance: ash::Instance,
+
+    debug_utils: Option<Arc<debug_utils::Device>>,
 }
 
 impl ResourcePool {
@@ -198,6 +203,7 @@ impl ResourcePool {
         device: ash::Device,
         physical_device: vk::PhysicalDevice,
         instance: ash::Instance,
+        debug_utils: Option<Arc<debug_utils::Device>>,
     ) -> Self {
         Self {
             descs: Vec::new(),
@@ -205,6 +211,7 @@ impl ResourcePool {
             device,
             physical_device,
             instance,
+            debug_utils,
         }
     }
 
@@ -231,6 +238,19 @@ impl ResourcePool {
                     w,
                     h,
                 )?);
+                if let Some(du) = &self.debug_utils {
+                    let img = self.images[i].as_ref().unwrap();
+                    set_object_name(du, img.image, &desc.name);
+                    log::info!(
+                        "ResourcePool: выделен ресурс '{}' ({}x{}, {:?})",
+                        desc.name,
+                        w,
+                        h,
+                        desc.format
+                    );
+                    set_object_name(du, img.view, &format!("{}_view", desc.name));
+                    set_object_name(du, img.memory, &format!("{}_memory", desc.name));
+                }
             }
         }
         Ok(())

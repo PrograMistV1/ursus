@@ -18,17 +18,18 @@ pub use resources::texture::GpuTexture;
 pub use passes::geometry::DrawCall;
 pub use renderer::Camera;
 
+use ash::ext::debug_utils;
 use ash::vk;
-use std::sync::Arc;
-
 pub use resources::depth::DepthBuffer;
 pub use resources::render_target::RenderTarget;
+use std::sync::Arc;
 
 pub struct VulkanContext {
     pub swapchain: Option<Swapchain>,
     pub device: Arc<Device>,
     pub surface: vk::SurfaceKHR,
     _debug: Option<DebugMessenger>,
+    pub debug_utils: Option<Arc<debug_utils::Device>>,
     pub instance: Arc<Instance>,
 }
 
@@ -56,8 +57,18 @@ impl VulkanContext {
         let swapchain =
             Swapchain::new(&instance, &device, surface, size.width, size.height, false)?;
 
+        let debug_utils = if validation {
+            Some(Arc::new(debug_utils::Device::new(
+                &instance.handle,
+                &device.handle,
+            )))
+        } else {
+            None
+        };
+
         Ok(Self {
             swapchain: Some(swapchain),
+            debug_utils,
             device,
             surface,
             _debug: debug,

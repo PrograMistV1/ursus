@@ -2,8 +2,11 @@ use crate::render_graph::resource::{
     DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, LayoutTracker,
     ResourceHandle, ResourcePool,
 };
+use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
+use ash::ext::debug_utils;
 use ash::vk;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccessType {
@@ -85,6 +88,7 @@ pub struct RenderGraph {
     sorted_order: Vec<usize>,
     tracker: LayoutTracker,
     bindings: DescriptorBindingRegistry,
+    debug_utils: Option<Arc<debug_utils::Device>>,
 
     internal_resolution: (u32, u32),
     output_resolution: (u32, u32),
@@ -98,6 +102,7 @@ impl RenderGraph {
         device: ash::Device,
         internal_resolution: (u32, u32),
         output_resolution: (u32, u32),
+        debug_utils: Option<Arc<debug_utils::Device>>,
     ) -> Self {
         Self {
             bindings: DescriptorBindingRegistry::new(device),
@@ -108,6 +113,7 @@ impl RenderGraph {
             internal_resolution,
             output_resolution,
             compiled: false,
+            debug_utils,
         }
     }
 
@@ -230,6 +236,10 @@ impl RenderGraph {
                 continue;
             }
 
+            if let Some(du) = &self.debug_utils {
+                cmd_begin_label(du, cmd, &node.name);
+            }
+
             let transitions: Vec<(ResourceHandle, vk::ImageLayout)> =
                 node.accesses.iter().map(|a| (a.handle, a.layout)).collect();
 
@@ -238,6 +248,10 @@ impl RenderGraph {
 
             let node = &mut self.nodes[idx];
             (node.record)(cmd, &self.pool, ctx)?;
+
+            if let Some(du) = &self.debug_utils {
+                cmd_end_label(du, cmd);
+            }
         }
 
         Ok(())

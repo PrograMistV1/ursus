@@ -90,9 +90,16 @@ impl Renderer {
             ctx.device.handle.clone(),
             ctx.device.physical,
             ctx.instance.handle.clone(),
+            ctx.debug_utils.clone(),
         );
 
-        let mut graph = RenderGraph::new(pool, ctx.device.handle.clone(), internal, output);
+        let mut graph = RenderGraph::new(
+            pool,
+            ctx.device.handle.clone(),
+            internal,
+            output,
+            ctx.debug_utils.clone(),
+        );
 
         let h = Handles {
             shadow_map: graph.pool.register(ResourceDesc::depth(
