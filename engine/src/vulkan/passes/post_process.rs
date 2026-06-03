@@ -156,27 +156,18 @@ impl PostProcessPass {
         })
     }
 
-    pub fn record(
+    pub fn record_to_target(
         &self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,
-        swapchain_image: vk::Image,
-        swapchain_view: vk::ImageView,
-        extent: vk::Extent2D,
+        target: &crate::render_graph::resource::TransientImage,
         exposure: f32,
-        fxaa_enabled: bool,
     ) {
-        unsafe {
-            transition_swapchain(
-                device,
-                cmd,
-                swapchain_image,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            );
+        let extent = target.extent;
 
+        unsafe {
             let color_attachment = vk::RenderingAttachmentInfo::default()
-                .image_view(swapchain_view)
+                .image_view(target.view)
                 .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                 .load_op(vk::AttachmentLoadOp::DONT_CARE)
                 .store_op(vk::AttachmentStoreOp::STORE);
@@ -226,7 +217,7 @@ impl PostProcessPass {
             let pc = PostProcessPC {
                 texel_size: [1.0 / extent.width as f32, 1.0 / extent.height as f32],
                 exposure,
-                flags: if fxaa_enabled { 1 } else { 0 },
+                flags: 0,
             };
             let pc_bytes = std::slice::from_raw_parts(
                 &pc as *const PostProcessPC as *const u8,
@@ -242,14 +233,6 @@ impl PostProcessPass {
 
             device.cmd_draw(cmd, 3, 1, 0, 0);
             device.cmd_end_rendering(cmd);
-
-            transition_swapchain(
-                device,
-                cmd,
-                swapchain_image,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                vk::ImageLayout::PRESENT_SRC_KHR,
-            );
         }
     }
 }
@@ -265,55 +248,5 @@ impl Drop for PostProcessPass {
                 .destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             self.device.destroy_sampler(self.sampler, None);
         }
-    }
-}
-
-fn transition_swapchain(
-    device: &ash::Device,
-    cmd: vk::CommandBuffer,
-    image: vk::Image,
-    from: vk::ImageLayout,
-    to: vk::ImageLayout,
-) {
-    use vk::AccessFlags2 as A;
-    use vk::PipelineStageFlags2 as S;
-
-    let (src_stage, src_access, dst_stage, dst_access) = match (from, to) {
-        (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) => (
-            S::TOP_OF_PIPE,
-            A::empty(),
-            S::COLOR_ATTACHMENT_OUTPUT,
-            A::COLOR_ATTACHMENT_WRITE,
-        ),
-        (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::PRESENT_SRC_KHR) => (
-            S::COLOR_ATTACHMENT_OUTPUT,
-            A::COLOR_ATTACHMENT_WRITE,
-            S::BOTTOM_OF_PIPE,
-            A::empty(),
-        ),
-        other => panic!("post_process transition: неизвестная пара {:?}", other),
-    };
-
-    let barrier = vk::ImageMemoryBarrier2::default()
-        .src_stage_mask(src_stage)
-        .src_access_mask(src_access)
-        .dst_stage_mask(dst_stage)
-        .dst_access_mask(dst_access)
-        .old_layout(from)
-        .new_layout(to)
-        .image(image)
-        .subresource_range(vk::ImageSubresourceRange {
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            base_mip_level: 0,
-            level_count: 1,
-            base_array_layer: 0,
-            layer_count: 1,
-        });
-
-    unsafe {
-        device.cmd_pipeline_barrier2(
-            cmd,
-            &vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&barrier)),
-        );
     }
 }

@@ -110,8 +110,8 @@ impl Engine {
 
 struct RunningState {
     window: Window,
-    ctx: EngineContext,
     egui: EguiLayer,
+    ctx: EngineContext,
     debug: DebugUiState,
     last: std::time::Instant,
     fps_timer: std::time::Instant,
@@ -170,8 +170,8 @@ impl ApplicationHandler for EngineHandler {
 
         self.state = Some(RunningState {
             window,
-            ctx,
             egui,
+            ctx,
             debug: DebugUiState::default(),
             last: std::time::Instant::now(),
             fps_timer: std::time::Instant::now(),
@@ -196,8 +196,12 @@ impl ApplicationHandler for EngineHandler {
 
         match event {
             WindowEvent::CloseRequested => {
-                self.app.on_stop(&mut state.ctx);
-                unsafe { state.ctx.vk.device.handle.device_wait_idle().ok() };
+                if let Some(state) = &mut self.state {
+                    self.app.on_stop(&mut state.ctx);
+                    unsafe {
+                        state.ctx.vk.device.handle.device_wait_idle().ok();
+                    }
+                }
                 self.state = None;
                 event_loop.exit();
             }
@@ -251,7 +255,6 @@ impl ApplicationHandler for EngineHandler {
                 puffin::set_scopes_on(state.debug.show_profiler);
 
                 state.ctx.renderer.exposure = state.debug.exposure;
-                state.ctx.renderer.fxaa_enabled = state.debug.fxaa_enabled;
 
                 self.app.on_render(&mut state.ctx);
 

@@ -305,6 +305,14 @@ impl ResourcePool {
             .filter(|(_, d)| matches!(d.extent, ResourceExtent::ScaleOutput(_)))
             .map(|(i, _)| ResourceHandle(i as u32))
     }
+
+    pub fn handle_by_name(&self, name: &str) -> ResourceHandle {
+        self.descs
+            .iter()
+            .position(|d| d.name == name)
+            .map(|i| ResourceHandle(i as u32))
+            .expect("resource not found")
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -579,6 +587,24 @@ fn layout_transition_masks(
             A::empty(),
             S::COLOR_ATTACHMENT_OUTPUT,
             A::COLOR_ATTACHMENT_WRITE,
+        ),
+        (L::COLOR_ATTACHMENT_OPTIMAL, L::TRANSFER_SRC_OPTIMAL) => (
+            S::COLOR_ATTACHMENT_OUTPUT,
+            A::COLOR_ATTACHMENT_WRITE,
+            S::TRANSFER,
+            A::TRANSFER_READ,
+        ),
+        (L::SHADER_READ_ONLY_OPTIMAL, L::TRANSFER_SRC_OPTIMAL) => (
+            S::FRAGMENT_SHADER,
+            A::SHADER_READ,
+            S::TRANSFER,
+            A::TRANSFER_READ,
+        ),
+        (L::TRANSFER_SRC_OPTIMAL, L::SHADER_READ_ONLY_OPTIMAL) => (
+            S::TRANSFER,
+            A::TRANSFER_READ,
+            S::FRAGMENT_SHADER,
+            A::SHADER_READ,
         ),
 
         other => panic!(

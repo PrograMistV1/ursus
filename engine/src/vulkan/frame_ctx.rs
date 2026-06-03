@@ -23,8 +23,11 @@ pub struct FrameCtx<'a> {
     pub swapchain_view: vk::ImageView,
     pub swapchain_extent: vk::Extent2D,
 
+    pub internal_resolution: (u32, u32),
+    pub output_resolution: (u32, u32),
+    pub fsr_sharpness: f32,
+
     pub exposure: f32,
-    pub fxaa_enabled: bool,
     pub clear_color: [f32; 4],
 
     pub assets: &'a AssetServer,

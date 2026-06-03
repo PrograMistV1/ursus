@@ -16,6 +16,8 @@ fn compile_shaders() {
         ("shaders/post_process.frag", "post_process.frag.spv"),
         ("shaders/lighting.frag", "lighting.frag.spv"),
         ("shaders/shadow.vert", "shadow.vert.spv"),
+        ("shaders/fsr_easu.frag", "fsr_easu.frag.spv"),
+        ("shaders/fsr_rcas.frag", "fsr_rcas.frag.spv"),
     ];
 
     for (src, dst) in &shaders {
@@ -24,7 +26,7 @@ fn compile_shaders() {
         println!("cargo:rerun-if-changed={src}");
 
         let status = Command::new("glslc")
-            .args([src, "-o", &dst_path])
+            .args([src, "-o", &dst_path, "-I", "shaders"])
             .status()
             .expect("glslc not found — install Vulkan SDK");
 

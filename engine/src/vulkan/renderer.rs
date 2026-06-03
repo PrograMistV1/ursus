@@ -7,6 +7,7 @@ use crate::render_graph::{pass, RenderGraph, ResourceDesc, ResourceExtent, Resou
 use crate::vulkan::core::commands::Commands;
 use crate::vulkan::core::sync::FrameSync;
 use crate::vulkan::frame_ctx::FrameCtx;
+use crate::vulkan::passes::fsr::{compute_easu_con, compute_rcas_con, FsrPass};
 use crate::vulkan::passes::geometry::{DrawCall, GeometryPass};
 use crate::vulkan::passes::lighting::LightingPass;
 use crate::vulkan::passes::post_process::PostProcessPass;
@@ -20,6 +21,8 @@ use glam::{Mat4, Vec3};
 use std::sync::Arc;
 
 const FRAMES_IN_FLIGHT: u32 = 3;
+
+const LDR_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 
 pub struct Camera {
     pub eye: Vec3,
@@ -59,6 +62,9 @@ struct Handles {
     gbuffer_normal: crate::render_graph::ResourceHandle,
     depth: crate::render_graph::ResourceHandle,
     hdr: crate::render_graph::ResourceHandle,
+    ldr: crate::render_graph::ResourceHandle,
+    fsr_easu: crate::render_graph::ResourceHandle,
+    fsr_rcas: crate::render_graph::ResourceHandle,
 }
 
 pub struct Renderer {
@@ -70,14 +76,15 @@ pub struct Renderer {
     device: Arc<Device>,
 
     pub exposure: f32,
-    pub fxaa_enabled: bool,
+    pub fsr_enabled: bool,
+    pub fsr_sharpness: f32,
 }
 
 impl Renderer {
     pub fn new(ctx: &VulkanContext, assets: &mut AssetServer) -> anyhow::Result<Self> {
         let swapchain = ctx.swapchain.as_ref().unwrap();
-        let internal = (swapchain.extent.width, swapchain.extent.height);
-        let output = internal;
+        let output = (swapchain.extent.width, swapchain.extent.height);
+        let internal = (1280, 720);
 
         let pool = ResourcePool::new(
             ctx.device.handle.clone(),
@@ -113,6 +120,20 @@ impl Renderer {
                 vk::Format::R16G16B16A16_SFLOAT,
                 ResourceExtent::ScaleInternal(1.0),
             )),
+            ldr: graph.pool.register(ResourceDesc::color(
+                "ldr",
+                LDR_FORMAT,
+                ResourceExtent::ScaleInternal(1.0),
+            )),
+            fsr_easu: graph.pool.register(ResourceDesc::color(
+                "fsr_easu",
+                LDR_FORMAT,
+                ResourceExtent::ScaleOutput(1.0),
+            )),
+            fsr_rcas: graph.pool.register(
+                ResourceDesc::color("fsr_rcas", LDR_FORMAT, ResourceExtent::ScaleOutput(1.0))
+                    .with_usage(vk::ImageUsageFlags::TRANSFER_SRC),
+            ),
         };
 
         let shadow_pass = ShadowPass::new(&ctx.device.handle)?;
@@ -129,10 +150,12 @@ impl Renderer {
             &ctx.device.handle,
             ctx.device.physical,
             &ctx.instance.handle,
-            vk::Format::R16G16B16A16_SFLOAT, // hdr format
+            vk::Format::R16G16B16A16_SFLOAT,
         )?;
 
-        let post_pass = PostProcessPass::new(&ctx.device.handle, swapchain.format)?;
+        let post_pass = PostProcessPass::new(&ctx.device.handle, LDR_FORMAT)?;
+
+        FsrPass::new(&ctx.device.handle, LDR_FORMAT)?;
 
         pass("shadow")
             .write(h.shadow_map, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
@@ -221,28 +244,164 @@ impl Renderer {
             })
             .build(&mut graph);
 
+        let fsr_pass = Arc::new(FsrPass::new(&ctx.device.handle, LDR_FORMAT)?);
+
+        let fsr_easu_descriptor_set = fsr_pass.easu_descriptor_set;
+        let fsr_rcas_descriptor_set = fsr_pass.rcas_descriptor_set;
+        let fsr_sampler = fsr_pass.sampler;
+
+        let fsr_pass_easu = Arc::clone(&fsr_pass);
+        pass("fsr_easu")
+            .read(h.ldr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .write(h.fsr_easu, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .bind_sampled(h.ldr, fsr_easu_descriptor_set, 0, fsr_sampler)
+            .record({
+                move |cmd, pool, ctx_ptr| {
+                    let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
+                    let dst = pool.image(h.fsr_easu);
+                    let (iw, ih) = ctx.internal_resolution;
+                    let (ow, oh) = ctx.output_resolution;
+                    let pc = compute_easu_con(
+                        (iw as f32, ih as f32),
+                        (iw as f32, ih as f32),
+                        (ow as f32, oh as f32),
+                    );
+                    fsr_pass_easu.record_easu(ctx.device, cmd, dst, &pc);
+                    Ok(())
+                }
+            })
+            .build(&mut graph);
+
+        let fsr_pass_rcas = Arc::clone(&fsr_pass);
+        pass("fsr_rcas")
+            .read(h.fsr_easu, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .write(h.fsr_rcas, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .bind_sampled(h.fsr_easu, fsr_rcas_descriptor_set, 0, fsr_sampler)
+            .record({
+                move |cmd, pool, ctx_ptr| {
+                    let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
+                    let dst = pool.image(h.fsr_rcas);
+                    let pc = compute_rcas_con(ctx.fsr_sharpness);
+                    fsr_pass_rcas.record_rcas(ctx.device, cmd, dst, &pc);
+                    Ok(())
+                }
+            })
+            .build(&mut graph);
+
+        pass("blit_to_swapchain")
+            .read(h.fsr_rcas, vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .record({
+                move |cmd, pool, ctx_ptr| {
+                    let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
+                    let src = pool.image(h.fsr_rcas);
+                    let blit = vk::ImageBlit2::default()
+                        .src_subresource(vk::ImageSubresourceLayers {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            mip_level: 0,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                        })
+                        .src_offsets([
+                            vk::Offset3D::default(),
+                            vk::Offset3D {
+                                x: src.extent.width as i32,
+                                y: src.extent.height as i32,
+                                z: 1,
+                            },
+                        ])
+                        .dst_subresource(vk::ImageSubresourceLayers {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            mip_level: 0,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                        })
+                        .dst_offsets([
+                            vk::Offset3D::default(),
+                            vk::Offset3D {
+                                x: ctx.swapchain_extent.width as i32,
+                                y: ctx.swapchain_extent.height as i32,
+                                z: 1,
+                            },
+                        ]);
+
+                    let barrier = vk::ImageMemoryBarrier2::default()
+                        .src_stage_mask(vk::PipelineStageFlags2::TOP_OF_PIPE)
+                        .src_access_mask(vk::AccessFlags2::empty())
+                        .dst_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+                        .dst_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+                        .old_layout(vk::ImageLayout::UNDEFINED)
+                        .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                        .image(ctx.swapchain_image)
+                        .subresource_range(vk::ImageSubresourceRange {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            base_mip_level: 0,
+                            level_count: 1,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                        });
+                    unsafe {
+                        ctx.device.cmd_pipeline_barrier2(
+                            cmd,
+                            &vk::DependencyInfo::default()
+                                .image_memory_barriers(std::slice::from_ref(&barrier)),
+                        );
+
+                        ctx.device.cmd_blit_image2(
+                            cmd,
+                            &vk::BlitImageInfo2::default()
+                                .src_image(src.image)
+                                .src_image_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+                                .dst_image(ctx.swapchain_image)
+                                .dst_image_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                                .regions(std::slice::from_ref(&blit))
+                                .filter(vk::Filter::LINEAR),
+                        );
+
+                        let barrier = vk::ImageMemoryBarrier2::default()
+                            .src_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+                            .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+                            .dst_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
+                            .dst_access_mask(
+                                vk::AccessFlags2::COLOR_ATTACHMENT_READ
+                                    | vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+                            )
+                            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                            .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                            .image(ctx.swapchain_image)
+                            .subresource_range(vk::ImageSubresourceRange {
+                                aspect_mask: vk::ImageAspectFlags::COLOR,
+                                base_mip_level: 0,
+                                level_count: 1,
+                                base_array_layer: 0,
+                                layer_count: 1,
+                            });
+                        ctx.device.cmd_pipeline_barrier2(
+                            cmd,
+                            &vk::DependencyInfo::default()
+                                .image_memory_barriers(std::slice::from_ref(&barrier)),
+                        );
+                    }
+                    Ok(())
+                }
+            })
+            .build(&mut graph);
+
         pass("post_process")
             .read(h.hdr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .write(h.ldr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .bind_sampled(h.hdr, post_pass.descriptor_set, 0, post_pass.sampler)
             .record({
-                move |cmd, _pool, ctx_ptr| {
+                move |cmd, pool, ctx_ptr| {
                     let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
-                    post_pass.record(
-                        ctx.device,
-                        cmd,
-                        ctx.swapchain_image,
-                        ctx.swapchain_view,
-                        ctx.swapchain_extent,
-                        ctx.exposure,
-                        ctx.fxaa_enabled,
-                    );
+                    let ldr = pool.image(h.ldr);
+                    post_pass.record_to_target(ctx.device, cmd, ldr, ctx.exposure);
                     Ok(())
                 }
             })
             .build(&mut graph);
 
         pass("ui")
-            .read(h.hdr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .read(h.fsr_rcas, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .record({
                 move |cmd, _pool, ctx_ptr| {
                     let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
@@ -292,7 +451,8 @@ impl Renderer {
             swapchain_loader,
             device: ctx.device.clone(),
             exposure: 0.5,
-            fxaa_enabled: true,
+            fsr_enabled: true,
+            fsr_sharpness: 0.2,
         })
     }
 
@@ -320,7 +480,6 @@ impl Renderer {
         let frustum = extract_planes(view_proj);
 
         let ecs_calls = collect_draw_calls(world, assets);
-
         assets.upload_materials();
 
         let draw_calls: Vec<DrawCall> = ecs_calls
@@ -401,6 +560,8 @@ impl Renderer {
             swapchain_image: swapchain.images[image_index as usize],
             swapchain_view: swapchain.image_views[image_index as usize],
             swapchain_extent: swapchain.extent,
+            internal_resolution: self.graph.internal_resolution(),
+            output_resolution: self.graph.output_resolution(),
             assets,
             egui,
             egui_output: Some(egui_output),
@@ -408,7 +569,7 @@ impl Renderer {
             command_pool: self.commands.pool,
             window: window as *const winit::window::Window,
             exposure: self.exposure,
-            fxaa_enabled: self.fxaa_enabled,
+            fsr_sharpness: self.fsr_sharpness,
             clear_color,
         };
 

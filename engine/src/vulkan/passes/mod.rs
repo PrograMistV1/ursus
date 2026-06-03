@@ -1,3 +1,4 @@
+pub mod fsr;
 pub mod geometry;
 pub mod lighting;
 pub mod post_process;

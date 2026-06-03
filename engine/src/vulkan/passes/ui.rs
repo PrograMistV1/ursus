@@ -17,14 +17,6 @@ impl UiPass {
         command_pool: vk::CommandPool,
     ) -> anyhow::Result<()> {
         unsafe {
-            transition_swapchain(
-                device,
-                cmd,
-                swapchain_image,
-                vk::ImageLayout::PRESENT_SRC_KHR,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            );
-
             let color_attachment = vk::RenderingAttachmentInfo::default()
                 .image_view(swapchain_view)
                 .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
