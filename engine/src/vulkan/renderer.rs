@@ -1,28 +1,21 @@
+use crate::app::create_temp_pool;
 use crate::assets::AssetServer;
-use crate::ecs::systems::collect_draw_calls;
 use crate::ecs::GameWorld;
-use crate::lighting::{compute_light_view_proj, LightingUbo};
-use crate::math::frustum::{extract_planes, transform_aabb};
+use crate::egui_layer::EguiLayer;
+use crate::lighting::LightingUbo;
+use crate::pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
+use crate::pipeline::FrameInput;
 use crate::render_graph::resource::ExternalImageDesc;
-use crate::render_graph::{pass, RenderGraph, ResourceDesc, ResourceExtent, ResourcePool};
+use crate::render_graph::{RenderGraph, ResourceKind, ResourcePool};
 use crate::vulkan::core::commands::Commands;
 use crate::vulkan::core::sync::FrameSync;
-use crate::vulkan::frame_ctx::FrameCtx;
-use crate::vulkan::passes::fsr::{compute_easu_con, compute_rcas_con, FsrPass};
-use crate::vulkan::passes::geometry::{DrawCall, GeometryPass};
-use crate::vulkan::passes::lighting::LightingPass;
-use crate::vulkan::passes::post_process::PostProcessPass;
-use crate::vulkan::passes::shadow::{ShadowDrawCall, ShadowPass};
-use crate::vulkan::passes::ui::UiPass;
-use crate::vulkan::resources::gbuffer::GBuffer;
-use crate::vulkan::resources::shadow_map::SHADOW_MAP_SIZE;
-use crate::vulkan::{Device, GpuStage, GpuTimestampPool, VulkanContext};
+use crate::vulkan::timestamps::GpuTimestampPool;
+use crate::vulkan::{Device, VulkanContext};
 use ash::vk;
 use glam::{Mat4, Vec3};
 use std::sync::Arc;
 
 const FRAMES_IN_FLIGHT: u32 = 3;
-const LDR_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 
 pub struct Camera {
     pub eye: Vec3,
@@ -55,59 +48,25 @@ impl Camera {
     }
 }
 
-#[derive(Clone, Copy)]
-struct Handles {
-    shadow_map: crate::render_graph::ResourceHandle,
-    gbuffer_albedo: crate::render_graph::ResourceHandle,
-    gbuffer_normal: crate::render_graph::ResourceHandle,
-    depth: crate::render_graph::ResourceHandle,
-    hdr: crate::render_graph::ResourceHandle,
-    ldr: crate::render_graph::ResourceHandle,
-    fsr_easu: crate::render_graph::ResourceHandle,
-    fsr_rcas: crate::render_graph::ResourceHandle,
-    swapchain: crate::render_graph::ResourceHandle,
-}
-
-pub struct Renderer {
+pub struct Renderer<P: RenderPipeline> {
     pub graph: RenderGraph,
+    pub pipeline: P,
+
     pub commands: Commands,
     frames: Vec<FrameSync>,
     current_frame: usize,
     swapchain_loader: ash::khr::swapchain::Device,
     device: Arc<Device>,
-
-    handles: Handles,
+    handles: PipelineHandles,
+    pub timestamps: GpuTimestampPool,
 
     pub exposure: f32,
-    pub fsr_enabled: bool,
     pub fsr_sharpness: f32,
-
-    pub timestamps: GpuTimestampPool,
 }
 
-impl Renderer {
-    pub fn new(ctx: &VulkanContext, assets: &mut AssetServer) -> anyhow::Result<Self> {
+impl<P: RenderPipeline> Renderer<P> {
+    pub fn new(ctx: &VulkanContext) -> anyhow::Result<Self> {
         let swapchain = ctx.swapchain.as_ref().unwrap();
-        let output = (swapchain.extent.width, swapchain.extent.height);
-        let internal = (1280, 720);
-
-        let ts_pool = unsafe {
-            ctx.device.handle.create_command_pool(
-                &vk::CommandPoolCreateInfo::default()
-                    .queue_family_index(ctx.device.graphics_family)
-                    .flags(vk::CommandPoolCreateFlags::TRANSIENT),
-                None,
-            )?
-        };
-        let timestamps = GpuTimestampPool::new(
-            &ctx.device.handle,
-            ctx.device.physical,
-            &ctx.instance.handle,
-            FRAMES_IN_FLIGHT,
-            ts_pool,
-            ctx.device.graphics_queue,
-        )?;
-        unsafe { ctx.device.handle.destroy_command_pool(ts_pool, None) };
 
         let pool = ResourcePool::new(
             ctx.device.handle.clone(),
@@ -119,329 +78,52 @@ impl Renderer {
         let mut graph = RenderGraph::new(
             pool,
             ctx.device.handle.clone(),
-            internal,
-            output,
+            (1280, 720),
+            (swapchain.extent.width, swapchain.extent.height),
             ctx.debug_utils.clone(),
         );
 
-        let h = Handles {
-            shadow_map: graph.pool.register(ResourceDesc::depth(
-                "shadow_map",
-                vk::Format::D32_SFLOAT,
-                ResourceExtent::Absolute(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE),
-            )),
-            gbuffer_albedo: graph.pool.register(ResourceDesc::color(
-                "gbuffer_albedo",
-                GBuffer::ALBEDO_FORMAT,
-                ResourceExtent::ScaleInternal(1.0),
-            )),
-            gbuffer_normal: graph.pool.register(ResourceDesc::color(
-                "gbuffer_normal",
-                GBuffer::NORMAL_FORMAT,
-                ResourceExtent::ScaleInternal(1.0),
-            )),
-            depth: graph.pool.register(ResourceDesc::depth(
-                "depth",
-                vk::Format::D32_SFLOAT,
-                ResourceExtent::ScaleInternal(1.0),
-            )),
-            hdr: graph.pool.register(ResourceDesc::color(
-                "hdr",
-                vk::Format::R16G16B16A16_SFLOAT,
-                ResourceExtent::ScaleInternal(1.0),
-            )),
-            ldr: graph.pool.register(ResourceDesc::color(
-                "ldr",
-                LDR_FORMAT,
-                ResourceExtent::ScaleInternal(1.0),
-            )),
-            fsr_easu: graph.pool.register(ResourceDesc::color(
-                "fsr_easu",
-                LDR_FORMAT,
-                ResourceExtent::ScaleOutput(1.0),
-            )),
-            fsr_rcas: graph.pool.register(
-                ResourceDesc::color("fsr_rcas", LDR_FORMAT, ResourceExtent::ScaleOutput(1.0))
-                    .with_usage(vk::ImageUsageFlags::TRANSFER_SRC),
-            ),
+        graph.allocate()?;
+        graph.compile()?;
 
-            swapchain: graph.pool.register_external(ExternalImageDesc {
-                name: "swapchain".into(),
-                format: swapchain.format,
-                kind: crate::render_graph::ResourceKind::Color,
-                initial_layout: vk::ImageLayout::UNDEFINED,
-                final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
-            }),
-        };
-
-        let shadow_pass = ShadowPass::new(&ctx.device.handle)?;
-
-        let mut geometry_pass = GeometryPass::new(
+        Commands::new(
             &ctx.device.handle,
-            GBuffer::color_formats(),
-            assets.bindless.layout,
-            assets.material_buffer.layout,
-            assets,
+            ctx.device.graphics_family,
+            FRAMES_IN_FLIGHT,
         )?;
 
-        let lighting_pass = LightingPass::new(
-            &ctx.device.handle,
+        ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
+
+        anyhow::bail!("Используй Renderer::with_pipeline()");
+    }
+
+    pub fn with_pipeline(
+        ctx: &VulkanContext,
+        assets: &mut AssetServer,
+        build_fn: impl FnOnce(
+            &VulkanContext,
+            &mut AssetServer,
+            &mut RenderGraph,
+        ) -> anyhow::Result<(P, PipelineHandles)>,
+    ) -> anyhow::Result<Self> {
+        let swapchain = ctx.swapchain.as_ref().unwrap();
+
+        let pool = ResourcePool::new(
+            ctx.device.handle.clone(),
             ctx.device.physical,
-            &ctx.instance.handle,
-            vk::Format::R16G16B16A16_SFLOAT,
-        )?;
+            ctx.instance.handle.clone(),
+            ctx.debug_utils.clone(),
+        );
 
-        let post_pass = PostProcessPass::new(&ctx.device.handle, LDR_FORMAT)?;
+        let mut graph = RenderGraph::new(
+            pool,
+            ctx.device.handle.clone(),
+            (1280, 720),
+            (swapchain.extent.width, swapchain.extent.height),
+            ctx.debug_utils.clone(),
+        );
 
-        pass("shadow")
-            .write(h.shadow_map, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .record({
-                move |cmd, pool, ctx_ptr| {
-                    let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
-                    let sm = pool.image(h.shadow_map);
-                    let ts = unsafe { &*ctx.timestamps };
-                    ts.begin_pass(cmd, ctx.frame_index, GpuStage::Shadow);
-                    let calls: Vec<ShadowDrawCall> = ctx
-                        .shadow_calls
-                        .iter()
-                        .map(|dc| ShadowDrawCall {
-                            gpu_mesh: dc.gpu_mesh,
-                            transform: dc.transform,
-                        })
-                        .collect();
-                    shadow_pass.record(ctx.device, cmd, &sm, ctx.light_view_proj, &calls);
-                    ts.end_pass(cmd, ctx.frame_index, GpuStage::Shadow);
-                    Ok(())
-                }
-            })
-            .build(&mut graph);
-
-        pass("geometry")
-            .write(h.gbuffer_albedo, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .write(h.gbuffer_normal, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .read_write(h.depth, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .record({
-                move |cmd, pool, ctx_ptr| {
-                    let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
-                    let albedo = pool.image(h.gbuffer_albedo);
-                    let normal = pool.image(h.gbuffer_normal);
-                    let depth = pool.image(h.depth);
-                    let ts = unsafe { &*ctx.timestamps };
-                    ts.begin_pass(cmd, ctx.frame_index, GpuStage::Geometry);
-                    geometry_pass.record(
-                        ctx.device,
-                        cmd,
-                        &albedo,
-                        &normal,
-                        &depth,
-                        [0.0, 0.0, 0.0, 1.0],
-                        ctx.view_proj,
-                        &ctx.draw_calls,
-                        ctx.assets,
-                    );
-                    ts.end_pass(cmd, ctx.frame_index, GpuStage::Geometry);
-                    Ok(())
-                }
-            })
-            .build(&mut graph);
-
-        pass("lighting")
-            .read(h.gbuffer_albedo, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .read(h.gbuffer_normal, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .read(h.depth, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .read(h.shadow_map, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .write(h.hdr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .bind_sampled(
-                h.gbuffer_albedo,
-                lighting_pass.descriptor_set,
-                0,
-                lighting_pass.sampler,
-            )
-            .bind_sampled(
-                h.gbuffer_normal,
-                lighting_pass.descriptor_set,
-                1,
-                lighting_pass.sampler,
-            )
-            .bind_sampled(
-                h.depth,
-                lighting_pass.descriptor_set,
-                2,
-                lighting_pass.sampler,
-            )
-            .bind_sampled(
-                h.shadow_map,
-                lighting_pass.descriptor_set,
-                4,
-                lighting_pass.shadow_sampler,
-            )
-            .record({
-                move |cmd, pool, ctx_ptr| {
-                    let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
-                    let hdr = pool.image(h.hdr);
-                    let ts = unsafe { &*ctx.timestamps };
-                    ts.begin_pass(cmd, ctx.frame_index, GpuStage::Lighting);
-                    lighting_pass.upload_lights(&ctx.lighting);
-                    lighting_pass.record(ctx.device, cmd, &hdr, ctx.camera);
-                    ts.end_pass(cmd, ctx.frame_index, GpuStage::Lighting);
-                    Ok(())
-                }
-            })
-            .build(&mut graph);
-
-        pass("post_process")
-            .read(h.hdr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .write(h.ldr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .bind_sampled(h.hdr, post_pass.descriptor_set, 0, post_pass.sampler)
-            .record({
-                move |cmd, pool, ctx_ptr| {
-                    let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
-                    let ldr = pool.image(h.ldr);
-                    let ts = unsafe { &*ctx.timestamps };
-                    ts.begin_pass(cmd, ctx.frame_index, GpuStage::PostProcess);
-                    post_pass.record_to_target(ctx.device, cmd, &ldr, ctx.exposure);
-                    ts.end_pass(cmd, ctx.frame_index, GpuStage::PostProcess);
-                    Ok(())
-                }
-            })
-            .build(&mut graph);
-
-        let fsr_pass = Arc::new(FsrPass::new(&ctx.device.handle, LDR_FORMAT)?);
-
-        let fsr_easu_descriptor_set = fsr_pass.easu_descriptor_set;
-        let fsr_rcas_descriptor_set = fsr_pass.rcas_descriptor_set;
-        let fsr_sampler = fsr_pass.sampler;
-
-        let fsr_pass_easu = Arc::clone(&fsr_pass);
-        pass("fsr_easu")
-            .read(h.ldr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .write(h.fsr_easu, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .bind_sampled(h.ldr, fsr_easu_descriptor_set, 0, fsr_sampler)
-            .record({
-                move |cmd, pool, ctx_ptr| {
-                    let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
-                    let dst = pool.image(h.fsr_easu);
-                    let (iw, ih) = ctx.internal_resolution;
-                    let (ow, oh) = ctx.output_resolution;
-                    let ts = unsafe { &*ctx.timestamps };
-                    ts.begin_pass(cmd, ctx.frame_index, GpuStage::FsrEasu);
-                    let pc = compute_easu_con(
-                        (iw as f32, ih as f32),
-                        (iw as f32, ih as f32),
-                        (ow as f32, oh as f32),
-                    );
-                    fsr_pass_easu.record_easu(ctx.device, cmd, &dst, &pc);
-                    ts.end_pass(cmd, ctx.frame_index, GpuStage::FsrEasu);
-                    Ok(())
-                }
-            })
-            .build(&mut graph);
-
-        let fsr_pass_rcas = Arc::clone(&fsr_pass);
-        pass("fsr_rcas")
-            .read(h.fsr_easu, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .write(h.fsr_rcas, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .bind_sampled(h.fsr_easu, fsr_rcas_descriptor_set, 0, fsr_sampler)
-            .record({
-                move |cmd, pool, ctx_ptr| {
-                    let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
-                    let dst = pool.image(h.fsr_rcas);
-                    let ts = unsafe { &*ctx.timestamps };
-                    ts.begin_pass(cmd, ctx.frame_index, GpuStage::FsrRcas);
-                    let pc = compute_rcas_con(ctx.fsr_sharpness);
-                    fsr_pass_rcas.record_rcas(ctx.device, cmd, &dst, &pc);
-                    ts.end_pass(cmd, ctx.frame_index, GpuStage::FsrRcas);
-                    Ok(())
-                }
-            })
-            .build(&mut graph);
-
-        let blit_handle = pass("blit_to_swapchain")
-            .read(h.fsr_rcas, vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-            .write(h.swapchain, vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .record({
-                move |cmd, pool, ctx_ptr| {
-                    let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
-                    let src = pool.image(h.fsr_rcas);
-                    let dst = pool.image(h.swapchain);
-
-                    let blit = vk::ImageBlit2::default()
-                        .src_subresource(vk::ImageSubresourceLayers {
-                            aspect_mask: vk::ImageAspectFlags::COLOR,
-                            mip_level: 0,
-                            base_array_layer: 0,
-                            layer_count: 1,
-                        })
-                        .src_offsets([
-                            vk::Offset3D::default(),
-                            vk::Offset3D {
-                                x: src.extent.width as i32,
-                                y: src.extent.height as i32,
-                                z: 1,
-                            },
-                        ])
-                        .dst_subresource(vk::ImageSubresourceLayers {
-                            aspect_mask: vk::ImageAspectFlags::COLOR,
-                            mip_level: 0,
-                            base_array_layer: 0,
-                            layer_count: 1,
-                        })
-                        .dst_offsets([
-                            vk::Offset3D::default(),
-                            vk::Offset3D {
-                                x: dst.extent.width as i32,
-                                y: dst.extent.height as i32,
-                                z: 1,
-                            },
-                        ]);
-
-                    unsafe {
-                        ctx.device.cmd_blit_image2(
-                            cmd,
-                            &vk::BlitImageInfo2::default()
-                                .src_image(src.image)
-                                .src_image_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-                                .dst_image(dst.image)
-                                .dst_image_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                                .regions(std::slice::from_ref(&blit))
-                                .filter(vk::Filter::LINEAR),
-                        );
-                    }
-                    Ok(())
-                }
-            })
-            .build(&mut graph);
-
-        pass("ui")
-            .after(blit_handle)
-            .read_write(h.swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .record({
-                move |cmd, pool, ctx_ptr| {
-                    let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
-                    let sc = pool.image(h.swapchain);
-                    let egui = unsafe { &mut *ctx.egui };
-                    let output = ctx
-                        .egui_output
-                        .take()
-                        .expect("egui_output должен быть Some на момент ui pass");
-                    let ts = unsafe { &*ctx.timestamps };
-                    ts.begin_pass(cmd, ctx.frame_index, GpuStage::Ui);
-                    UiPass.record(
-                        ctx.device,
-                        cmd,
-                        sc.view,
-                        sc.extent,
-                        unsafe { &*ctx.window },
-                        egui,
-                        output,
-                        ctx.graphics_queue,
-                        ctx.command_pool,
-                    )?;
-                    ts.end_pass(cmd, ctx.frame_index, GpuStage::Ui);
-                    Ok(())
-                }
-            })
-            .build(&mut graph);
+        let (pipeline, handles) = build_fn(ctx, assets, &mut graph)?;
 
         graph.allocate()?;
         graph.compile()?;
@@ -459,18 +141,29 @@ impl Renderer {
         let swapchain_loader =
             ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
 
+        let ts_pool = create_temp_pool(&ctx)?;
+        let timestamps = GpuTimestampPool::new(
+            &ctx.device.handle,
+            ctx.device.physical,
+            &ctx.instance.handle,
+            FRAMES_IN_FLIGHT,
+            ts_pool,
+            ctx.device.graphics_queue,
+        )?;
+        unsafe { ctx.device.handle.destroy_command_pool(ts_pool, None) };
+
         Ok(Self {
             graph,
+            pipeline,
             commands,
             frames,
+            timestamps,
             current_frame: 0,
             swapchain_loader,
             device: ctx.device.clone(),
-            handles: h,
+            handles,
             exposure: 0.5,
-            fsr_enabled: true,
             fsr_sharpness: 0.2,
-            timestamps,
         })
     }
 
@@ -481,7 +174,7 @@ impl Renderer {
         assets: &AssetServer,
         camera: &Camera,
         lighting: &LightingUbo,
-        egui: &mut crate::egui_layer::EguiLayer,
+        egui: &mut EguiLayer,
         egui_output: egui::FullOutput,
         window: &winit::window::Window,
         clear_color: [f32; 4],
@@ -495,48 +188,10 @@ impl Renderer {
 
         let aspect = swapchain.extent.width as f32 / swapchain.extent.height as f32;
         let view_proj = camera.view_proj(aspect);
-        let frustum = extract_planes(view_proj);
 
-        let ecs_calls = collect_draw_calls(world, assets);
-        assets.upload_materials();
-
-        let draw_calls: Vec<DrawCall> = ecs_calls
-            .iter()
-            .filter_map(|dc| {
-                let gpu = assets.get_gpu_mesh(dc.mesh)?;
-                let model = dc.transform.matrix();
-                if !transform_aabb(&gpu.aabb, model).intersects_frustum(&frustum) {
-                    return None;
-                }
-                Some(DrawCall {
-                    gpu_mesh: gpu,
-                    transform: &dc.transform,
-                    material: dc.material,
-                    shader: dc.shader,
-                })
-            })
-            .collect();
-
-        let shadow_calls: Vec<DrawCall> = ecs_calls
-            .iter()
-            .filter_map(|dc| {
-                let gpu = assets.get_gpu_mesh(dc.mesh)?;
-                Some(DrawCall {
-                    gpu_mesh: gpu,
-                    transform: &dc.transform,
-                    material: dc.material,
-                    shader: dc.shader,
-                })
-            })
-            .collect();
-
-        let light_view_proj = compute_light_view_proj(
-            lighting.directional.direction[0..3].try_into()?,
-            Vec3::new(0.0, 2.0, 0.0),
-            20.0,
-        );
-        let mut lighting_frame = *lighting;
-        lighting_frame.light_space_matrix = light_view_proj.to_cols_array_2d();
+        let light_dir: [f32; 3] = lighting.directional.direction[0..3].try_into()?;
+        let light_view_proj =
+            crate::lighting::compute_light_view_proj(light_dir, Vec3::new(0.0, 2.0, 0.0), 20.0);
 
         unsafe {
             puffin::profile_scope!("wait_for_fences");
@@ -575,35 +230,34 @@ impl Renderer {
             self.timestamps.read_and_reset(self.current_frame, cmd);
         }
 
-        let mut frame_ctx = FrameCtx {
+        let input = FrameInput {
             device,
-            draw_calls,
-            shadow_calls,
+            world,
+            assets,
             camera,
+            lighting,
             view_proj,
             light_view_proj,
-            lighting: &lighting_frame,
-            swapchain_image: swapchain.images[image_index as usize],
-            swapchain_view: swapchain.image_views[image_index as usize],
-            swapchain_extent: swapchain.extent,
-            internal_resolution: self.graph.internal_resolution(),
-            output_resolution: self.graph.output_resolution(),
-            assets,
             egui,
-            egui_output: Some(egui_output),
+            egui_output,
+            window,
             graphics_queue: ctx.device.graphics_queue,
             command_pool: self.commands.pool,
-            window: window as *const winit::window::Window,
             exposure: self.exposure,
-            fsr_sharpness: self.fsr_sharpness,
             clear_color,
-            timestamps: &self.timestamps as *const GpuTimestampPool,
-            frame_index: self.current_frame,
+            internal_resolution: self.graph.internal_resolution(),
+            output_resolution: self.graph.output_resolution(),
+            fsr_sharpness: self.fsr_sharpness,
         };
 
         {
+            puffin::profile_scope!("pipeline_prepare");
+            self.pipeline.prepare_frame(&mut self.graph, input)?;
+        }
+
+        {
             puffin::profile_scope!("graph_execute");
-            self.graph.execute(device, cmd, frame_ctx.as_ptr())?;
+            self.graph.execute(device, cmd)?;
         }
 
         unsafe { device.end_command_buffer(cmd)? };
@@ -623,8 +277,8 @@ impl Renderer {
                     .signal_semaphores(&signal_semaphores)],
                 frame.render_fence,
             )?;
+            self.timestamps.mark_submitted(self.current_frame);
         }
-        self.timestamps.mark_submitted(self.current_frame);
 
         let needs_recreate = match unsafe {
             puffin::profile_scope!("queue_present");
@@ -648,16 +302,19 @@ impl Renderer {
 
     pub fn resize_output(&mut self, new_w: u32, new_h: u32) -> anyhow::Result<()> {
         unsafe { self.device.handle.device_wait_idle()? };
-        self.graph.resize_output((new_w, new_h))
+        self.graph.resize_output((new_w, new_h))?;
+        self.pipeline.on_resize(&mut self.graph, new_w, new_h)
     }
 
     pub fn resize_internal(&mut self, new_w: u32, new_h: u32) -> anyhow::Result<()> {
         unsafe { self.device.handle.device_wait_idle()? };
-        self.graph.resize_internal((new_w, new_h))
+        self.graph.resize_internal((new_w, new_h))?;
+        self.pipeline
+            .on_resize_internal(&mut self.graph, new_w, new_h)
     }
 }
 
-impl Drop for Renderer {
+impl<P: RenderPipeline> Drop for Renderer<P> {
     fn drop(&mut self) {
         unsafe { self.device.handle.device_wait_idle().ok() };
     }

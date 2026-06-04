@@ -1,6 +1,6 @@
 pub mod core;
 pub mod frame_ctx;
-mod passes;
+pub mod passes;
 pub mod pipeline;
 pub mod renderer;
 pub mod resources;
@@ -10,15 +10,12 @@ pub use core::debug::DebugMessenger;
 pub use core::device::Device;
 pub use core::instance::Instance;
 pub use core::swapchain::Swapchain;
+pub use passes::geometry::DrawCall;
 pub use pipeline::material_buffer::MaterialBuffer;
 pub use pipeline::Pipeline;
-pub use renderer::Renderer;
+pub use renderer::{Camera, Renderer};
 pub use resources::bindless::BindlessSet;
 pub use resources::texture::GpuTexture;
-pub use timestamps::{GpuFrameTimes, GpuStage, GpuTimestampPool};
-
-pub use passes::geometry::DrawCall;
-pub use renderer::Camera;
 
 use ash::ext::debug_utils;
 use ash::vk;

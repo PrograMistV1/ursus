@@ -1,4 +1,4 @@
-use crate::vulkan::{GpuFrameTimes, GpuStage};
+use crate::vulkan::timestamps::{GpuFrameTimes, GpuStage};
 use std::collections::VecDeque;
 
 /// История CPU frame time (rolling window)

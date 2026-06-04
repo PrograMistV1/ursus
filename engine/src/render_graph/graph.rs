@@ -96,6 +96,7 @@ pub struct RenderGraph {
     output_resolution: (u32, u32),
 
     compiled: bool,
+    frame_data: *mut (),
 }
 
 impl RenderGraph {
@@ -116,6 +117,7 @@ impl RenderGraph {
             output_resolution,
             compiled: false,
             debug_utils,
+            frame_data: std::ptr::null_mut(),
         }
     }
 
@@ -237,12 +239,7 @@ impl RenderGraph {
         }
     }
 
-    pub fn execute(
-        &mut self,
-        device: &ash::Device,
-        cmd: vk::CommandBuffer,
-        ctx: *mut (),
-    ) -> anyhow::Result<()> {
+    pub fn execute(&mut self, device: &ash::Device, cmd: vk::CommandBuffer) -> anyhow::Result<()> {
         assert!(self.compiled, "RenderGraph::compile() не был вызван");
 
         for &idx in &self.sorted_order {
@@ -262,7 +259,7 @@ impl RenderGraph {
                 .transition(device, cmd, &self.pool, &transitions);
 
             let node = &mut self.nodes[idx];
-            (node.record)(cmd, &self.pool, ctx)?;
+            (node.record)(cmd, &self.pool, self.frame_data)?;
 
             if let Some(du) = &self.debug_utils {
                 cmd_end_label(du, cmd);
@@ -313,6 +310,14 @@ impl RenderGraph {
 
     pub fn pass_mut(&mut self, handle: PassHandle) -> &mut PassNode {
         &mut self.nodes[handle.0 as usize]
+    }
+
+    pub fn set_frame_data(&mut self, ptr: *mut ()) {
+        self.frame_data = ptr;
+    }
+
+    pub fn frame_data_ptr(&self) -> *mut () {
+        self.frame_data
     }
 }
 

@@ -1,11 +1,12 @@
 use crate::assets::AssetServer;
 use crate::lighting::LightingUbo;
 use crate::vulkan::passes::geometry::DrawCall;
-use crate::vulkan::{Camera, GpuTimestampPool};
+use crate::vulkan::Camera;
 use ash::vk;
 use glam::Mat4;
 
 pub use crate::vulkan::passes::geometry::DrawCall as FrameDrawCall;
+use crate::vulkan::timestamps::GpuTimestampPool;
 
 pub struct FrameCtx<'a> {
     pub device: &'a ash::Device,

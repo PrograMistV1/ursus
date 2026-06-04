@@ -5,6 +5,7 @@ use crate::egui_layer::EguiLayer;
 use crate::lighting::LightingUbo;
 use crate::vulkan::{Camera, Renderer, VulkanContext};
 
+use crate::pipeline::{DefaultPipeline, RenderPipeline};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -22,7 +23,7 @@ pub trait App {
 pub struct EngineContext {
     pub world: GameWorld,
     pub assets: AssetServer,
-    pub renderer: Renderer,
+    pub renderer: Renderer<DefaultPipeline>,
     pub vk: VulkanContext,
     pub camera: Camera,
     pub lighting: LightingUbo,
@@ -41,7 +42,10 @@ impl EngineContext {
             vk.device.graphics_queue,
         )?;
 
-        let renderer = Renderer::new(&vk, &mut assets)?;
+        let renderer = Renderer::with_pipeline(&vk, &mut assets, |ctx, assets, graph| {
+            let handles = DefaultPipeline::build(ctx, assets, graph)?;
+            Ok((DefaultPipeline, handles))
+        })?;
 
         Ok(Self {
             world: GameWorld::new(),
@@ -307,7 +311,7 @@ impl ApplicationHandler for EngineHandler {
     }
 }
 
-fn create_temp_pool(vk: &VulkanContext) -> anyhow::Result<ash::vk::CommandPool> {
+pub fn create_temp_pool(vk: &VulkanContext) -> anyhow::Result<ash::vk::CommandPool> {
     use ash::vk;
     let pool = unsafe {
         vk.device.handle.create_command_pool(
