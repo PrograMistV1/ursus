@@ -16,7 +16,7 @@ use crate::vulkan::passes::shadow::{ShadowDrawCall, ShadowPass};
 use crate::vulkan::passes::ui::UiPass;
 use crate::vulkan::resources::gbuffer::GBuffer;
 use crate::vulkan::resources::shadow_map::SHADOW_MAP_SIZE;
-use crate::vulkan::{Device, VulkanContext};
+use crate::vulkan::{Device, GpuStage, GpuTimestampPool, VulkanContext};
 use ash::vk;
 use glam::{Mat4, Vec3};
 use std::sync::Arc;
@@ -81,6 +81,8 @@ pub struct Renderer {
     pub exposure: f32,
     pub fsr_enabled: bool,
     pub fsr_sharpness: f32,
+
+    pub timestamps: GpuTimestampPool,
 }
 
 impl Renderer {
@@ -88,6 +90,24 @@ impl Renderer {
         let swapchain = ctx.swapchain.as_ref().unwrap();
         let output = (swapchain.extent.width, swapchain.extent.height);
         let internal = (1280, 720);
+
+        let ts_pool = unsafe {
+            ctx.device.handle.create_command_pool(
+                &vk::CommandPoolCreateInfo::default()
+                    .queue_family_index(ctx.device.graphics_family)
+                    .flags(vk::CommandPoolCreateFlags::TRANSIENT),
+                None,
+            )?
+        };
+        let timestamps = GpuTimestampPool::new(
+            &ctx.device.handle,
+            ctx.device.physical,
+            &ctx.instance.handle,
+            FRAMES_IN_FLIGHT,
+            ts_pool,
+            ctx.device.graphics_queue,
+        )?;
+        unsafe { ctx.device.handle.destroy_command_pool(ts_pool, None) };
 
         let pool = ResourcePool::new(
             ctx.device.handle.clone(),
@@ -179,6 +199,8 @@ impl Renderer {
                 move |cmd, pool, ctx_ptr| {
                     let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
                     let sm = pool.image(h.shadow_map);
+                    let ts = unsafe { &*ctx.timestamps };
+                    ts.begin_pass(cmd, ctx.frame_index, GpuStage::Shadow);
                     let calls: Vec<ShadowDrawCall> = ctx
                         .shadow_calls
                         .iter()
@@ -188,6 +210,7 @@ impl Renderer {
                         })
                         .collect();
                     shadow_pass.record(ctx.device, cmd, &sm, ctx.light_view_proj, &calls);
+                    ts.end_pass(cmd, ctx.frame_index, GpuStage::Shadow);
                     Ok(())
                 }
             })
@@ -203,6 +226,8 @@ impl Renderer {
                     let albedo = pool.image(h.gbuffer_albedo);
                     let normal = pool.image(h.gbuffer_normal);
                     let depth = pool.image(h.depth);
+                    let ts = unsafe { &*ctx.timestamps };
+                    ts.begin_pass(cmd, ctx.frame_index, GpuStage::Geometry);
                     geometry_pass.record(
                         ctx.device,
                         cmd,
@@ -214,6 +239,7 @@ impl Renderer {
                         &ctx.draw_calls,
                         ctx.assets,
                     );
+                    ts.end_pass(cmd, ctx.frame_index, GpuStage::Geometry);
                     Ok(())
                 }
             })
@@ -253,8 +279,11 @@ impl Renderer {
                 move |cmd, pool, ctx_ptr| {
                     let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
                     let hdr = pool.image(h.hdr);
+                    let ts = unsafe { &*ctx.timestamps };
+                    ts.begin_pass(cmd, ctx.frame_index, GpuStage::Lighting);
                     lighting_pass.upload_lights(&ctx.lighting);
                     lighting_pass.record(ctx.device, cmd, &hdr, ctx.camera);
+                    ts.end_pass(cmd, ctx.frame_index, GpuStage::Lighting);
                     Ok(())
                 }
             })
@@ -268,7 +297,10 @@ impl Renderer {
                 move |cmd, pool, ctx_ptr| {
                     let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
                     let ldr = pool.image(h.ldr);
+                    let ts = unsafe { &*ctx.timestamps };
+                    ts.begin_pass(cmd, ctx.frame_index, GpuStage::PostProcess);
                     post_pass.record_to_target(ctx.device, cmd, &ldr, ctx.exposure);
+                    ts.end_pass(cmd, ctx.frame_index, GpuStage::PostProcess);
                     Ok(())
                 }
             })
@@ -291,12 +323,15 @@ impl Renderer {
                     let dst = pool.image(h.fsr_easu);
                     let (iw, ih) = ctx.internal_resolution;
                     let (ow, oh) = ctx.output_resolution;
+                    let ts = unsafe { &*ctx.timestamps };
+                    ts.begin_pass(cmd, ctx.frame_index, GpuStage::FsrEasu);
                     let pc = compute_easu_con(
                         (iw as f32, ih as f32),
                         (iw as f32, ih as f32),
                         (ow as f32, oh as f32),
                     );
                     fsr_pass_easu.record_easu(ctx.device, cmd, &dst, &pc);
+                    ts.end_pass(cmd, ctx.frame_index, GpuStage::FsrEasu);
                     Ok(())
                 }
             })
@@ -311,8 +346,11 @@ impl Renderer {
                 move |cmd, pool, ctx_ptr| {
                     let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
                     let dst = pool.image(h.fsr_rcas);
+                    let ts = unsafe { &*ctx.timestamps };
+                    ts.begin_pass(cmd, ctx.frame_index, GpuStage::FsrRcas);
                     let pc = compute_rcas_con(ctx.fsr_sharpness);
                     fsr_pass_rcas.record_rcas(ctx.device, cmd, &dst, &pc);
+                    ts.end_pass(cmd, ctx.frame_index, GpuStage::FsrRcas);
                     Ok(())
                 }
             })
@@ -386,6 +424,8 @@ impl Renderer {
                         .egui_output
                         .take()
                         .expect("egui_output должен быть Some на момент ui pass");
+                    let ts = unsafe { &*ctx.timestamps };
+                    ts.begin_pass(cmd, ctx.frame_index, GpuStage::Ui);
                     UiPass.record(
                         ctx.device,
                         cmd,
@@ -397,6 +437,7 @@ impl Renderer {
                         ctx.graphics_queue,
                         ctx.command_pool,
                     )?;
+                    ts.end_pass(cmd, ctx.frame_index, GpuStage::Ui);
                     Ok(())
                 }
             })
@@ -429,6 +470,7 @@ impl Renderer {
             exposure: 0.5,
             fsr_enabled: true,
             fsr_sharpness: 0.2,
+            timestamps,
         })
     }
 
@@ -530,6 +572,7 @@ impl Renderer {
                 &vk::CommandBufferBeginInfo::default()
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )?;
+            self.timestamps.read_and_reset(self.current_frame, cmd);
         }
 
         let mut frame_ctx = FrameCtx {
@@ -554,6 +597,8 @@ impl Renderer {
             exposure: self.exposure,
             fsr_sharpness: self.fsr_sharpness,
             clear_color,
+            timestamps: &self.timestamps as *const GpuTimestampPool,
+            frame_index: self.current_frame,
         };
 
         {
@@ -579,6 +624,7 @@ impl Renderer {
                 frame.render_fence,
             )?;
         }
+        self.timestamps.mark_submitted(self.current_frame);
 
         let needs_recreate = match unsafe {
             puffin::profile_scope!("queue_present");

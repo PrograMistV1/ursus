@@ -119,6 +119,7 @@ struct RunningState {
     fps_current: f32,
     tick_accumulator: f32,
     paced_frame_time: f64,
+    cpu_history: debug_ui::CpuFrameHistory,
 }
 
 const TICK_RATE: f32 = 1.0 / 60.0;
@@ -180,6 +181,7 @@ impl ApplicationHandler for EngineHandler {
             fps_current: 0.0,
             tick_accumulator: 0.0,
             paced_frame_time: 1.0 / 120.0,
+            cpu_history: debug_ui::CpuFrameHistory::new(120),
         });
     }
 
@@ -252,6 +254,8 @@ impl ApplicationHandler for EngineHandler {
                             &mut state.debug,
                             state.fps_current,
                             state.ctx.world.entity_count(),
+                            &state.cpu_history,
+                            &state.ctx.renderer.timestamps.last_frame,
                         );
                     })
                 };
@@ -273,6 +277,9 @@ impl ApplicationHandler for EngineHandler {
                         )
                         .expect("render failed")
                 };
+
+                let frame_ms = frame_start.elapsed().as_secs_f32() * 1000.0;
+                state.cpu_history.push(frame_ms);
 
                 if needs_recreate || state.debug.swapchain_dirty {
                     state.debug.swapchain_dirty = false;

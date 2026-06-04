@@ -1,7 +1,7 @@
 use crate::assets::AssetServer;
 use crate::lighting::LightingUbo;
 use crate::vulkan::passes::geometry::DrawCall;
-use crate::vulkan::Camera;
+use crate::vulkan::{Camera, GpuTimestampPool};
 use ash::vk;
 use glam::Mat4;
 
@@ -39,6 +39,9 @@ pub struct FrameCtx<'a> {
 
     pub graphics_queue: vk::Queue,
     pub command_pool: vk::CommandPool,
+
+    pub timestamps: *const GpuTimestampPool,
+    pub frame_index: usize,
 }
 
 impl<'a> FrameCtx<'a> {

@@ -4,6 +4,7 @@ mod passes;
 pub mod pipeline;
 pub mod renderer;
 pub mod resources;
+pub mod timestamps;
 
 pub use core::debug::DebugMessenger;
 pub use core::device::Device;
@@ -14,6 +15,7 @@ pub use pipeline::Pipeline;
 pub use renderer::Renderer;
 pub use resources::bindless::BindlessSet;
 pub use resources::texture::GpuTexture;
+pub use timestamps::{GpuFrameTimes, GpuStage, GpuTimestampPool};
 
 pub use passes::geometry::DrawCall;
 pub use renderer::Camera;
