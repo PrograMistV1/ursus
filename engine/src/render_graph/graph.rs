@@ -152,51 +152,11 @@ impl RenderGraph {
         let n = self.nodes.len();
         let mut adj: Vec<HashSet<usize>> = vec![HashSet::new(); n];
         let mut in_degree = vec![0usize; n];
-        let mut last_writer: HashMap<ResourceHandle, usize> = HashMap::new();
 
-        for (i, node) in self.nodes.iter().enumerate() {
-            for access in &node.accesses {
-                if matches!(access.access, AccessType::Read) {
-                    if let Some(&writer) = last_writer.get(&access.handle) {
-                        if writer != i && !adj[writer].contains(&i) {
-                            adj[writer].insert(i);
-                            in_degree[i] += 1;
-                        }
-                    }
-                }
-                if matches!(access.access, AccessType::Write | AccessType::ReadWrite) {
-                    last_writer.insert(access.handle, i);
-                }
-            }
-        }
+        build_resource_edges(&self.nodes, &mut adj, &mut in_degree);
+        build_explicit_edges(&self.nodes, &mut adj, &mut in_degree);
 
-        for (i, node) in self.nodes.iter().enumerate() {
-            for &dep_handle in &node.depends_on {
-                let dep = dep_handle.0 as usize;
-                if dep != i && !adj[dep].contains(&i) {
-                    adj[dep].insert(i);
-                    in_degree[i] += 1;
-                }
-            }
-        }
-
-        let mut queue: VecDeque<usize> = (0..n).filter(|&i| in_degree[i] == 0).collect();
-        let mut order = Vec::with_capacity(n);
-        while let Some(idx) = queue.pop_front() {
-            order.push(idx);
-            for &dep in &adj[idx] {
-                in_degree[dep] -= 1;
-                if in_degree[dep] == 0 {
-                    queue.push_back(dep);
-                }
-            }
-        }
-
-        if order.len() != n {
-            anyhow::bail!("RenderGraph: обнаружен цикл в графе пассов");
-        }
-
-        self.sorted_order = order;
+        self.sorted_order = topological_sort(n, adj, in_degree)?;
         self.compiled = true;
 
         log::info!(
@@ -327,11 +287,7 @@ impl RenderGraph {
     }
 
     pub fn set_frame_data<T: Send + 'static>(&mut self, data: Box<T>) {
-        if let Some(drop_fn) = self.frame_data_drop.take() {
-            if let Some(FrameDataBox(ptr)) = self.frame_data.take() {
-                drop_fn(ptr);
-            }
-        }
+        self.drop_frame_data_inner();
 
         let ptr = Box::into_raw(data) as *mut ();
         self.frame_data = Some(FrameDataBox(ptr));
@@ -346,16 +302,110 @@ impl RenderGraph {
             .map(|b| b.0)
             .unwrap_or(std::ptr::null_mut())
     }
-}
 
-impl Drop for RenderGraph {
-    fn drop(&mut self) {
+    fn drop_frame_data_inner(&mut self) {
         if let Some(drop_fn) = self.frame_data_drop.take() {
             if let Some(FrameDataBox(ptr)) = self.frame_data.take() {
                 drop_fn(ptr);
             }
         }
     }
+}
+
+impl Drop for RenderGraph {
+    fn drop(&mut self) {
+        self.drop_frame_data_inner();
+    }
+}
+
+fn build_resource_edges(
+    nodes: &[PassNode],
+    adj: &mut Vec<HashSet<usize>>,
+    in_degree: &mut Vec<usize>,
+) {
+    let mut last_writer: HashMap<ResourceHandle, usize> = HashMap::new();
+    let mut last_readers: HashMap<ResourceHandle, Vec<usize>> = HashMap::new();
+
+    for (i, node) in nodes.iter().enumerate() {
+        for access in &node.accesses {
+            match access.access {
+                AccessType::Read => {
+                    add_edge(adj, in_degree, last_writer.get(&access.handle).copied(), i);
+                    last_readers.entry(access.handle).or_default().push(i);
+                }
+                AccessType::Write | AccessType::ReadWrite => {
+                    add_edge(adj, in_degree, last_writer.get(&access.handle).copied(), i);
+                    add_edges_from_readers(adj, in_degree, &last_readers, access.handle, i);
+                    last_writer.insert(access.handle, i);
+                    last_readers.remove(&access.handle);
+                }
+            }
+        }
+    }
+}
+
+fn build_explicit_edges(
+    nodes: &[PassNode],
+    adj: &mut Vec<HashSet<usize>>,
+    in_degree: &mut Vec<usize>,
+) {
+    for (i, node) in nodes.iter().enumerate() {
+        for &dep_handle in &node.depends_on {
+            add_edge(adj, in_degree, Some(dep_handle.0 as usize), i);
+        }
+    }
+}
+
+fn add_edge(
+    adj: &mut Vec<HashSet<usize>>,
+    in_degree: &mut Vec<usize>,
+    from: Option<usize>,
+    to: usize,
+) {
+    let Some(from) = from else { return };
+    if from != to && !adj[from].contains(&to) {
+        adj[from].insert(to);
+        in_degree[to] += 1;
+    }
+}
+
+fn add_edges_from_readers(
+    adj: &mut Vec<HashSet<usize>>,
+    in_degree: &mut Vec<usize>,
+    last_readers: &HashMap<ResourceHandle, Vec<usize>>,
+    handle: ResourceHandle,
+    to: usize,
+) {
+    let Some(readers) = last_readers.get(&handle) else {
+        return;
+    };
+    for &reader in readers {
+        add_edge(adj, in_degree, Some(reader), to);
+    }
+}
+
+fn topological_sort(
+    n: usize,
+    adj: Vec<HashSet<usize>>,
+    mut in_degree: Vec<usize>,
+) -> anyhow::Result<Vec<usize>> {
+    let mut queue: VecDeque<usize> = (0..n).filter(|&i| in_degree[i] == 0).collect();
+    let mut order = Vec::with_capacity(n);
+
+    while let Some(idx) = queue.pop_front() {
+        order.push(idx);
+        for &dep in &adj[idx] {
+            in_degree[dep] -= 1;
+            if in_degree[dep] == 0 {
+                queue.push_back(dep);
+            }
+        }
+    }
+
+    if order.len() != n {
+        anyhow::bail!("RenderGraph: обнаружен цикл в графе пассов");
+    }
+    Ok(order)
 }
 
 pub struct PassBuilder {
