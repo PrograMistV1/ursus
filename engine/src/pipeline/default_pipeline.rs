@@ -99,8 +99,8 @@ impl RenderPipeline for DefaultPipeline {
         pass("shadow")
             .write(h_shadow_map, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
             .record({
-                move |cmd, pool, ctx_ptr| {
-                    let data = unsafe { &*(ctx_ptr as *const DefaultPipelineFrameData) };
+                move |cmd, pool, ctx_ptr| unsafe {
+                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
                     let sm = pool.image(h_shadow_map);
 
                     let calls: Vec<ShadowDrawCall> = data
@@ -109,7 +109,7 @@ impl RenderPipeline for DefaultPipeline {
                         .map(|dc| dc.as_shadow_draw_call())
                         .collect();
 
-                    shadow_pass.record(data.device, cmd, &sm, data.light_view_proj, &calls);
+                    shadow_pass.record(&*data.device, cmd, &sm, data.light_view_proj, &calls);
                     Ok(())
                 }
             })
@@ -120,8 +120,8 @@ impl RenderPipeline for DefaultPipeline {
             .write(h_gbuffer_normal, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .read_write(h_depth, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
             .record({
-                move |cmd, pool, ctx_ptr| {
-                    let data = unsafe { &*(ctx_ptr as *const DefaultPipelineFrameData) };
+                move |cmd, pool, ctx_ptr| unsafe {
+                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
                     let albedo = pool.image(h_gbuffer_albedo);
                     let normal = pool.image(h_gbuffer_normal);
                     let depth = pool.image(h_depth);
@@ -130,7 +130,7 @@ impl RenderPipeline for DefaultPipeline {
                         data.draw_calls.iter().map(|dc| dc.as_draw_call()).collect();
 
                     geometry_pass.record(
-                        data.device,
+                        &*data.device,
                         cmd,
                         &albedo,
                         &normal,
@@ -138,7 +138,7 @@ impl RenderPipeline for DefaultPipeline {
                         data.clear_color,
                         data.view_proj,
                         &draw_calls,
-                        data.assets,
+                        &*data.assets,
                     );
                     Ok(())
                 }
@@ -176,11 +176,11 @@ impl RenderPipeline for DefaultPipeline {
                 lighting_pass.shadow_sampler,
             )
             .record({
-                move |cmd, pool, ctx_ptr| {
-                    let data = unsafe { &*(ctx_ptr as *const DefaultPipelineFrameData) };
+                move |cmd, pool, ctx_ptr| unsafe {
+                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
                     let hdr = pool.image(h_hdr);
                     lighting_pass.upload_lights(&data.lighting);
-                    lighting_pass.record(data.device, cmd, &hdr, data.camera);
+                    lighting_pass.record(&*data.device, cmd, &hdr, &*data.camera);
                     Ok(())
                 }
             })
@@ -191,10 +191,10 @@ impl RenderPipeline for DefaultPipeline {
             .write(h_ldr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .bind_sampled(h_hdr, post_pass.descriptor_set, 0, post_pass.sampler)
             .record({
-                move |cmd, pool, ctx_ptr| {
-                    let data = unsafe { &*(ctx_ptr as *const DefaultPipelineFrameData) };
+                move |cmd, pool, ctx_ptr| unsafe {
+                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
                     let ldr = pool.image(h_ldr);
-                    post_pass.record_to_target(data.device, cmd, &ldr, data.exposure);
+                    post_pass.record_to_target(&*data.device, cmd, &ldr, data.exposure);
                     Ok(())
                 }
             })
@@ -212,8 +212,8 @@ impl RenderPipeline for DefaultPipeline {
             .write(h_fsr_easu, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .bind_sampled(h_ldr, fsr_easu_set, 0, fsr_sampler)
             .record({
-                move |cmd, pool, ctx_ptr| {
-                    let data = unsafe { &*(ctx_ptr as *const DefaultPipelineFrameData) };
+                move |cmd, pool, ctx_ptr| unsafe {
+                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
                     let dst = pool.image(h_fsr_easu);
                     let (iw, ih) = data.internal_resolution;
                     let (ow, oh) = data.output_resolution;
@@ -222,7 +222,7 @@ impl RenderPipeline for DefaultPipeline {
                         (iw as f32, ih as f32),
                         (ow as f32, oh as f32),
                     );
-                    fsr_pass_easu.record_easu(data.device, cmd, &dst, &pc);
+                    fsr_pass_easu.record_easu(&*data.device, cmd, &dst, &pc);
                     Ok(())
                 }
             })
@@ -233,11 +233,11 @@ impl RenderPipeline for DefaultPipeline {
             .write(h_fsr_rcas, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .bind_sampled(h_fsr_easu, fsr_rcas_set, 0, fsr_sampler)
             .record({
-                move |cmd, pool, ctx_ptr| {
-                    let data = unsafe { &*(ctx_ptr as *const DefaultPipelineFrameData) };
+                move |cmd, pool, ctx_ptr| unsafe {
+                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
                     let dst = pool.image(h_fsr_rcas);
                     let pc = compute_rcas_con(data.fsr_sharpness);
-                    fsr_pass_rcas.record_rcas(data.device, cmd, &dst, &pc);
+                    fsr_pass_rcas.record_rcas(&*data.device, cmd, &dst, &pc);
                     Ok(())
                 }
             })
@@ -283,7 +283,7 @@ impl RenderPipeline for DefaultPipeline {
 
                     unsafe {
                         let data = &*(_ctx_ptr as *const DefaultPipelineFrameData);
-                        data.device.cmd_blit_image2(
+                        (*data.device).cmd_blit_image2(
                             cmd,
                             &vk::BlitImageInfo2::default()
                                 .src_image(src.image)
@@ -303,20 +303,20 @@ impl RenderPipeline for DefaultPipeline {
             .after(blit_handle)
             .read_write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .record({
-                move |cmd, pool, ctx_ptr| {
-                    let data = unsafe { &mut *(ctx_ptr as *mut DefaultPipelineFrameData) };
+                move |cmd, pool, ctx_ptr| unsafe {
+                    let data = &mut *(ctx_ptr as *mut DefaultPipelineFrameData);
                     let sc = pool.image(h_swapchain);
                     let egui_output = data
                         .egui_output
                         .take()
                         .expect("egui_output должен быть Some в ui pass");
                     UiPass.record(
-                        data.device,
+                        &*data.device,
                         cmd,
                         sc.view,
                         sc.extent,
-                        data.window,
-                        data.egui,
+                        &*data.window,
+                        &mut *data.egui,
                         egui_output,
                         data.graphics_queue,
                         data.command_pool,
@@ -397,7 +397,7 @@ impl RenderPipeline for DefaultPipeline {
             output_resolution: input.output_resolution,
         });
 
-        graph.set_frame_data(Box::into_raw(frame_data) as *mut ());
+        graph.set_frame_data(frame_data);
         Ok(())
     }
 }
@@ -427,18 +427,18 @@ impl OwnedDrawCall {
         }
     }
 }
-struct DefaultPipelineFrameData<'a> {
-    device: &'a ash::Device,
+struct DefaultPipelineFrameData {
+    device: *const ash::Device,
     draw_calls: Vec<OwnedDrawCall>,
     shadow_calls: Vec<OwnedDrawCall>,
-    camera: &'a crate::vulkan::Camera,
+    camera: *const crate::vulkan::Camera,
     view_proj: glam::Mat4,
     light_view_proj: glam::Mat4,
     lighting: LightingUbo,
-    assets: &'a AssetServer,
-    egui: &'a mut crate::egui_layer::EguiLayer,
+    assets: *const AssetServer,
+    egui: *mut crate::egui_layer::EguiLayer,
     egui_output: Option<egui::FullOutput>,
-    window: &'a winit::window::Window,
+    window: *const winit::window::Window,
     graphics_queue: vk::Queue,
     command_pool: vk::CommandPool,
     exposure: f32,
@@ -447,3 +447,5 @@ struct DefaultPipelineFrameData<'a> {
     internal_resolution: (u32, u32),
     output_resolution: (u32, u32),
 }
+
+unsafe impl Send for DefaultPipelineFrameData {}

@@ -22,6 +22,9 @@ pub struct PassAccess {
     pub layout: vk::ImageLayout,
 }
 
+struct FrameDataBox(*mut ());
+unsafe impl Send for FrameDataBox {}
+
 impl PassAccess {
     pub fn read(handle: ResourceHandle, layout: vk::ImageLayout) -> Self {
         Self {
@@ -96,7 +99,10 @@ pub struct RenderGraph {
     output_resolution: (u32, u32),
 
     compiled: bool,
-    frame_data: *mut (),
+    allocated: bool,
+
+    frame_data: Option<FrameDataBox>,
+    frame_data_drop: Option<Box<dyn FnOnce(*mut ()) + Send>>,
 }
 
 impl RenderGraph {
@@ -116,8 +122,10 @@ impl RenderGraph {
             internal_resolution,
             output_resolution,
             compiled: false,
+            allocated: false,
             debug_utils,
-            frame_data: std::ptr::null_mut(),
+            frame_data: None,
+            frame_data_drop: None,
         }
     }
 
@@ -228,6 +236,7 @@ impl RenderGraph {
         self.pool
             .allocate(self.internal_resolution, self.output_resolution)?;
         self.bindings.flush_all(&self.pool);
+        self.allocated = true;
         Ok(())
     }
 
@@ -242,8 +251,14 @@ impl RenderGraph {
     pub fn execute(&mut self, device: &ash::Device, cmd: vk::CommandBuffer) -> anyhow::Result<()> {
         assert!(self.compiled, "RenderGraph::compile() не был вызван");
 
+        let frame_ptr = self
+            .frame_data
+            .as_ref()
+            .map(|b| b.0)
+            .unwrap_or(std::ptr::null_mut());
+
         for &idx in &self.sorted_order {
-            let node = &self.nodes[idx];
+            let node = &mut self.nodes[idx];
             if !node.enabled {
                 continue;
             }
@@ -258,8 +273,7 @@ impl RenderGraph {
             self.tracker
                 .transition(device, cmd, &self.pool, &transitions);
 
-            let node = &mut self.nodes[idx];
-            (node.record)(cmd, &self.pool, self.frame_data)?;
+            (node.record)(cmd, &self.pool, frame_ptr)?;
 
             if let Some(du) = &self.debug_utils {
                 cmd_end_label(du, cmd);
@@ -312,12 +326,35 @@ impl RenderGraph {
         &mut self.nodes[handle.0 as usize]
     }
 
-    pub fn set_frame_data(&mut self, ptr: *mut ()) {
-        self.frame_data = ptr;
+    pub fn set_frame_data<T: Send + 'static>(&mut self, data: Box<T>) {
+        if let Some(drop_fn) = self.frame_data_drop.take() {
+            if let Some(FrameDataBox(ptr)) = self.frame_data.take() {
+                drop_fn(ptr);
+            }
+        }
+
+        let ptr = Box::into_raw(data) as *mut ();
+        self.frame_data = Some(FrameDataBox(ptr));
+        self.frame_data_drop = Some(Box::new(|p| unsafe {
+            drop(Box::from_raw(p as *mut T));
+        }));
     }
 
     pub fn frame_data_ptr(&self) -> *mut () {
         self.frame_data
+            .as_ref()
+            .map(|b| b.0)
+            .unwrap_or(std::ptr::null_mut())
+    }
+}
+
+impl Drop for RenderGraph {
+    fn drop(&mut self) {
+        if let Some(drop_fn) = self.frame_data_drop.take() {
+            if let Some(FrameDataBox(ptr)) = self.frame_data.take() {
+                drop_fn(ptr);
+            }
+        }
     }
 }
 
@@ -420,7 +457,11 @@ pub struct PassNodeReady {
 impl PassNodeReady {
     pub fn build(self, graph: &mut RenderGraph) -> PassHandle {
         for b in self.deferred_bindings {
+            let resource = b.resource;
             graph.bindings.register(b);
+            if graph.allocated {
+                graph.bindings.flush(&graph.pool, &[resource]);
+            }
         }
         graph.add_pass(self.node)
     }
