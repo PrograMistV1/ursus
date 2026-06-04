@@ -1,4 +1,3 @@
-use crate::app::create_temp_pool;
 use crate::assets::AssetServer;
 use crate::ecs::GameWorld;
 use crate::egui_layer::EguiLayer;
@@ -8,7 +7,6 @@ use crate::pipeline::FrameInput;
 use crate::render_graph::{RenderGraph, ResourcePool};
 use crate::vulkan::core::commands::Commands;
 use crate::vulkan::core::sync::FrameSync;
-use crate::vulkan::timestamps::GpuTimestampPool;
 use crate::vulkan::{Device, VulkanContext};
 use ash::vk;
 use glam::{Mat4, Vec3};
@@ -57,45 +55,12 @@ pub struct Renderer<P: RenderPipeline> {
     swapchain_loader: ash::khr::swapchain::Device,
     device: Arc<Device>,
     handles: PipelineHandles,
-    pub timestamps: GpuTimestampPool,
 
     pub exposure: f32,
     pub fsr_sharpness: f32,
 }
 
 impl<P: RenderPipeline> Renderer<P> {
-    pub fn new(ctx: &VulkanContext) -> anyhow::Result<Self> {
-        let swapchain = ctx.swapchain.as_ref().unwrap();
-
-        let pool = ResourcePool::new(
-            ctx.device.handle.clone(),
-            ctx.device.physical,
-            ctx.instance.handle.clone(),
-            ctx.debug_utils.clone(),
-        );
-
-        let mut graph = RenderGraph::new(
-            pool,
-            ctx.device.handle.clone(),
-            (1280, 720),
-            (swapchain.extent.width, swapchain.extent.height),
-            ctx.debug_utils.clone(),
-        );
-
-        graph.allocate()?;
-        graph.compile()?;
-
-        Commands::new(
-            &ctx.device.handle,
-            ctx.device.graphics_family,
-            FRAMES_IN_FLIGHT,
-        )?;
-
-        ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
-
-        anyhow::bail!("Используй Renderer::with_pipeline()");
-    }
-
     pub fn with_pipeline(
         ctx: &VulkanContext,
         assets: &mut AssetServer,
@@ -140,23 +105,11 @@ impl<P: RenderPipeline> Renderer<P> {
         let swapchain_loader =
             ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
 
-        let ts_pool = create_temp_pool(&ctx)?;
-        let timestamps = GpuTimestampPool::new(
-            &ctx.device.handle,
-            ctx.device.physical,
-            &ctx.instance.handle,
-            FRAMES_IN_FLIGHT,
-            ts_pool,
-            ctx.device.graphics_queue,
-        )?;
-        unsafe { ctx.device.handle.destroy_command_pool(ts_pool, None) };
-
         Ok(Self {
             graph,
             pipeline,
             commands,
             frames,
-            timestamps,
             current_frame: 0,
             swapchain_loader,
             device: ctx.device.clone(),
@@ -226,7 +179,6 @@ impl<P: RenderPipeline> Renderer<P> {
                 &vk::CommandBufferBeginInfo::default()
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )?;
-            self.timestamps.read_and_reset(self.current_frame, cmd);
         }
 
         let input = FrameInput {
@@ -276,7 +228,7 @@ impl<P: RenderPipeline> Renderer<P> {
                     .signal_semaphores(&signal_semaphores)],
                 frame.render_fence,
             )?;
-            self.timestamps.mark_submitted(self.current_frame);
+            self.graph.mark_submitted();
         }
 
         let needs_recreate = match unsafe {

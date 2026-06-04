@@ -259,7 +259,7 @@ impl ApplicationHandler for EngineHandler {
                             state.fps_current,
                             state.ctx.world.entity_count(),
                             &state.cpu_history,
-                            &state.ctx.renderer.timestamps.last_frame,
+                            state.ctx.renderer.graph.last_frame_times.as_ref(),
                         );
                     })
                 };

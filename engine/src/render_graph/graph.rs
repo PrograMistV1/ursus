@@ -3,6 +3,7 @@ use crate::render_graph::resource::{
     ResourceHandle, ResourcePool,
 };
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
+use crate::vulkan::timestamps::{GpuFrameTimes, GpuTimestampPool};
 use ash::ext::debug_utils;
 use ash::vk;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -103,6 +104,11 @@ pub struct RenderGraph {
 
     frame_data: Option<FrameDataBox>,
     frame_data_drop: Option<Box<dyn FnOnce(*mut ()) + Send>>,
+
+    timestamps: Option<GpuTimestampPool>,
+    pub last_frame_times: Option<GpuFrameTimes>,
+    current_frame: usize,
+    frames_in_flight: usize,
 }
 
 impl RenderGraph {
@@ -126,7 +132,42 @@ impl RenderGraph {
             debug_utils,
             frame_data: None,
             frame_data_drop: None,
+            timestamps: None,
+            last_frame_times: None,
+            current_frame: 0,
+            frames_in_flight: 0,
         }
+    }
+
+    pub fn enable_timestamps(
+        &mut self,
+        device: &ash::Device,
+        physical_device: vk::PhysicalDevice,
+        instance: &ash::Instance,
+        frames_in_flight: u32,
+        command_pool: vk::CommandPool,
+        queue: vk::Queue,
+    ) -> anyhow::Result<()> {
+        assert!(self.compiled, "enable_timestamps вызван до compile()");
+
+        let pass_names = self.nodes.iter().map(|n| n.name.clone()).collect();
+
+        self.timestamps = Some(GpuTimestampPool::new(
+            device,
+            physical_device,
+            instance,
+            frames_in_flight,
+            pass_names,
+            command_pool,
+            queue,
+        )?);
+        self.frames_in_flight = frames_in_flight as usize;
+        Ok(())
+    }
+
+    pub fn disable_timestamps(&mut self) {
+        self.timestamps = None;
+        self.last_frame_times = None;
     }
 
     pub fn add_pass(&mut self, node: PassNode) -> PassHandle {
@@ -211,13 +252,17 @@ impl RenderGraph {
     pub fn execute(&mut self, device: &ash::Device, cmd: vk::CommandBuffer) -> anyhow::Result<()> {
         assert!(self.compiled, "RenderGraph::compile() не был вызван");
 
+        if let Some(ts) = &mut self.timestamps {
+            ts.read_and_reset(self.current_frame, cmd);
+        }
+
         let frame_ptr = self
             .frame_data
             .as_ref()
             .map(|b| b.0)
             .unwrap_or(std::ptr::null_mut());
 
-        for &idx in &self.sorted_order {
+        for (order_idx, &idx) in self.sorted_order.iter().enumerate() {
             let node = &mut self.nodes[idx];
             if !node.enabled {
                 continue;
@@ -229,11 +274,18 @@ impl RenderGraph {
 
             let transitions: Vec<(ResourceHandle, vk::ImageLayout)> =
                 node.accesses.iter().map(|a| (a.handle, a.layout)).collect();
-
             self.tracker
                 .transition(device, cmd, &self.pool, &transitions);
 
+            if let Some(ts) = &self.timestamps {
+                ts.begin_pass(cmd, self.current_frame, order_idx);
+            }
+
             (node.record)(cmd, &self.pool, frame_ptr)?;
+
+            if let Some(ts) = &self.timestamps {
+                ts.end_pass(cmd, self.current_frame, order_idx);
+            }
 
             if let Some(du) = &self.debug_utils {
                 cmd_end_label(du, cmd);
@@ -252,7 +304,18 @@ impl RenderGraph {
             self.tracker.transition(device, cmd, &self.pool, &finals);
         }
 
+        if let Some(ts) = &self.timestamps {
+            self.last_frame_times = Some(ts.last_frame.clone());
+        }
+
+        self.current_frame = (self.current_frame + 1) % self.frames_in_flight.max(1);
         Ok(())
+    }
+
+    pub fn mark_submitted(&mut self) {
+        if let Some(ts) = &mut self.timestamps {
+            ts.mark_submitted(self.current_frame);
+        }
     }
 
     pub fn resize_output(&mut self, new_output: (u32, u32)) -> anyhow::Result<()> {
