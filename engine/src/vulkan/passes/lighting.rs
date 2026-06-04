@@ -1,5 +1,5 @@
 use crate::lighting::buffer::LightBuffer;
-use crate::render_graph::resource::TransientImage;
+use crate::render_graph::GpuImage;
 use crate::vulkan::Camera;
 use ash::vk;
 
@@ -163,14 +163,14 @@ impl LightingPass {
         &self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,
-        hdr: &TransientImage,
+        hdr: &impl GpuImage,
         camera: &Camera,
     ) {
-        let extent = hdr.extent;
+        let extent = hdr.extent();
 
         unsafe {
             let color_attachment = vk::RenderingAttachmentInfo::default()
-                .image_view(hdr.view)
+                .image_view(hdr.view())
                 .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                 .load_op(vk::AttachmentLoadOp::DONT_CARE)
                 .store_op(vk::AttachmentStoreOp::STORE);

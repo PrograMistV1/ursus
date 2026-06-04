@@ -3,6 +3,7 @@ use crate::ecs::systems::collect_draw_calls;
 use crate::ecs::GameWorld;
 use crate::lighting::{compute_light_view_proj, LightingUbo};
 use crate::math::frustum::{extract_planes, transform_aabb};
+use crate::render_graph::resource::ExternalImageDesc;
 use crate::render_graph::{pass, RenderGraph, ResourceDesc, ResourceExtent, ResourcePool};
 use crate::vulkan::core::commands::Commands;
 use crate::vulkan::core::sync::FrameSync;
@@ -21,7 +22,6 @@ use glam::{Mat4, Vec3};
 use std::sync::Arc;
 
 const FRAMES_IN_FLIGHT: u32 = 3;
-
 const LDR_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 
 pub struct Camera {
@@ -65,6 +65,7 @@ struct Handles {
     ldr: crate::render_graph::ResourceHandle,
     fsr_easu: crate::render_graph::ResourceHandle,
     fsr_rcas: crate::render_graph::ResourceHandle,
+    swapchain: crate::render_graph::ResourceHandle,
 }
 
 pub struct Renderer {
@@ -74,6 +75,8 @@ pub struct Renderer {
     current_frame: usize,
     swapchain_loader: ash::khr::swapchain::Device,
     device: Arc<Device>,
+
+    handles: Handles,
 
     pub exposure: f32,
     pub fsr_enabled: bool,
@@ -141,6 +144,14 @@ impl Renderer {
                 ResourceDesc::color("fsr_rcas", LDR_FORMAT, ResourceExtent::ScaleOutput(1.0))
                     .with_usage(vk::ImageUsageFlags::TRANSFER_SRC),
             ),
+
+            swapchain: graph.pool.register_external(ExternalImageDesc {
+                name: "swapchain".into(),
+                format: swapchain.format,
+                kind: crate::render_graph::ResourceKind::Color,
+                initial_layout: vk::ImageLayout::UNDEFINED,
+                final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+            }),
         };
 
         let shadow_pass = ShadowPass::new(&ctx.device.handle)?;
@@ -162,8 +173,6 @@ impl Renderer {
 
         let post_pass = PostProcessPass::new(&ctx.device.handle, LDR_FORMAT)?;
 
-        FsrPass::new(&ctx.device.handle, LDR_FORMAT)?;
-
         pass("shadow")
             .write(h.shadow_map, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
             .record({
@@ -178,7 +187,7 @@ impl Renderer {
                             transform: dc.transform,
                         })
                         .collect();
-                    shadow_pass.record(ctx.device, cmd, sm, ctx.light_view_proj, &calls);
+                    shadow_pass.record(ctx.device, cmd, &sm, ctx.light_view_proj, &calls);
                     Ok(())
                 }
             })
@@ -197,9 +206,9 @@ impl Renderer {
                     geometry_pass.record(
                         ctx.device,
                         cmd,
-                        albedo,
-                        normal,
-                        depth,
+                        &albedo,
+                        &normal,
+                        &depth,
                         [0.0, 0.0, 0.0, 1.0],
                         ctx.view_proj,
                         &ctx.draw_calls,
@@ -210,6 +219,7 @@ impl Renderer {
             })
             .build(&mut graph);
 
+        // lighting ---------------------------------------------------------
         pass("lighting")
             .read(h.gbuffer_albedo, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .read(h.gbuffer_normal, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
@@ -245,12 +255,13 @@ impl Renderer {
                     let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
                     let hdr = pool.image(h.hdr);
                     lighting_pass.upload_lights(&ctx.lighting);
-                    lighting_pass.record(ctx.device, cmd, hdr, ctx.camera);
+                    lighting_pass.record(ctx.device, cmd, &hdr, ctx.camera);
                     Ok(())
                 }
             })
             .build(&mut graph);
 
+        // post_process -----------------------------------------------------
         pass("post_process")
             .read(h.hdr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .write(h.ldr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
@@ -259,12 +270,13 @@ impl Renderer {
                 move |cmd, pool, ctx_ptr| {
                     let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
                     let ldr = pool.image(h.ldr);
-                    post_pass.record_to_target(ctx.device, cmd, ldr, ctx.exposure);
+                    post_pass.record_to_target(ctx.device, cmd, &ldr, ctx.exposure);
                     Ok(())
                 }
             })
             .build(&mut graph);
 
+        // fsr --------------------------------------------------------------
         let fsr_pass = Arc::new(FsrPass::new(&ctx.device.handle, LDR_FORMAT)?);
 
         let fsr_easu_descriptor_set = fsr_pass.easu_descriptor_set;
@@ -287,7 +299,7 @@ impl Renderer {
                         (iw as f32, ih as f32),
                         (ow as f32, oh as f32),
                     );
-                    fsr_pass_easu.record_easu(ctx.device, cmd, dst, &pc);
+                    fsr_pass_easu.record_easu(ctx.device, cmd, &dst, &pc);
                     Ok(())
                 }
             })
@@ -303,7 +315,7 @@ impl Renderer {
                     let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
                     let dst = pool.image(h.fsr_rcas);
                     let pc = compute_rcas_con(ctx.fsr_sharpness);
-                    fsr_pass_rcas.record_rcas(ctx.device, cmd, dst, &pc);
+                    fsr_pass_rcas.record_rcas(ctx.device, cmd, &dst, &pc);
                     Ok(())
                 }
             })
@@ -311,10 +323,13 @@ impl Renderer {
 
         let blit_handle = pass("blit_to_swapchain")
             .read(h.fsr_rcas, vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .write(h.swapchain, vk::ImageLayout::TRANSFER_DST_OPTIMAL)
             .record({
                 move |cmd, pool, ctx_ptr| {
                     let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
                     let src = pool.image(h.fsr_rcas);
+                    let dst = pool.image(h.swapchain);
+
                     let blit = vk::ImageBlit2::default()
                         .src_subresource(vk::ImageSubresourceLayers {
                             aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -339,67 +354,22 @@ impl Renderer {
                         .dst_offsets([
                             vk::Offset3D::default(),
                             vk::Offset3D {
-                                x: ctx.swapchain_extent.width as i32,
-                                y: ctx.swapchain_extent.height as i32,
+                                x: dst.extent.width as i32,
+                                y: dst.extent.height as i32,
                                 z: 1,
                             },
                         ]);
 
-                    let barrier = vk::ImageMemoryBarrier2::default()
-                        .src_stage_mask(vk::PipelineStageFlags2::TOP_OF_PIPE)
-                        .src_access_mask(vk::AccessFlags2::empty())
-                        .dst_stage_mask(vk::PipelineStageFlags2::TRANSFER)
-                        .dst_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
-                        .old_layout(vk::ImageLayout::UNDEFINED)
-                        .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                        .image(ctx.swapchain_image)
-                        .subresource_range(vk::ImageSubresourceRange {
-                            aspect_mask: vk::ImageAspectFlags::COLOR,
-                            base_mip_level: 0,
-                            level_count: 1,
-                            base_array_layer: 0,
-                            layer_count: 1,
-                        });
                     unsafe {
-                        ctx.device.cmd_pipeline_barrier2(
-                            cmd,
-                            &vk::DependencyInfo::default()
-                                .image_memory_barriers(std::slice::from_ref(&barrier)),
-                        );
-
                         ctx.device.cmd_blit_image2(
                             cmd,
                             &vk::BlitImageInfo2::default()
                                 .src_image(src.image)
                                 .src_image_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-                                .dst_image(ctx.swapchain_image)
+                                .dst_image(dst.image)
                                 .dst_image_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                                 .regions(std::slice::from_ref(&blit))
                                 .filter(vk::Filter::LINEAR),
-                        );
-
-                        let barrier = vk::ImageMemoryBarrier2::default()
-                            .src_stage_mask(vk::PipelineStageFlags2::TRANSFER)
-                            .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
-                            .dst_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
-                            .dst_access_mask(
-                                vk::AccessFlags2::COLOR_ATTACHMENT_READ
-                                    | vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-                            )
-                            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                            .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                            .image(ctx.swapchain_image)
-                            .subresource_range(vk::ImageSubresourceRange {
-                                aspect_mask: vk::ImageAspectFlags::COLOR,
-                                base_mip_level: 0,
-                                level_count: 1,
-                                base_array_layer: 0,
-                                layer_count: 1,
-                            });
-                        ctx.device.cmd_pipeline_barrier2(
-                            cmd,
-                            &vk::DependencyInfo::default()
-                                .image_memory_barriers(std::slice::from_ref(&barrier)),
                         );
                     }
                     Ok(())
@@ -409,9 +379,11 @@ impl Renderer {
 
         pass("ui")
             .after(blit_handle)
+            .read_write(h.swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .record({
-                move |cmd, _pool, ctx_ptr| {
+                move |cmd, pool, ctx_ptr| {
                     let ctx = unsafe { FrameCtx::from_ptr(ctx_ptr) };
+                    let sc = pool.image(h.swapchain);
                     let egui = unsafe { &mut *ctx.egui };
                     let output = ctx
                         .egui_output
@@ -420,9 +392,8 @@ impl Renderer {
                     UiPass.record(
                         ctx.device,
                         cmd,
-                        ctx.swapchain_image,
-                        ctx.swapchain_view,
-                        ctx.swapchain_extent,
+                        sc.view,
+                        sc.extent,
                         unsafe { &*ctx.window },
                         egui,
                         output,
@@ -433,6 +404,8 @@ impl Renderer {
                 }
             })
             .build(&mut graph);
+
+        // ------------------------------------------------------------------
 
         graph.allocate()?;
         graph.compile()?;
@@ -457,6 +430,7 @@ impl Renderer {
             current_frame: 0,
             swapchain_loader,
             device: ctx.device.clone(),
+            handles: h,
             exposure: 0.5,
             fsr_enabled: true,
             fsr_sharpness: 0.2,
@@ -524,7 +498,6 @@ impl Renderer {
             Vec3::new(0.0, 2.0, 0.0),
             20.0,
         );
-
         let mut lighting_frame = *lighting;
         lighting_frame.light_space_matrix = light_view_proj.to_cols_array_2d();
 
@@ -545,6 +518,14 @@ impl Renderer {
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => return Ok(true),
             Err(e) => return Err(e.into()),
         };
+
+        self.graph.pool.update_external(
+            self.handles.swapchain,
+            swapchain.images[image_index as usize],
+            swapchain.image_views[image_index as usize],
+            swapchain.extent,
+        );
+        self.graph.reset_external_layouts();
 
         unsafe { device.reset_fences(&[frame.render_fence])? };
         unsafe {
@@ -582,6 +563,7 @@ impl Renderer {
 
         {
             puffin::profile_scope!("graph_execute");
+            // execute() вставит финальный барьер COLOR_ATTACHMENT_OPTIMAL → PRESENT_SRC_KHR
             self.graph.execute(device, cmd, frame_ctx.as_ptr())?;
         }
 

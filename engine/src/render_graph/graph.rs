@@ -142,7 +142,6 @@ impl RenderGraph {
         let n = self.nodes.len();
         let mut adj: Vec<HashSet<usize>> = vec![HashSet::new(); n];
         let mut in_degree = vec![0usize; n];
-
         let mut last_writer: HashMap<ResourceHandle, usize> = HashMap::new();
 
         for (i, node) in self.nodes.iter().enumerate() {
@@ -173,7 +172,6 @@ impl RenderGraph {
 
         let mut queue: VecDeque<usize> = (0..n).filter(|&i| in_degree[i] == 0).collect();
         let mut order = Vec::with_capacity(n);
-
         while let Some(idx) = queue.pop_front() {
             order.push(idx);
             for &dep in &adj[idx] {
@@ -200,7 +198,6 @@ impl RenderGraph {
                 .map(|(i, p)| format!("[{}]{}", i, p.name))
                 .collect::<Vec<_>>()
         );
-
         Ok(())
     }
 
@@ -230,6 +227,14 @@ impl RenderGraph {
             .allocate(self.internal_resolution, self.output_resolution)?;
         self.bindings.flush_all(&self.pool);
         Ok(())
+    }
+
+    pub fn reset_external_layouts(&mut self) {
+        for handle in self.pool.external_handles().collect::<Vec<_>>() {
+            if let Some(initial) = self.pool.external_initial_layout(handle) {
+                self.tracker.set(handle, initial);
+            }
+        }
     }
 
     pub fn execute(
@@ -264,6 +269,18 @@ impl RenderGraph {
             }
         }
 
+        let finals: Vec<(ResourceHandle, vk::ImageLayout)> = self
+            .pool
+            .external_handles()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .filter_map(|h| self.pool.external_final_layout(h).map(|l| (h, l)))
+            .collect();
+
+        if !finals.is_empty() {
+            self.tracker.transition(device, cmd, &self.pool, &finals);
+        }
+
         Ok(())
     }
 
@@ -271,7 +288,6 @@ impl RenderGraph {
         self.output_resolution = new_output;
         self.pool
             .resize_output(self.internal_resolution, new_output)?;
-
         let affected: Vec<ResourceHandle> = self.pool.output_handles().collect();
         self.bindings.flush(&self.pool, &affected);
         self.tracker.invalidate(&affected);
@@ -282,7 +298,6 @@ impl RenderGraph {
         self.internal_resolution = new_internal;
         self.pool
             .resize_internal(new_internal, self.output_resolution)?;
-
         let affected: Vec<ResourceHandle> = self.pool.internal_handles().collect();
         self.bindings.flush(&self.pool, &affected);
         self.tracker.invalidate(&affected);
@@ -292,7 +307,6 @@ impl RenderGraph {
     pub fn internal_resolution(&self) -> (u32, u32) {
         self.internal_resolution
     }
-
     pub fn output_resolution(&self) -> (u32, u32) {
         self.output_resolution
     }
@@ -356,7 +370,6 @@ impl PassBuilder {
         });
         self
     }
-
     pub fn bind_sampled_at(
         mut self,
         resource: ResourceHandle,
@@ -376,7 +389,10 @@ impl PassBuilder {
         });
         self
     }
-
+    pub fn after(mut self, handle: PassHandle) -> Self {
+        self.explicit_deps.push(handle);
+        self
+    }
     pub fn record<F>(self, f: F) -> PassNodeReady
     where
         F: FnMut(vk::CommandBuffer, &ResourcePool, *mut ()) -> anyhow::Result<()> + Send + 'static,
@@ -388,11 +404,6 @@ impl PassBuilder {
             },
             deferred_bindings: self.deferred_bindings,
         }
-    }
-
-    pub fn after(mut self, handle: PassHandle) -> Self {
-        self.explicit_deps.push(handle);
-        self
     }
 }
 

@@ -1,8 +1,7 @@
 use crate::assets::shader_registry::ShaderHandle;
-use crate::assets::AssetServer;
-use crate::assets::GpuMesh;
+use crate::assets::{AssetServer, GpuMesh};
 use crate::ecs::components::{MaterialHandle, Transform};
-use crate::render_graph::resource::TransientImage;
+use crate::render_graph::GpuImage;
 use crate::vulkan::pipeline::pipeline::PipelineDesc;
 use crate::vulkan::Pipeline;
 use ash::vk;
@@ -76,20 +75,20 @@ impl GeometryPass {
         &mut self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,
-        albedo: &TransientImage,
-        normal: &TransientImage,
-        depth: &TransientImage,
+        albedo: &impl GpuImage,
+        normal: &impl GpuImage,
+        depth: &impl GpuImage,
         clear_color: [f32; 4],
         view_proj: Mat4,
         draw_calls: &[DrawCall<'_>],
         assets: &AssetServer,
     ) {
-        let extent = albedo.extent;
+        let extent = albedo.extent();
 
         unsafe {
             let color_attachments = [
                 vk::RenderingAttachmentInfo::default()
-                    .image_view(albedo.view)
+                    .image_view(albedo.view())
                     .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                     .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::STORE)
@@ -99,7 +98,7 @@ impl GeometryPass {
                         },
                     }),
                 vk::RenderingAttachmentInfo::default()
-                    .image_view(normal.view)
+                    .image_view(normal.view())
                     .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                     .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::STORE)
@@ -109,7 +108,7 @@ impl GeometryPass {
             ];
 
             let depth_attachment = vk::RenderingAttachmentInfo::default()
-                .image_view(depth.view)
+                .image_view(depth.view())
                 .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::STORE)

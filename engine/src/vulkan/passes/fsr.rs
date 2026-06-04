@@ -1,4 +1,4 @@
-use crate::render_graph::resource::TransientImage;
+use crate::render_graph::GpuImage;
 use ash::vk;
 
 #[repr(C)]
@@ -131,7 +131,7 @@ impl FsrPass {
         &self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,
-        dst: &TransientImage,
+        dst: &impl GpuImage,
         easu_pc: &EasuPC,
     ) {
         self.record_fullscreen_pass(
@@ -154,7 +154,7 @@ impl FsrPass {
         &self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,
-        dst: &TransientImage,
+        dst: &impl GpuImage,
         rcas_pc: &RcasPC,
     ) {
         self.record_fullscreen_pass(
@@ -177,16 +177,16 @@ impl FsrPass {
         &self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,
-        dst: &TransientImage,
+        dst: &impl GpuImage,
         pipeline: vk::Pipeline,
         layout: vk::PipelineLayout,
         set: vk::DescriptorSet,
         pc_bytes: &[u8],
     ) {
-        let extent = dst.extent;
+        let extent = dst.extent();
         unsafe {
             let color_attachment = vk::RenderingAttachmentInfo::default()
-                .image_view(dst.view)
+                .image_view(dst.view())
                 .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                 .load_op(vk::AttachmentLoadOp::DONT_CARE)
                 .store_op(vk::AttachmentStoreOp::STORE);

@@ -1,6 +1,6 @@
 use crate::assets::GpuMesh;
 use crate::ecs::components::Transform;
-use crate::render_graph::resource::TransientImage;
+use crate::render_graph::GpuImage;
 use crate::vulkan::resources::shadow_map::SHADOW_MAP_SIZE;
 use ash::vk;
 use glam::Mat4;
@@ -26,7 +26,7 @@ impl ShadowPass {
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX)
             .offset(0)
-            .size(std::mem::size_of::<ShadowPC>() as u32);
+            .size(size_of::<ShadowPC>() as u32);
 
         let layout = unsafe {
             device.create_pipeline_layout(
@@ -129,7 +129,7 @@ impl ShadowPass {
         &self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,
-        shadow_map: &TransientImage,
+        shadow_map: &impl GpuImage,
         light_view_proj: Mat4,
         draw_calls: &[ShadowDrawCall<'_>],
     ) {
@@ -140,7 +140,7 @@ impl ShadowPass {
 
         unsafe {
             let depth_attachment = vk::RenderingAttachmentInfo::default()
-                .image_view(shadow_map.view)
+                .image_view(shadow_map.view())
                 .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::STORE)

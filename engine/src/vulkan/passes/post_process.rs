@@ -1,3 +1,4 @@
+use crate::render_graph::GpuImage;
 use ash::vk;
 
 #[repr(C)]
@@ -160,14 +161,14 @@ impl PostProcessPass {
         &self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,
-        target: &crate::render_graph::resource::TransientImage,
+        target: &impl GpuImage,
         exposure: f32,
     ) {
-        let extent = target.extent;
+        let extent = target.extent();
 
         unsafe {
             let color_attachment = vk::RenderingAttachmentInfo::default()
-                .image_view(target.view)
+                .image_view(target.view())
                 .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                 .load_op(vk::AttachmentLoadOp::DONT_CARE)
                 .store_op(vk::AttachmentStoreOp::STORE);
