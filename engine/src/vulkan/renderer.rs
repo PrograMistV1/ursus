@@ -219,7 +219,6 @@ impl Renderer {
             })
             .build(&mut graph);
 
-        // lighting ---------------------------------------------------------
         pass("lighting")
             .read(h.gbuffer_albedo, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .read(h.gbuffer_normal, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
@@ -261,7 +260,6 @@ impl Renderer {
             })
             .build(&mut graph);
 
-        // post_process -----------------------------------------------------
         pass("post_process")
             .read(h.hdr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .write(h.ldr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
@@ -276,7 +274,6 @@ impl Renderer {
             })
             .build(&mut graph);
 
-        // fsr --------------------------------------------------------------
         let fsr_pass = Arc::new(FsrPass::new(&ctx.device.handle, LDR_FORMAT)?);
 
         let fsr_easu_descriptor_set = fsr_pass.easu_descriptor_set;
@@ -404,8 +401,6 @@ impl Renderer {
                 }
             })
             .build(&mut graph);
-
-        // ------------------------------------------------------------------
 
         graph.allocate()?;
         graph.compile()?;
@@ -563,7 +558,6 @@ impl Renderer {
 
         {
             puffin::profile_scope!("graph_execute");
-            // execute() вставит финальный барьер COLOR_ATTACHMENT_OPTIMAL → PRESENT_SRC_KHR
             self.graph.execute(device, cmd, frame_ctx.as_ptr())?;
         }
 
