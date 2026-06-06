@@ -1,4 +1,5 @@
 use super::shader::ShaderModule;
+use crate::assets::mesh::Vertex;
 use ash::vk;
 
 pub struct PipelineDesc<'a> {
@@ -52,8 +53,10 @@ impl Pipeline {
                 .name(entry),
         ];
 
-        let binding =
-            vk::VertexInputBindingDescription::default().binding(0).stride(32).input_rate(vk::VertexInputRate::VERTEX);
+        let binding = vk::VertexInputBindingDescription::default()
+            .binding(0)
+            .stride(size_of::<Vertex>() as u32)
+            .input_rate(vk::VertexInputRate::VERTEX);
 
         let attributes = [
             vk::VertexInputAttributeDescription::default()

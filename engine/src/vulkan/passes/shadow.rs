@@ -1,3 +1,4 @@
+use crate::assets::mesh::Vertex;
 use crate::assets::GpuMesh;
 use crate::ecs::components::Transform;
 use crate::render_graph::GpuImage;
@@ -29,8 +30,10 @@ impl ShadowPass {
             .offset(0)
             .size(size_of::<ShadowPC>() as u32);
 
-        let binding =
-            vk::VertexInputBindingDescription::default().binding(0).stride(32).input_rate(vk::VertexInputRate::VERTEX);
+        let binding = vk::VertexInputBindingDescription::default()
+            .binding(0)
+            .stride(size_of::<Vertex>() as u32)
+            .input_rate(vk::VertexInputRate::VERTEX);
 
         let attributes = [vk::VertexInputAttributeDescription::default()
             .binding(0)
