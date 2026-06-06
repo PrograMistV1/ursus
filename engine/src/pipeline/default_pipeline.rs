@@ -104,7 +104,7 @@ impl RenderPipeline for DefaultPipeline {
                 }
             })
             .build(graph);
-
+        let debug_utils = ctx.debug_utils.clone();
         pass("geometry")
             .write(h_gbuffer_albedo, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .write(h_gbuffer_normal, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
@@ -128,6 +128,7 @@ impl RenderPipeline for DefaultPipeline {
                         data.view_proj,
                         &draw_calls,
                         &*data.assets,
+                        debug_utils.as_deref(),
                     );
                     Ok(())
                 }

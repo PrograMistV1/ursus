@@ -2,8 +2,10 @@ use crate::assets::shader_registry::ShaderHandle;
 use crate::assets::{AssetServer, GpuMesh};
 use crate::ecs::components::{MaterialHandle, Transform};
 use crate::render_graph::GpuImage;
+use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
 use crate::vulkan::pipeline::pipeline::PipelineDesc;
 use crate::vulkan::Pipeline;
+use ash::ext::debug_utils::Device;
 use ash::vk;
 use glam::Mat4;
 use std::collections::HashMap;
@@ -52,7 +54,6 @@ impl GeometryPass {
         if self.pipelines.contains_key(&shader) {
             return Ok(&self.pipelines[&shader]);
         }
-        log::info!("Создаём pipeline для шейдера {:?}", shader);
         let (vert_spv, frag_spv) = registry.load_spv(shader)?;
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.to_vec();
@@ -74,6 +75,7 @@ impl GeometryPass {
         view_proj: Mat4,
         draw_calls: &[DrawCall<'_>],
         assets: &AssetServer,
+        debug_utils: Option<&Device>,
     ) {
         let extent = albedo.extent();
 
@@ -134,6 +136,10 @@ impl GeometryPass {
 
             for dc in &sorted {
                 puffin::profile_scope!("draw_call");
+                if let Some(du) = &debug_utils {
+                    let label_name = format!("mesh_{}", dc.gpu_mesh.name);
+                    cmd_begin_label(du, cmd, &label_name);
+                }
                 if current_shader != Some(dc.shader) {
                     let pipeline = match self.pipelines.get(&dc.shader) {
                         Some(p) => p,
@@ -176,6 +182,9 @@ impl GeometryPass {
                 device.cmd_bind_vertex_buffers(cmd, 0, &[dc.gpu_mesh.vertex_buffer], &[0]);
                 device.cmd_bind_index_buffer(cmd, dc.gpu_mesh.index_buffer, 0, vk::IndexType::UINT32);
                 device.cmd_draw_indexed(cmd, dc.gpu_mesh.index_count, 1, 0, 0, 0);
+                if let Some(du) = &debug_utils {
+                    cmd_end_label(du, cmd);
+                }
             }
 
             device.cmd_end_rendering(cmd);
