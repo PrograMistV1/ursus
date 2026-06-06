@@ -58,23 +58,7 @@ impl Pipeline {
             .stride(size_of::<Vertex>() as u32)
             .input_rate(vk::VertexInputRate::VERTEX);
 
-        let attributes = [
-            vk::VertexInputAttributeDescription::default()
-                .binding(0)
-                .location(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(0),
-            vk::VertexInputAttributeDescription::default()
-                .binding(0)
-                .location(1)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(12),
-            vk::VertexInputAttributeDescription::default()
-                .binding(0)
-                .location(2)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(24),
-        ];
+        let attributes = Vertex::attribute_descriptions();
 
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
             .vertex_binding_descriptions(std::slice::from_ref(&binding))

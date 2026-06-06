@@ -8,6 +8,7 @@ pub struct Vertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
     pub uv: [f32; 2],
+    pub tangent: [f32; 4],
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -49,7 +50,7 @@ unsafe impl bytemuck::Zeroable for Vertex {}
 
 impl Vertex {
     pub fn new(position: Vec3, normal: Vec3, uv: Vec2) -> Self {
-        Self { position: position.into(), normal: normal.into(), uv: uv.into() }
+        Self { position: position.into(), normal: normal.into(), uv: uv.into(), tangent: [1.0, 0.0, 0.0, 1.0] }
     }
 
     pub fn binding_description() -> vk::VertexInputBindingDescription {
@@ -59,7 +60,7 @@ impl Vertex {
             .input_rate(vk::VertexInputRate::VERTEX)
     }
 
-    pub fn attribute_descriptions() -> [vk::VertexInputAttributeDescription; 3] {
+    pub fn attribute_descriptions() -> [vk::VertexInputAttributeDescription; 4] {
         [
             vk::VertexInputAttributeDescription::default()
                 .binding(0)
@@ -76,6 +77,11 @@ impl Vertex {
                 .location(2)
                 .format(vk::Format::R32G32_SFLOAT)
                 .offset(24),
+            vk::VertexInputAttributeDescription::default()
+                .binding(0)
+                .location(3)
+                .format(vk::Format::R32G32B32A32_SFLOAT)
+                .offset(32),
         ]
     }
 }

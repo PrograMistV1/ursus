@@ -95,17 +95,27 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 .map(|uv| uv.into_f32().map(Vec2::from).collect())
                 .unwrap_or_else(|| vec![Vec2::ZERO; positions.len()]);
 
+            let indices: Vec<u32> = reader
+                .read_indices()
+                .map(|ri| ri.into_u32().collect())
+                .unwrap_or_else(|| (0..positions.len() as u32).collect());
+
+            let tangents: Vec<[f32; 4]> = reader
+                .read_tangents()
+                .map(|t| t.collect())
+                .unwrap_or_else(|| compute_tangents(&positions, &normals, &uvs, &indices));
+
             let vertices: Vec<Vertex> = positions
                 .iter()
                 .zip(normals.iter())
                 .zip(uvs.iter())
-                .map(|((pos, normal), uv)| Vertex::new(*pos, *normal, *uv))
+                .zip(tangents.iter())
+                .map(|(((pos, normal), uv), tan)| {
+                    let mut v = Vertex::new(*pos, *normal, *uv);
+                    v.tangent = *tan;
+                    v
+                })
                 .collect();
-
-            let indices: Vec<u32> = reader
-                .read_indices()
-                .map(|ri| ri.into_u32().collect())
-                .unwrap_or_else(|| (0..vertices.len() as u32).collect());
 
             let prim_index = primitive.index();
             let mesh_name = if mesh.primitives().len() > 1 {
@@ -238,4 +248,58 @@ fn image_bytes(images: &[gltf::image::Data], index: usize) -> Option<(Vec<u8>, u
     let rgba = img.into_rgba8();
     let (w, h) = (rgba.width(), rgba.height());
     Some((rgba.into_raw(), w, h))
+}
+
+pub fn compute_tangents(positions: &[Vec3], normals: &[Vec3], uvs: &[Vec2], indices: &[u32]) -> Vec<[f32; 4]> {
+    let n = positions.len();
+    let mut tan1 = vec![Vec3::ZERO; n];
+    let mut tan2 = vec![Vec3::ZERO; n];
+
+    for tri in indices.chunks_exact(3) {
+        let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
+
+        let e1 = positions[i1] - positions[i0];
+        let e2 = positions[i2] - positions[i0];
+        let du1 = uvs[i1].x - uvs[i0].x;
+        let dv1 = uvs[i1].y - uvs[i0].y;
+        let du2 = uvs[i2].x - uvs[i0].x;
+        let dv2 = uvs[i2].y - uvs[i0].y;
+
+        let r = du1 * dv2 - du2 * dv1;
+        if r.abs() < 1e-7 {
+            continue;
+        }
+        let f = 1.0 / r;
+
+        let sdir =
+            Vec3::new(f * (dv2 * e1.x - dv1 * e2.x), f * (dv2 * e1.y - dv1 * e2.y), f * (dv2 * e1.z - dv1 * e2.z));
+        let tdir =
+            Vec3::new(f * (du1 * e2.x - du2 * e1.x), f * (du1 * e2.y - du2 * e1.y), f * (du1 * e2.z - du2 * e1.z));
+
+        tan1[i0] += sdir;
+        tan1[i1] += sdir;
+        tan1[i2] += sdir;
+        tan2[i0] += tdir;
+        tan2[i1] += tdir;
+        tan2[i2] += tdir;
+    }
+
+    positions
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            let n = normals[i];
+            let t = tan1[i];
+            let tangent = (t - n * n.dot(t)).normalize_or_zero();
+            let w = if n.cross(t).dot(tan2[i]) < 0.0 { -1.0f32 } else { 1.0f32 };
+            [tangent.x, tangent.y, tangent.z, w]
+        })
+        .collect()
+}
+
+pub fn compute_tangents_flat(vertices: &[Vertex], indices: &[u32]) -> Vec<[f32; 4]> {
+    let positions: Vec<Vec3> = vertices.iter().map(|v| Vec3::from(v.position)).collect();
+    let normals: Vec<Vec3> = vertices.iter().map(|v| Vec3::from(v.normal)).collect();
+    let uvs: Vec<Vec2> = vertices.iter().map(|v| Vec2::from(v.uv)).collect();
+    compute_tangents(&positions, &normals, &uvs, indices)
 }

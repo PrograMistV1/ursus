@@ -1,8 +1,10 @@
 #version 450
 #extension GL_EXT_nonuniform_qualifier : require
 
-layout(location = 0) in vec3 fragNormal;
-layout(location = 1) in vec2 fragUV;
+layout(location = 0) in vec3 fragTangent;
+layout(location = 1) in vec3 fragBitangent;
+layout(location = 2) in vec3 fragNormal;
+layout(location = 3) in vec2 fragUV;
 
 layout(location = 0) out vec4 outAlbedo;
 layout(location = 1) out vec4 outNormal;
@@ -25,22 +27,37 @@ layout(set = 1, binding = 0) readonly buffer MaterialBuffer {
 };
 
 layout(push_constant) uniform PC {
-    mat4 mvp;// offset   0
-    mat4 model;// offset  64
-    uint material_id;// offset 124
+    mat4 mvp;
+    mat4 model;
+    uint material_id;
 } pc;
 
 void main() {
     MaterialData mat = materials[pc.material_id];
+
     uint diffuse_idx = mat.tex_indices0.x;
     vec4 tex_color   = texture(sampler2D(textures[nonuniformEXT(diffuse_idx)], samp), fragUV);
-
     vec4 albedo = vec4(mat.base_color.rgb * tex_color.rgb, mat.base_color.a * tex_color.a);
 
     if (albedo.a < 0.5) discard;
+    outAlbedo = albedo;
 
-    outAlbedo = vec4(mat.base_color.rgb * tex_color.rgb, mat.base_color.a * tex_color.a);
 
-    vec3 N = normalize(fragNormal);
+    uint normal_idx = mat.tex_indices0.y;
+    vec3 N;
+    if (normal_idx != 0u) {
+        vec3 n = texture(sampler2D(textures[nonuniformEXT(normal_idx)], samp), fragUV).rgb;
+        n = n * 2.0 - 1.0;
+
+        mat3 TBN = mat3(
+        normalize(fragTangent),
+        normalize(fragBitangent),
+        normalize(fragNormal)
+        );
+        N = normalize(TBN * n);
+    } else {
+        N = normalize(fragNormal);
+    }
+
     outNormal = vec4(N * 0.5 + 0.5, mat.roughness);
 }
