@@ -2,7 +2,6 @@
 members = [
     "engine",
     "engine-template",
-    "sandbox",
 ]
 resolver = "2"
 

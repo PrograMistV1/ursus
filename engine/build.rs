@@ -18,6 +18,7 @@ fn compile_shaders() {
         ("shaders/shadow.vert", "shadow.vert.spv"),
         ("shaders/fsr_easu.frag", "fsr_easu.frag.spv"),
         ("shaders/fsr_rcas.frag", "fsr_rcas.frag.spv"),
+        ("shaders/loading_pipeline.frag", "loading_pipeline.frag.spv"),
     ];
 
     for (src, dst) in &shaders {

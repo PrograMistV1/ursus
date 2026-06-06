@@ -14,6 +14,7 @@ use winit::{
 };
 
 pub trait App {
+    fn on_load(&mut self, _ctx: &mut EngineContext) {}
     fn on_start(&mut self, ctx: &mut EngineContext);
     fn on_update(&mut self, ctx: &mut EngineContext, dt: f32);
     fn on_render(&mut self, ctx: &mut EngineContext);
@@ -21,13 +22,13 @@ pub trait App {
 }
 
 pub struct EngineContext {
-    pub world: GameWorld,
-    pub assets: AssetServer,
-    pub renderer: Renderer<DefaultPipeline>,
-    pub vk: VulkanContext,
     pub camera: Camera,
     pub lighting: LightingUbo,
+    pub world: GameWorld,
+    pub renderer: Renderer<DefaultPipeline>,
+    pub assets: AssetServer,
     temp_pool: ash::vk::CommandPool,
+    pub vk: VulkanContext,
 }
 
 impl EngineContext {
@@ -48,14 +49,22 @@ impl EngineContext {
         })?;
 
         Ok(Self {
-            world: GameWorld::new(),
-            assets,
-            renderer,
-            vk,
             camera: Camera::default(),
             lighting: LightingUbo::default(),
+            world: GameWorld::new(),
+            renderer,
+            assets,
             temp_pool,
+            vk,
         })
+    }
+
+    pub fn poll_assets(&mut self) {
+        self.assets.poll_loader();
+    }
+
+    pub fn is_loading(&self) -> bool {
+        self.assets.is_loading()
     }
 
     pub fn render_frame(
@@ -82,7 +91,9 @@ impl EngineContext {
 impl Drop for EngineContext {
     fn drop(&mut self) {
         unsafe {
-            self.vk.device.handle.device_wait_idle().ok();
+            if let Err(e) = self.vk.device.handle.device_wait_idle() {
+                log::error!("device_wait_idle failed on shutdown: {e}");
+            }
             self.vk
                 .device
                 .handle
@@ -112,6 +123,13 @@ impl Engine {
     }
 }
 
+struct LoadingState {
+    window: Window,
+    egui: EguiLayer,
+    ctx: EngineContext,
+    loading_renderer: crate::pipeline::LoadingPipeline,
+}
+
 struct RunningState {
     window: Window,
     egui: EguiLayer,
@@ -126,11 +144,16 @@ struct RunningState {
     cpu_history: debug_ui::CpuFrameHistory,
 }
 
+enum EngineState {
+    Loading(LoadingState),
+    Running(RunningState),
+}
+
 const TICK_RATE: f32 = 1.0 / 60.0;
 
 struct EngineHandler {
     app: Box<dyn App>,
-    state: Option<RunningState>,
+    state: Option<EngineState>,
 }
 
 impl ApplicationHandler for EngineHandler {
@@ -149,20 +172,10 @@ impl ApplicationHandler for EngineHandler {
 
         let vk =
             VulkanContext::new(&window, cfg!(debug_assertions)).expect("Failed to init Vulkan");
+
         let mut ctx = EngineContext::new(vk).expect("Failed to create EngineContext");
 
-        self.app.on_start(&mut ctx);
-
-        ctx.assets
-            .upload_all_meshes()
-            .expect("Failed to upload meshes");
-
-        log::info!(
-            "AssetServer: {} мешей, {} материалов, {} текстур",
-            ctx.assets.mesh_count(),
-            ctx.assets.material_count(),
-            ctx.assets.texture_count(),
-        );
+        self.app.on_load(&mut ctx);
 
         let swapchain = ctx.vk.swapchain.as_ref().unwrap();
         let egui = EguiLayer::new(
@@ -174,19 +187,21 @@ impl ApplicationHandler for EngineHandler {
         )
         .expect("Failed to create EguiLayer");
 
-        self.state = Some(RunningState {
-            window,
-            egui,
-            ctx,
-            debug: DebugUiState::default(),
-            last: std::time::Instant::now(),
-            fps_timer: std::time::Instant::now(),
-            fps_frames: 0,
-            fps_current: 0.0,
-            tick_accumulator: 0.0,
-            paced_frame_time: 1.0 / 120.0,
-            cpu_history: debug_ui::CpuFrameHistory::new(120),
-        });
+        if ctx.is_loading() {
+            let loading_renderer = crate::pipeline::LoadingPipeline::new(&ctx.vk, swapchain.format)
+                .expect("Failed to create LoadingPipeline");
+
+            log::info!("Входим в Loading state");
+            self.state = Some(EngineState::Loading(LoadingState {
+                window,
+                egui,
+                ctx,
+                loading_renderer,
+            }));
+        } else {
+            self.app.on_start(&mut ctx);
+            self.state = Some(EngineState::Running(make_running_state(window, egui, ctx)));
+        }
     }
 
     fn window_event(
@@ -195,119 +210,239 @@ impl ApplicationHandler for EngineHandler {
         _id: winit::window::WindowId,
         event: WindowEvent,
     ) {
-        let Some(state) = &mut self.state else { return };
-
-        let consumed = state.egui.handle_window_event(&state.window, &event);
-        if consumed {
+        if self.state.is_none() {
             return;
         }
 
-        match event {
-            WindowEvent::CloseRequested => {
-                if let Some(state) = &mut self.state {
-                    self.app.on_stop(&mut state.ctx);
-                    unsafe {
-                        state.ctx.vk.device.handle.device_wait_idle().ok();
+        match self.state.as_mut() {
+            Some(EngineState::Loading(s)) => {
+                handle_loading_event(s, &event, event_loop);
+
+                if !s.ctx.is_loading() {
+                    log::info!("Загрузка завершена — переходим в Running state");
+                    let state = self.state.take().unwrap();
+                    if let EngineState::Loading(mut ls) = state {
+                        unsafe {
+                            ls.ctx.vk.device.handle.device_wait_idle().ok();
+                        }
+                        self.app.on_start(&mut ls.ctx);
+                        let running = make_running_state(ls.window, ls.egui, ls.ctx);
+                        self.state = Some(EngineState::Running(running));
                     }
                 }
-                self.state = None;
-                event_loop.exit();
             }
-
-            WindowEvent::Resized(size) => {
-                if size.width == 0 || size.height == 0 {
+            Some(EngineState::Running(s)) => {
+                if let WindowEvent::CloseRequested = event {
+                    if let Some(EngineState::Running(mut s)) = self.state.take() {
+                        self.app.on_stop(&mut s.ctx);
+                        unsafe {
+                            s.ctx.vk.device.handle.device_wait_idle().ok();
+                        }
+                        drop(s);
+                    }
+                    event_loop.exit();
                     return;
                 }
-                if let Err(e) = handle_resize(state, size.width, size.height) {
-                    log::error!("Resize failed: {e}");
-                }
+                handle_running_event(s, &event, &mut *self.app);
             }
-
-            WindowEvent::RedrawRequested => {
-                let frame_start = std::time::Instant::now();
-                puffin::GlobalProfiler::lock().new_frame();
-
-                let now = std::time::Instant::now();
-                let dt = now.duration_since(state.last).as_secs_f32().min(0.1);
-                state.last = now;
-                state.fps_frames += 1;
-
-                if now.duration_since(state.fps_timer).as_secs_f32() >= 1.0 {
-                    state.fps_current =
-                        state.fps_frames as f32 / now.duration_since(state.fps_timer).as_secs_f32();
-                    state.fps_frames = 0;
-                    state.fps_timer = now;
-                }
-
-                {
-                    puffin::profile_scope!("tick_accumulator");
-                    state.tick_accumulator += dt;
-                    while state.tick_accumulator >= TICK_RATE {
-                        puffin::profile_scope!("on_update");
-                        self.app.on_update(&mut state.ctx, TICK_RATE);
-                        state.tick_accumulator -= TICK_RATE;
-                    }
-                }
-
-                let egui_output = {
-                    puffin::profile_scope!("egui_build");
-                    let raw = state.egui.begin_frame(&state.window);
-                    state.egui.ctx.run(raw, |ctx| {
-                        debug_ui::draw(
-                            ctx,
-                            &mut state.debug,
-                            state.fps_current,
-                            state.ctx.world.entity_count(),
-                            &state.cpu_history,
-                            state.ctx.renderer.graph.last_frame_times.as_ref(),
-                        );
-                    })
-                };
-                puffin::set_scopes_on(state.debug.show_profiler);
-
-                state.ctx.renderer.exposure = state.debug.exposure;
-
-                self.app.on_render(&mut state.ctx);
-
-                let needs_recreate = {
-                    puffin::profile_scope!("render_frame");
-                    state
-                        .ctx
-                        .render_frame(
-                            &state.window,
-                            &mut state.egui,
-                            egui_output,
-                            [0.0, 0.0, 0.0, 1.0],
-                        )
-                        .expect("render failed")
-                };
-
-                let frame_ms = frame_start.elapsed().as_secs_f32() * 1000.0;
-                state.cpu_history.push(frame_ms);
-
-                if needs_recreate || state.debug.swapchain_dirty {
-                    state.debug.swapchain_dirty = false;
-                    let size = state.window.inner_size();
-                    if let Err(e) = handle_resize(state, size.width, size.height) {
-                        log::error!("Swapchain recreate failed: {e}");
-                    }
-                }
-
-                state.window.request_redraw();
-
-                let render_time = frame_start.elapsed();
-                state.paced_frame_time =
-                    state.paced_frame_time * 0.9 + render_time.as_secs_f64() * 0.1;
-
-                let pace = std::time::Duration::from_secs_f64(state.paced_frame_time * 0.5);
-                let elapsed = frame_start.elapsed();
-                if pace > elapsed + std::time::Duration::from_micros(500) {
-                    std::thread::sleep(pace - elapsed - std::time::Duration::from_micros(500));
-                }
-            }
-
             _ => {}
         }
+    }
+}
+
+fn handle_loading_event(
+    state: &mut LoadingState,
+    event: &WindowEvent,
+    event_loop: &ActiveEventLoop,
+) {
+    match event {
+        WindowEvent::CloseRequested => {
+            event_loop.exit();
+        }
+
+        WindowEvent::Resized(size) => {
+            if size.width == 0 || size.height == 0 {
+                return;
+            }
+            if let Err(e) = state
+                .ctx
+                .vk
+                .recreate_swapchain(size.width, size.height, false)
+            {
+                log::error!("Resize during loading failed: {e}");
+            }
+        }
+
+        WindowEvent::RedrawRequested => {
+            state.ctx.poll_assets();
+
+            let progress = state.ctx.assets.load_progress.clone();
+
+            let raw = state.egui.begin_frame(&state.window);
+            let egui_output = state.egui.ctx.run(raw, |ctx| {
+                draw_loading_ui(ctx, &progress);
+            });
+
+            if let Err(e) = state.loading_renderer.render(
+                &state.ctx.vk,
+                &mut state.egui,
+                egui_output,
+                &state.window,
+                &progress,
+            ) {
+                log::error!("Loading render error: {e}");
+            }
+
+            state.window.request_redraw();
+        }
+
+        _ => {}
+    }
+}
+
+fn draw_loading_ui(ctx: &egui::Context, progress: &crate::assets::LoadProgress) {
+    egui::Area::new("loading".into())
+        .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -60.0])
+        .show(ctx, |ui| {
+            ui.set_min_width(400.0);
+            ui.vertical_centered(|ui| {
+                ui.label(
+                    egui::RichText::new("Loading...")
+                        .size(18.0)
+                        .color(egui::Color32::WHITE),
+                );
+                ui.add_space(8.0);
+                ui.add(
+                    egui::ProgressBar::new(progress.fraction())
+                        .desired_width(400.0)
+                        .show_percentage(),
+                );
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(&progress.current)
+                        .size(11.0)
+                        .color(egui::Color32::GRAY),
+                );
+            });
+        });
+}
+
+fn handle_running_event(state: &mut RunningState, event: &WindowEvent, app: &mut dyn App) {
+    let consumed = state.egui.handle_window_event(&state.window, event);
+    if consumed {
+        return;
+    }
+
+    match event {
+        WindowEvent::Resized(size) => {
+            if size.width == 0 || size.height == 0 {
+                return;
+            }
+            if let Err(e) = handle_resize(state, size.width, size.height) {
+                log::error!("Resize failed: {e}");
+            }
+        }
+
+        WindowEvent::RedrawRequested => {
+            state.ctx.poll_assets();
+
+            let frame_start = std::time::Instant::now();
+            puffin::GlobalProfiler::lock().new_frame();
+
+            let now = std::time::Instant::now();
+            let dt = now.duration_since(state.last).as_secs_f32().min(0.1);
+            state.last = now;
+            state.fps_frames += 1;
+
+            if now.duration_since(state.fps_timer).as_secs_f32() >= 1.0 {
+                state.fps_current =
+                    state.fps_frames as f32 / now.duration_since(state.fps_timer).as_secs_f32();
+                state.fps_frames = 0;
+                state.fps_timer = now;
+            }
+
+            {
+                puffin::profile_scope!("tick_accumulator");
+                state.tick_accumulator += dt;
+                while state.tick_accumulator >= TICK_RATE {
+                    puffin::profile_scope!("on_update");
+                    app.on_update(&mut state.ctx, TICK_RATE);
+                    state.tick_accumulator -= TICK_RATE;
+                }
+            }
+
+            let egui_output = {
+                puffin::profile_scope!("egui_build");
+                let raw = state.egui.begin_frame(&state.window);
+                state.egui.ctx.run(raw, |ctx| {
+                    debug_ui::draw(
+                        ctx,
+                        &mut state.debug,
+                        state.fps_current,
+                        state.ctx.world.entity_count(),
+                        &state.cpu_history,
+                        state.ctx.renderer.graph.last_frame_times.as_ref(),
+                    );
+                })
+            };
+            puffin::set_scopes_on(state.debug.show_profiler);
+            state.ctx.renderer.exposure = state.debug.exposure;
+
+            app.on_render(&mut state.ctx);
+
+            let needs_recreate = {
+                puffin::profile_scope!("render_frame");
+                state
+                    .ctx
+                    .render_frame(
+                        &state.window,
+                        &mut state.egui,
+                        egui_output,
+                        [0.0, 0.0, 0.0, 1.0],
+                    )
+                    .expect("render failed")
+            };
+
+            let frame_ms = frame_start.elapsed().as_secs_f32() * 1000.0;
+            state.cpu_history.push(frame_ms);
+
+            if needs_recreate || state.debug.swapchain_dirty {
+                state.debug.swapchain_dirty = false;
+                let size = state.window.inner_size();
+                if let Err(e) = handle_resize(state, size.width, size.height) {
+                    log::error!("Swapchain recreate failed: {e}");
+                }
+            }
+
+            state.window.request_redraw();
+
+            let render_time = frame_start.elapsed();
+            state.paced_frame_time = state.paced_frame_time * 0.9 + render_time.as_secs_f64() * 0.1;
+
+            let pace = std::time::Duration::from_secs_f64(state.paced_frame_time * 0.5);
+            let elapsed = frame_start.elapsed();
+            if pace > elapsed + std::time::Duration::from_micros(500) {
+                std::thread::sleep(pace - elapsed - std::time::Duration::from_micros(500));
+            }
+        }
+
+        _ => {}
+    }
+}
+
+fn make_running_state(window: Window, egui: EguiLayer, ctx: EngineContext) -> RunningState {
+    RunningState {
+        window,
+        egui,
+        ctx,
+        debug: DebugUiState::default(),
+        last: std::time::Instant::now(),
+        fps_timer: std::time::Instant::now(),
+        fps_frames: 0,
+        fps_current: 0.0,
+        tick_accumulator: 0.0,
+        paced_frame_time: 1.0 / 120.0,
+        cpu_history: debug_ui::CpuFrameHistory::new(120),
     }
 }
 
@@ -326,13 +461,10 @@ pub fn create_temp_pool(vk: &VulkanContext) -> anyhow::Result<ash::vk::CommandPo
 
 fn handle_resize(state: &mut RunningState, width: u32, height: u32) -> anyhow::Result<()> {
     unsafe { state.ctx.vk.device.handle.device_wait_idle()? };
-
     state
         .ctx
         .vk
         .recreate_swapchain(width, height, state.debug.vsync)?;
-
     state.ctx.renderer.resize_output(width, height)?;
-
     Ok(())
 }
