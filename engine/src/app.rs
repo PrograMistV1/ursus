@@ -3,7 +3,7 @@ use crate::debug_ui::{self, DebugUiState};
 use crate::ecs::GameWorld;
 use crate::egui_layer::EguiLayer;
 use crate::lighting::LightingUbo;
-use crate::pipeline::{DefaultPipeline, RenderPipeline};
+use crate::pipeline::{DefaultPipeline, LoadingPipeline, RenderPipeline};
 use crate::vulkan::{build_dyn_renderer, DynRenderer};
 use crate::vulkan::{Camera, VulkanContext};
 
@@ -139,7 +139,6 @@ struct LoadingState {
     window: Window,
     egui: EguiLayer,
     ctx: EngineContext,
-    loading_renderer: crate::pipeline::LoadingPipeline,
 }
 
 struct RunningState {
@@ -200,16 +199,11 @@ impl ApplicationHandler for EngineHandler {
         .expect("Failed to create EguiLayer");
 
         if ctx.is_loading() {
-            let loading_renderer = crate::pipeline::LoadingPipeline::new(&ctx.vk, swapchain.format)
-                .expect("Failed to create LoadingPipeline");
+            ctx.set_pipeline::<LoadingPipeline>()
+                .expect("Failed to switch to LoadingPipeline");
 
             log::info!("Входим в Loading state");
-            self.state = Some(EngineState::Loading(LoadingState {
-                window,
-                egui,
-                ctx,
-                loading_renderer,
-            }));
+            self.state = Some(EngineState::Loading(LoadingState { window, egui, ctx }));
         } else {
             self.app.on_start(&mut ctx);
             self.state = Some(EngineState::Running(make_running_state(window, egui, ctx)));
@@ -237,6 +231,9 @@ impl ApplicationHandler for EngineHandler {
                         unsafe {
                             ls.ctx.vk.device.handle.device_wait_idle().ok();
                         }
+                        ls.ctx
+                            .set_pipeline::<DefaultPipeline>()
+                            .expect("Failed to switch to DefaultPipeline");
                         self.app.on_start(&mut ls.ctx);
                         let running = make_running_state(ls.window, ls.egui, ls.ctx);
                         self.state = Some(EngineState::Running(running));
@@ -282,6 +279,10 @@ fn handle_loading_event(
                 .recreate_swapchain(size.width, size.height, false)
             {
                 log::error!("Resize during loading failed: {e}");
+                return;
+            }
+            if let Err(e) = state.ctx.renderer.resize_output(size.width, size.height) {
+                log::error!("Renderer resize during loading failed: {e}");
             }
         }
 
@@ -295,13 +296,11 @@ fn handle_loading_event(
                 draw_loading_ui(ctx, &progress);
             });
 
-            if let Err(e) = state.loading_renderer.render(
-                &state.ctx.vk,
-                &mut state.egui,
-                egui_output,
-                &state.window,
-                &progress,
-            ) {
+            if let Err(e) =
+                state
+                    .ctx
+                    .render_frame(&state.window, &mut state.egui, egui_output, [0.0; 4])
+            {
                 log::error!("Loading render error: {e}");
             }
 

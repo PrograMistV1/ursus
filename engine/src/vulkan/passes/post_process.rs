@@ -1,4 +1,5 @@
 use crate::render_graph::GpuImage;
+use crate::vulkan::pipeline::builder::{cmd, PipelineBuilder};
 use ash::vk;
 
 #[repr(C)]
@@ -71,79 +72,15 @@ impl PostProcessPass {
             .offset(0)
             .size(size_of::<PostProcessPC>() as u32);
 
-        let layout = unsafe {
-            device.create_pipeline_layout(
-                &vk::PipelineLayoutCreateInfo::default()
-                    .set_layouts(std::slice::from_ref(&descriptor_set_layout))
-                    .push_constant_ranges(std::slice::from_ref(&push_range)),
-                None,
-            )?
-        };
-
-        let vert = crate::vulkan::pipeline::shader::ShaderModule::from_bytes(
-            device,
+        let color_formats = [swapchain_format];
+        let (pipeline, layout) = PipelineBuilder::fullscreen(
             include_bytes!(concat!(env!("OUT_DIR"), "/post_process.vert.spv")),
-        )?;
-        let frag = crate::vulkan::pipeline::shader::ShaderModule::from_bytes(
-            device,
             include_bytes!(concat!(env!("OUT_DIR"), "/post_process.frag.spv")),
-        )?;
-
-        let entry = c"main";
-        let stages = [
-            vk::PipelineShaderStageCreateInfo::default()
-                .stage(vk::ShaderStageFlags::VERTEX)
-                .module(vert.handle)
-                .name(entry),
-            vk::PipelineShaderStageCreateInfo::default()
-                .stage(vk::ShaderStageFlags::FRAGMENT)
-                .module(frag.handle)
-                .name(entry),
-        ];
-        let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
-        let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
-            .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
-        let viewport_state = vk::PipelineViewportStateCreateInfo::default()
-            .viewport_count(1)
-            .scissor_count(1);
-        let rasterizer = vk::PipelineRasterizationStateCreateInfo::default()
-            .polygon_mode(vk::PolygonMode::FILL)
-            .cull_mode(vk::CullModeFlags::NONE)
-            .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
-            .line_width(1.0);
-        let multisampling = vk::PipelineMultisampleStateCreateInfo::default()
-            .rasterization_samples(vk::SampleCountFlags::TYPE_1);
-        let blend_attachment = vk::PipelineColorBlendAttachmentState::default()
-            .color_write_mask(vk::ColorComponentFlags::RGBA);
-        let color_blending = vk::PipelineColorBlendStateCreateInfo::default()
-            .attachments(std::slice::from_ref(&blend_attachment));
-        let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-        let dynamic_state =
-            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-        let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
-            .color_attachment_formats(std::slice::from_ref(&swapchain_format));
-
-        let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
-            .stages(&stages)
-            .vertex_input_state(&vertex_input)
-            .input_assembly_state(&input_assembly)
-            .viewport_state(&viewport_state)
-            .rasterization_state(&rasterizer)
-            .multisample_state(&multisampling)
-            .color_blend_state(&color_blending)
-            .dynamic_state(&dynamic_state)
-            .layout(layout)
-            .push_next(&mut rendering_info);
-
-        let pipeline = unsafe {
-            device
-                .create_graphics_pipelines(
-                    vk::PipelineCache::null(),
-                    std::slice::from_ref(&pipeline_info),
-                    None,
-                )
-                .map_err(|(_, e)| e)?[0]
-        };
+            &color_formats,
+        )
+        .set_layouts(std::slice::from_ref(&descriptor_set_layout))
+        .push_constants(std::slice::from_ref(&push_range))
+        .build(device)?;
 
         log::debug!("PostProcessPass создан");
         Ok(Self {
@@ -160,54 +97,18 @@ impl PostProcessPass {
     pub fn record_to_target(
         &self,
         device: &ash::Device,
-        cmd: vk::CommandBuffer,
+        cmd_buf: vk::CommandBuffer,
         target: &impl GpuImage,
         exposure: f32,
     ) {
         let extent = target.extent();
 
+        cmd::begin_rendering_discard(device, cmd_buf, target.view(), extent);
+
         unsafe {
-            let color_attachment = vk::RenderingAttachmentInfo::default()
-                .image_view(target.view())
-                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .load_op(vk::AttachmentLoadOp::DONT_CARE)
-                .store_op(vk::AttachmentStoreOp::STORE);
-
-            device.cmd_begin_rendering(
-                cmd,
-                &vk::RenderingInfo::default()
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent,
-                    })
-                    .layer_count(1)
-                    .color_attachments(std::slice::from_ref(&color_attachment)),
-            );
-
-            device.cmd_set_viewport(
-                cmd,
-                0,
-                &[vk::Viewport {
-                    x: 0.0,
-                    y: 0.0,
-                    width: extent.width as f32,
-                    height: extent.height as f32,
-                    min_depth: 0.0,
-                    max_depth: 1.0,
-                }],
-            );
-            device.cmd_set_scissor(
-                cmd,
-                0,
-                &[vk::Rect2D {
-                    offset: vk::Offset2D { x: 0, y: 0 },
-                    extent,
-                }],
-            );
-
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+            device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
             device.cmd_bind_descriptor_sets(
-                cmd,
+                cmd_buf,
                 vk::PipelineBindPoint::GRAPHICS,
                 self.layout,
                 0,
@@ -225,15 +126,15 @@ impl PostProcessPass {
                 size_of::<PostProcessPC>(),
             );
             device.cmd_push_constants(
-                cmd,
+                cmd_buf,
                 self.layout,
                 vk::ShaderStageFlags::FRAGMENT,
                 0,
                 pc_bytes,
             );
 
-            device.cmd_draw(cmd, 3, 1, 0, 0);
-            device.cmd_end_rendering(cmd);
+            device.cmd_draw(cmd_buf, 3, 1, 0, 0);
+            device.cmd_end_rendering(cmd_buf);
         }
     }
 }

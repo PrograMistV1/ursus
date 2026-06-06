@@ -1,7 +1,6 @@
-use crate::assets::LoadProgress;
-use crate::egui_layer::EguiLayer;
-use crate::vulkan::core::sync::FrameSync;
-use crate::vulkan::pipeline::shader::ShaderModule;
+use crate::assets::AssetServer;
+use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
+use crate::render_graph::{pass, ExternalImageDesc, RenderGraph, ResourceKind};
 use crate::vulkan::VulkanContext;
 use ash::vk;
 
@@ -13,300 +12,47 @@ struct LoadingPC {
     height: f32,
 }
 
-pub struct LoadingPipeline {
+struct LoadingFrameData {
+    device: *const ash::Device,
+    time: f32,
+    progress: f32,
+    width: f32,
+    height: f32,
+    egui: *mut crate::egui_layer::EguiLayer,
+    egui_output: Option<egui::FullOutput>,
+    window: *const winit::window::Window,
+    graphics_queue: vk::Queue,
+    command_pool: vk::CommandPool,
+}
+unsafe impl Send for LoadingFrameData {}
+
+struct PendingState {
     pipeline: vk::Pipeline,
     layout: vk::PipelineLayout,
-    frame_sync: FrameSync,
-    swapchain_loader: ash::khr::swapchain::Device,
+    device: ash::Device,
+}
+thread_local! {
+    static PENDING: std::cell::RefCell<Option<PendingState>> =
+        std::cell::RefCell::new(None);
+}
+
+pub struct LoadingPipeline {
     start_time: std::time::Instant,
+    pipeline: vk::Pipeline,
+    layout: vk::PipelineLayout,
     device: ash::Device,
 }
 
-impl LoadingPipeline {
-    pub fn new(ctx: &VulkanContext, swapchain_format: vk::Format) -> anyhow::Result<Self> {
-        let device = &ctx.device.handle;
-
-        let vert = ShaderModule::from_bytes(
-            device,
-            include_bytes!(concat!(env!("OUT_DIR"), "/post_process.vert.spv")),
-        )?;
-        let frag = ShaderModule::from_bytes(
-            device,
-            include_bytes!(concat!(env!("OUT_DIR"), "/loading_pipeline.frag.spv")),
-        )?;
-
-        let push_range = vk::PushConstantRange::default()
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-            .offset(0)
-            .size(std::mem::size_of::<LoadingPC>() as u32);
-
-        let layout = unsafe {
-            device.create_pipeline_layout(
-                &vk::PipelineLayoutCreateInfo::default()
-                    .push_constant_ranges(std::slice::from_ref(&push_range)),
-                None,
-            )?
-        };
-
-        let pipeline = build_pipeline(device, &vert, &frag, layout, swapchain_format)?;
-
-        let frame_sync = FrameSync::new(device)?;
-
-        let swapchain_loader =
-            ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
-
-        Ok(Self {
-            pipeline,
-            layout,
-            frame_sync,
-            swapchain_loader,
+impl Default for LoadingPipeline {
+    fn default() -> Self {
+        let s = PENDING
+            .with(|c| c.borrow_mut().take())
+            .expect("LoadingPipeline::default() вызван без предшествующего build()");
+        Self {
             start_time: std::time::Instant::now(),
-            device: device.clone(),
-        })
-    }
-
-    pub fn render(
-        &mut self,
-        ctx: &VulkanContext,
-        egui: &mut EguiLayer,
-        egui_output: egui::FullOutput,
-        window: &winit::window::Window,
-        progress: &LoadProgress,
-    ) -> anyhow::Result<()> {
-        let device = &ctx.device.handle;
-        let swapchain = ctx.swapchain.as_ref().unwrap();
-
-        unsafe {
-            device.wait_for_fences(&[self.frame_sync.render_fence], true, u64::MAX)?;
-        }
-
-        let (image_index, _suboptimal) = match unsafe {
-            self.swapchain_loader.acquire_next_image(
-                swapchain.handle,
-                u64::MAX,
-                self.frame_sync.image_available,
-                vk::Fence::null(),
-            )
-        } {
-            Ok(r) => r,
-            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => return Ok(()),
-            Err(e) => return Err(e.into()),
-        };
-
-        unsafe { device.reset_fences(&[self.frame_sync.render_fence])? };
-
-        let cmd_pool = unsafe {
-            device.create_command_pool(
-                &vk::CommandPoolCreateInfo::default()
-                    .queue_family_index(ctx.device.graphics_family)
-                    .flags(vk::CommandPoolCreateFlags::TRANSIENT),
-                None,
-            )?
-        };
-
-        let cmd = unsafe {
-            device.allocate_command_buffers(
-                &vk::CommandBufferAllocateInfo::default()
-                    .command_pool(cmd_pool)
-                    .level(vk::CommandBufferLevel::PRIMARY)
-                    .command_buffer_count(1),
-            )?[0]
-        };
-
-        unsafe {
-            device.begin_command_buffer(
-                cmd,
-                &vk::CommandBufferBeginInfo::default()
-                    .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
-            )?;
-        }
-
-        let swapchain_image = swapchain.images[image_index as usize];
-        let swapchain_view = swapchain.image_views[image_index as usize];
-        let extent = swapchain.extent;
-
-        transition_image(
-            device,
-            cmd,
-            swapchain_image,
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        );
-
-        self.record_background(device, cmd, swapchain_view, extent, progress);
-
-        transition_image(
-            device,
-            cmd,
-            swapchain_image,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        );
-
-        unsafe {
-            let color_attachment = vk::RenderingAttachmentInfo::default()
-                .image_view(swapchain_view)
-                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .load_op(vk::AttachmentLoadOp::LOAD)
-                .store_op(vk::AttachmentStoreOp::STORE);
-
-            device.cmd_begin_rendering(
-                cmd,
-                &vk::RenderingInfo::default()
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent,
-                    })
-                    .layer_count(1)
-                    .color_attachments(std::slice::from_ref(&color_attachment)),
-            );
-            device.cmd_set_viewport(
-                cmd,
-                0,
-                &[vk::Viewport {
-                    x: 0.0,
-                    y: 0.0,
-                    width: extent.width as f32,
-                    height: extent.height as f32,
-                    min_depth: 0.0,
-                    max_depth: 1.0,
-                }],
-            );
-            device.cmd_set_scissor(
-                cmd,
-                0,
-                &[vk::Rect2D {
-                    offset: vk::Offset2D { x: 0, y: 0 },
-                    extent,
-                }],
-            );
-        }
-
-        egui.end_frame_and_draw(
-            window,
-            ctx.device.graphics_queue,
-            cmd_pool,
-            cmd,
-            extent,
-            egui_output,
-        )?;
-
-        unsafe {
-            device.cmd_end_rendering(cmd);
-        }
-
-        transition_image(
-            device,
-            cmd,
-            swapchain_image,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            vk::ImageLayout::PRESENT_SRC_KHR,
-        );
-
-        unsafe {
-            device.end_command_buffer(cmd)?;
-
-            device.queue_submit(
-                ctx.device.graphics_queue,
-                &[vk::SubmitInfo::default()
-                    .wait_semaphores(&[self.frame_sync.image_available])
-                    .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-                    .command_buffers(&[cmd])
-                    .signal_semaphores(&[self.frame_sync.render_finished])],
-                self.frame_sync.render_fence,
-            )?;
-
-            self.swapchain_loader
-                .queue_present(
-                    ctx.device.present_queue,
-                    &vk::PresentInfoKHR::default()
-                        .wait_semaphores(&[self.frame_sync.render_finished])
-                        .swapchains(&[swapchain.handle])
-                        .image_indices(&[image_index]),
-                )
-                .ok();
-
-            device.wait_for_fences(&[self.frame_sync.render_fence], true, u64::MAX)?;
-            device.destroy_command_pool(cmd_pool, None);
-        }
-
-        Ok(())
-    }
-
-    fn record_background(
-        &self,
-        device: &ash::Device,
-        cmd: vk::CommandBuffer,
-        view: vk::ImageView,
-        extent: vk::Extent2D,
-        progress: &LoadProgress,
-    ) {
-        unsafe {
-            let color_attachment = vk::RenderingAttachmentInfo::default()
-                .image_view(view)
-                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::STORE)
-                .clear_value(vk::ClearValue {
-                    color: vk::ClearColorValue {
-                        float32: [0.05, 0.05, 0.08, 1.0],
-                    },
-                });
-
-            device.cmd_begin_rendering(
-                cmd,
-                &vk::RenderingInfo::default()
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent,
-                    })
-                    .layer_count(1)
-                    .color_attachments(std::slice::from_ref(&color_attachment)),
-            );
-
-            device.cmd_set_viewport(
-                cmd,
-                0,
-                &[vk::Viewport {
-                    x: 0.0,
-                    y: 0.0,
-                    width: extent.width as f32,
-                    height: extent.height as f32,
-                    min_depth: 0.0,
-                    max_depth: 1.0,
-                }],
-            );
-            device.cmd_set_scissor(
-                cmd,
-                0,
-                &[vk::Rect2D {
-                    offset: vk::Offset2D { x: 0, y: 0 },
-                    extent,
-                }],
-            );
-
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
-
-            let pc = LoadingPC {
-                time: self.start_time.elapsed().as_secs_f32(),
-                progress: progress.fraction(),
-                width: extent.width as f32,
-                height: extent.height as f32,
-            };
-            let pc_bytes = std::slice::from_raw_parts(
-                &pc as *const LoadingPC as *const u8,
-                std::mem::size_of::<LoadingPC>(),
-            );
-            device.cmd_push_constants(
-                cmd,
-                self.layout,
-                vk::ShaderStageFlags::FRAGMENT,
-                0,
-                pc_bytes,
-            );
-
-            device.cmd_draw(cmd, 3, 1, 0, 0);
-            device.cmd_end_rendering(cmd);
+            pipeline: s.pipeline,
+            layout: s.layout,
+            device: s.device,
         }
     }
 }
@@ -321,10 +67,238 @@ impl Drop for LoadingPipeline {
     }
 }
 
-fn build_pipeline(
+impl RenderPipeline for LoadingPipeline {
+    fn build(
+        ctx: &VulkanContext,
+        _assets: &mut AssetServer,
+        graph: &mut RenderGraph,
+    ) -> anyhow::Result<PipelineHandles>
+    where
+        Self: Sized,
+    {
+        let swapchain = ctx.swapchain.as_ref().unwrap();
+        let device = &ctx.device.handle;
+
+        let h_swapchain = graph.pool.register_external(ExternalImageDesc {
+            name: "swapchain".into(),
+            format: swapchain.format,
+            kind: ResourceKind::Color,
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+        });
+
+        let vert = crate::vulkan::pipeline::shader::ShaderModule::from_bytes(
+            device,
+            include_bytes!(concat!(env!("OUT_DIR"), "/post_process.vert.spv")),
+        )?;
+        let frag = crate::vulkan::pipeline::shader::ShaderModule::from_bytes(
+            device,
+            include_bytes!(concat!(env!("OUT_DIR"), "/loading_pipeline.frag.spv")),
+        )?;
+
+        let push_range = vk::PushConstantRange::default()
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .offset(0)
+            .size(size_of::<LoadingPC>() as u32);
+
+        let layout = unsafe {
+            device.create_pipeline_layout(
+                &vk::PipelineLayoutCreateInfo::default()
+                    .push_constant_ranges(std::slice::from_ref(&push_range)),
+                None,
+            )?
+        };
+
+        let pipeline = build_vk_pipeline(device, &vert, &frag, layout, swapchain.format)?;
+
+        PENDING.with(|c| {
+            *c.borrow_mut() = Some(PendingState {
+                pipeline,
+                layout,
+                device: device.clone(),
+            });
+        });
+
+        let device_bg = device.clone();
+        pass("loading_background")
+            .write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .record(move |cmd, pool, ctx_ptr| unsafe {
+                let data = &mut *(ctx_ptr as *mut LoadingFrameData);
+                let sc = pool.image(h_swapchain);
+                let extent = sc.extent;
+
+                let color_attachment = vk::RenderingAttachmentInfo::default()
+                    .image_view(sc.view)
+                    .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                    .load_op(vk::AttachmentLoadOp::CLEAR)
+                    .store_op(vk::AttachmentStoreOp::STORE)
+                    .clear_value(vk::ClearValue {
+                        color: vk::ClearColorValue {
+                            float32: [0.05, 0.05, 0.08, 1.0],
+                        },
+                    });
+
+                device_bg.cmd_begin_rendering(
+                    cmd,
+                    &vk::RenderingInfo::default()
+                        .render_area(vk::Rect2D {
+                            offset: vk::Offset2D { x: 0, y: 0 },
+                            extent,
+                        })
+                        .layer_count(1)
+                        .color_attachments(std::slice::from_ref(&color_attachment)),
+                );
+                device_bg.cmd_set_viewport(
+                    cmd,
+                    0,
+                    &[vk::Viewport {
+                        x: 0.0,
+                        y: 0.0,
+                        width: extent.width as f32,
+                        height: extent.height as f32,
+                        min_depth: 0.0,
+                        max_depth: 1.0,
+                    }],
+                );
+                device_bg.cmd_set_scissor(
+                    cmd,
+                    0,
+                    &[vk::Rect2D {
+                        offset: vk::Offset2D { x: 0, y: 0 },
+                        extent,
+                    }],
+                );
+
+                device_bg.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
+
+                let pc = LoadingPC {
+                    time: data.time,
+                    progress: data.progress,
+                    width: data.width,
+                    height: data.height,
+                };
+                let pc_bytes = std::slice::from_raw_parts(
+                    &pc as *const LoadingPC as *const u8,
+                    size_of::<LoadingPC>(),
+                );
+                device_bg.cmd_push_constants(
+                    cmd,
+                    layout,
+                    vk::ShaderStageFlags::FRAGMENT,
+                    0,
+                    pc_bytes,
+                );
+                device_bg.cmd_draw(cmd, 3, 1, 0, 0);
+                device_bg.cmd_end_rendering(cmd);
+                Ok(())
+            })
+            .build(graph);
+
+        pass("loading_ui")
+            .read_write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .record(move |cmd, pool, ctx_ptr| unsafe {
+                let data = &mut *(ctx_ptr as *mut LoadingFrameData);
+                let sc = pool.image(h_swapchain);
+                let extent = sc.extent;
+
+                let color_attachment = vk::RenderingAttachmentInfo::default()
+                    .image_view(sc.view)
+                    .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                    .load_op(vk::AttachmentLoadOp::LOAD)
+                    .store_op(vk::AttachmentStoreOp::STORE);
+
+                (*data.device).cmd_begin_rendering(
+                    cmd,
+                    &vk::RenderingInfo::default()
+                        .render_area(vk::Rect2D {
+                            offset: vk::Offset2D { x: 0, y: 0 },
+                            extent,
+                        })
+                        .layer_count(1)
+                        .color_attachments(std::slice::from_ref(&color_attachment)),
+                );
+                (*data.device).cmd_set_viewport(
+                    cmd,
+                    0,
+                    &[vk::Viewport {
+                        x: 0.0,
+                        y: 0.0,
+                        width: extent.width as f32,
+                        height: extent.height as f32,
+                        min_depth: 0.0,
+                        max_depth: 1.0,
+                    }],
+                );
+                (*data.device).cmd_set_scissor(
+                    cmd,
+                    0,
+                    &[vk::Rect2D {
+                        offset: vk::Offset2D { x: 0, y: 0 },
+                        extent,
+                    }],
+                );
+
+                let egui_output = data
+                    .egui_output
+                    .take()
+                    .expect("egui_output должен быть Some в loading_ui pass");
+
+                (*data.egui).end_frame_and_draw(
+                    &*data.window,
+                    data.graphics_queue,
+                    data.command_pool,
+                    cmd,
+                    extent,
+                    egui_output,
+                )?;
+
+                (*data.device).cmd_end_rendering(cmd);
+                Ok(())
+            })
+            .build(graph);
+
+        Ok(PipelineHandles {
+            swapchain: h_swapchain,
+        })
+    }
+
+    fn prepare_frame(
+        &mut self,
+        graph: &mut RenderGraph,
+        input: FrameInput<'_>,
+    ) -> anyhow::Result<()> {
+        let (w, h) = input.output_resolution;
+
+        graph.set_frame_data(Box::new(LoadingFrameData {
+            device: input.device,
+            time: self.start_time.elapsed().as_secs_f32(),
+            progress: input.assets.load_progress.fraction(),
+            width: w as f32,
+            height: h as f32,
+            egui: input.egui,
+            egui_output: Some(input.egui_output),
+            window: input.window,
+            graphics_queue: input.graphics_queue,
+            command_pool: input.command_pool,
+        }));
+
+        Ok(())
+    }
+
+    fn on_resize(
+        &mut self,
+        _graph: &mut RenderGraph,
+        _width: u32,
+        _height: u32,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+fn build_vk_pipeline(
     device: &ash::Device,
-    vert: &ShaderModule,
-    frag: &ShaderModule,
+    vert: &crate::vulkan::pipeline::shader::ShaderModule,
+    frag: &crate::vulkan::pipeline::shader::ShaderModule,
     layout: vk::PipelineLayout,
     color_format: vk::Format,
 ) -> anyhow::Result<vk::Pipeline> {
@@ -339,7 +313,6 @@ fn build_pipeline(
             .module(frag.handle)
             .name(entry),
     ];
-
     let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
     let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
         .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
@@ -384,59 +357,5 @@ fn build_pipeline(
             )
             .map_err(|(_, e)| e)?[0]
     };
-
     Ok(pipeline)
-}
-
-fn transition_image(
-    device: &ash::Device,
-    cmd: vk::CommandBuffer,
-    image: vk::Image,
-    from: vk::ImageLayout,
-    to: vk::ImageLayout,
-) {
-    let (src_stage, src_access, dst_stage, dst_access) = match (from, to) {
-        (vk::ImageLayout::UNDEFINED, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) => (
-            vk::PipelineStageFlags2::TOP_OF_PIPE,
-            vk::AccessFlags2::empty(),
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-        ),
-        (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::PRESENT_SRC_KHR) => (
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
-            vk::AccessFlags2::empty(),
-        ),
-        (vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) => (
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-            vk::AccessFlags2::COLOR_ATTACHMENT_READ | vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-        ),
-        _ => return,
-    };
-
-    let barrier = vk::ImageMemoryBarrier2::default()
-        .src_stage_mask(src_stage)
-        .src_access_mask(src_access)
-        .dst_stage_mask(dst_stage)
-        .dst_access_mask(dst_access)
-        .old_layout(from)
-        .new_layout(to)
-        .image(image)
-        .subresource_range(vk::ImageSubresourceRange {
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            base_mip_level: 0,
-            level_count: 1,
-            base_array_layer: 0,
-            layer_count: 1,
-        });
-
-    unsafe {
-        device.cmd_pipeline_barrier2(
-            cmd,
-            &vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&barrier)),
-        );
-    }
 }
