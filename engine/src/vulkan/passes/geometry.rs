@@ -37,12 +37,7 @@ impl GeometryPass {
         material_layout: vk::DescriptorSetLayout,
         assets: &mut AssetServer,
     ) -> anyhow::Result<Self> {
-        let mut pass = Self {
-            pipelines: HashMap::new(),
-            bindless_layout,
-            material_layout,
-            color_formats,
-        };
+        let mut pass = Self { pipelines: HashMap::new(), bindless_layout, material_layout, color_formats };
         let default = assets.shaders.diffuse();
         pass.get_or_create_pipeline(device, default, &mut assets.shaders)?;
         Ok(pass)
@@ -62,11 +57,8 @@ impl GeometryPass {
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.to_vec();
         let set_layouts = [self.bindless_layout, self.material_layout];
-        let pipeline = Pipeline::new(
-            device,
-            &PipelineDesc::standard(&vert_spv, &frag_spv, &self.color_formats),
-            &set_layouts,
-        )?;
+        let pipeline =
+            Pipeline::new(device, &PipelineDesc::standard(&vert_spv, &frag_spv, &self.color_formats), &set_layouts)?;
         self.pipelines.insert(shader, pipeline);
         Ok(&self.pipelines[&shader])
     }
@@ -92,19 +84,13 @@ impl GeometryPass {
                     .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                     .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::STORE)
-                    .clear_value(vk::ClearValue {
-                        color: vk::ClearColorValue {
-                            float32: clear_color,
-                        },
-                    }),
+                    .clear_value(vk::ClearValue { color: vk::ClearColorValue { float32: clear_color } }),
                 vk::RenderingAttachmentInfo::default()
                     .image_view(normal.view())
                     .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                     .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::STORE)
-                    .clear_value(vk::ClearValue {
-                        color: vk::ClearColorValue { float32: [0.0; 4] },
-                    }),
+                    .clear_value(vk::ClearValue { color: vk::ClearColorValue { float32: [0.0; 4] } }),
             ];
 
             let depth_attachment = vk::RenderingAttachmentInfo::default()
@@ -112,20 +98,12 @@ impl GeometryPass {
                 .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::STORE)
-                .clear_value(vk::ClearValue {
-                    depth_stencil: vk::ClearDepthStencilValue {
-                        depth: 1.0,
-                        stencil: 0,
-                    },
-                });
+                .clear_value(vk::ClearValue { depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 } });
 
             device.cmd_begin_rendering(
                 cmd,
                 &vk::RenderingInfo::default()
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent,
-                    })
+                    .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent })
                     .layer_count(1)
                     .color_attachments(&color_attachments)
                     .depth_attachment(&depth_attachment),
@@ -143,14 +121,7 @@ impl GeometryPass {
                     max_depth: 1.0,
                 }],
             );
-            device.cmd_set_scissor(
-                cmd,
-                0,
-                &[vk::Rect2D {
-                    offset: vk::Offset2D { x: 0, y: 0 },
-                    extent,
-                }],
-            );
+            device.cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent }]);
 
             let mut sorted: Vec<&DrawCall> = draw_calls.iter().collect();
             {
@@ -203,12 +174,7 @@ impl GeometryPass {
                     pc_bytes,
                 );
                 device.cmd_bind_vertex_buffers(cmd, 0, &[dc.gpu_mesh.vertex_buffer], &[0]);
-                device.cmd_bind_index_buffer(
-                    cmd,
-                    dc.gpu_mesh.index_buffer,
-                    0,
-                    vk::IndexType::UINT32,
-                );
+                device.cmd_bind_index_buffer(cmd, dc.gpu_mesh.index_buffer, 0, vk::IndexType::UINT32);
                 device.cmd_draw_indexed(cmd, dc.gpu_mesh.index_count, 1, 0, 0, 0);
             }
 

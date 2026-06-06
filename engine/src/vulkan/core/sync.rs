@@ -17,12 +17,7 @@ impl FrameSync {
         let image_available = unsafe { device.create_semaphore(&sem_info, None)? };
         let render_finished = unsafe { device.create_semaphore(&sem_info, None)? };
 
-        Ok(Self {
-            render_fence,
-            image_available,
-            render_finished,
-            device: device.clone(),
-        })
+        Ok(Self { render_fence, image_available, render_finished, device: device.clone() })
     }
 }
 

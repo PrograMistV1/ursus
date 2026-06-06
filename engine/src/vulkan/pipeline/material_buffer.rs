@@ -43,17 +43,13 @@ impl MaterialBuffer {
 
         let memory = unsafe {
             device.allocate_memory(
-                &vk::MemoryAllocateInfo::default()
-                    .allocation_size(req.size)
-                    .memory_type_index(mem_type),
+                &vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(mem_type),
                 None,
             )?
         };
         unsafe { device.bind_buffer_memory(buffer, memory, 0)? };
 
-        let mapped = unsafe {
-            device.map_memory(memory, 0, size, vk::MemoryMapFlags::empty())? as *mut MaterialData
-        };
+        let mapped = unsafe { device.map_memory(memory, 0, size, vk::MemoryMapFlags::empty())? as *mut MaterialData };
 
         let binding = vk::DescriptorSetLayoutBinding::default()
             .binding(0)
@@ -63,21 +59,15 @@ impl MaterialBuffer {
 
         let layout = unsafe {
             device.create_descriptor_set_layout(
-                &vk::DescriptorSetLayoutCreateInfo::default()
-                    .bindings(std::slice::from_ref(&binding)),
+                &vk::DescriptorSetLayoutCreateInfo::default().bindings(std::slice::from_ref(&binding)),
                 None,
             )?
         };
 
-        let pool_size = vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::STORAGE_BUFFER,
-            descriptor_count: 1,
-        };
+        let pool_size = vk::DescriptorPoolSize { ty: vk::DescriptorType::STORAGE_BUFFER, descriptor_count: 1 };
         let pool = unsafe {
             device.create_descriptor_pool(
-                &vk::DescriptorPoolCreateInfo::default()
-                    .pool_sizes(std::slice::from_ref(&pool_size))
-                    .max_sets(1),
+                &vk::DescriptorPoolCreateInfo::default().pool_sizes(std::slice::from_ref(&pool_size)).max_sets(1),
                 None,
             )?
         };
@@ -90,10 +80,7 @@ impl MaterialBuffer {
             )?[0]
         };
 
-        let buf_info = vk::DescriptorBufferInfo::default()
-            .buffer(buffer)
-            .offset(0)
-            .range(size);
+        let buf_info = vk::DescriptorBufferInfo::default().buffer(buffer).offset(0).range(size);
 
         let write = vk::WriteDescriptorSet::default()
             .dst_set(set)
@@ -103,22 +90,9 @@ impl MaterialBuffer {
 
         unsafe { device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
 
-        log::info!(
-            "MaterialBuffer: {} слотов ({} KB)",
-            Self::MAX_MATERIALS,
-            size / 1024
-        );
+        log::info!("MaterialBuffer: {} слотов ({} KB)", Self::MAX_MATERIALS, size / 1024);
 
-        Ok(Self {
-            buffer,
-            memory,
-            mapped,
-            capacity: Self::MAX_MATERIALS,
-            layout,
-            set,
-            pool,
-            device: device.clone(),
-        })
+        Ok(Self { buffer, memory, mapped, capacity: Self::MAX_MATERIALS, layout, set, pool, device: device.clone() })
     }
 
     pub fn upload(&self, materials: &[MaterialData]) {

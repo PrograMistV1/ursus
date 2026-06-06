@@ -28,25 +28,12 @@ pub struct FrameInput<'a> {
 }
 
 pub trait RenderPipeline: Send + 'static {
-    fn build(
-        ctx: &VulkanContext,
-        assets: &mut AssetServer,
-        graph: &mut RenderGraph,
-    ) -> anyhow::Result<PipelineHandles>
+    fn build(ctx: &VulkanContext, assets: &mut AssetServer, graph: &mut RenderGraph) -> anyhow::Result<PipelineHandles>
     where
         Self: Sized;
 
-    fn prepare_frame(
-        &mut self,
-        graph: &mut RenderGraph,
-        input: FrameInput<'_>,
-    ) -> anyhow::Result<()>;
-    fn on_resize(
-        &mut self,
-        _graph: &mut RenderGraph,
-        _width: u32,
-        _height: u32,
-    ) -> anyhow::Result<()> {
+    fn prepare_frame(&mut self, graph: &mut RenderGraph, input: FrameInput<'_>) -> anyhow::Result<()>;
+    fn on_resize(&mut self, _graph: &mut RenderGraph, _width: u32, _height: u32) -> anyhow::Result<()> {
         Ok(())
     }
     fn on_resize_internal(

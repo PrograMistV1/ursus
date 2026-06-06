@@ -16,21 +16,10 @@ pub fn collect_draw_calls(world: &mut GameWorld, assets: &AssetServer) -> Vec<Dr
 
     let mut calls = Vec::new();
 
-    for (mesh, transform, mat) in world
-        .inner
-        .query_mut::<(&MeshHandle, &Transform, Option<&MaterialHandle>)>()
-    {
-        let shader = mat
-            .and_then(|m| assets.get_material(*m))
-            .map(|mat_def| mat_def.shader)
-            .unwrap_or(default_shader);
+    for (mesh, transform, mat) in world.inner.query_mut::<(&MeshHandle, &Transform, Option<&MaterialHandle>)>() {
+        let shader = mat.and_then(|m| assets.get_material(*m)).map(|mat_def| mat_def.shader).unwrap_or(default_shader);
 
-        calls.push(DrawCall {
-            mesh: *mesh,
-            material: mat.copied(),
-            shader,
-            transform: transform.clone(),
-        });
+        calls.push(DrawCall { mesh: *mesh, material: mat.copied(), shader, transform: transform.clone() });
     }
 
     calls

@@ -24,11 +24,7 @@ impl RenderTarget {
         let image_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .format(format)
-            .extent(vk::Extent3D {
-                width,
-                height,
-                depth: 1,
-            })
+            .extent(vk::Extent3D { width, height, depth: 1 })
             .mip_levels(1)
             .array_layers(1)
             .samples(vk::SampleCountFlags::TYPE_1)
@@ -40,18 +36,12 @@ impl RenderTarget {
         let image = unsafe { device.create_image(&image_info, None)? };
         let req = unsafe { device.get_image_memory_requirements(image) };
 
-        let mem_type = find_memory_type(
-            instance,
-            physical_device,
-            req.memory_type_bits,
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        )?;
+        let mem_type =
+            find_memory_type(instance, physical_device, req.memory_type_bits, vk::MemoryPropertyFlags::DEVICE_LOCAL)?;
 
         let memory = unsafe {
             device.allocate_memory(
-                &vk::MemoryAllocateInfo::default()
-                    .allocation_size(req.size)
-                    .memory_type_index(mem_type),
+                &vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(mem_type),
                 None,
             )?
         };
@@ -75,14 +65,7 @@ impl RenderTarget {
         };
 
         log::debug!("RenderTarget: {}x{} {:?}", width, height, format);
-        Ok(Self {
-            image,
-            view,
-            memory,
-            format,
-            extent,
-            device: device.clone(),
-        })
+        Ok(Self { image, view, memory, format, extent, device: device.clone() })
     }
 }
 

@@ -13,8 +13,7 @@ impl DebugMessenger {
 
         let create_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
             .message_severity(
-                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING,
+                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING,
             )
             .message_type(
                 vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
@@ -46,15 +45,9 @@ pub fn cmd_end_label(debug_utils: &debug_utils::Device, cmd: vk::CommandBuffer) 
     unsafe { debug_utils.cmd_end_debug_utils_label(cmd) };
 }
 
-pub fn set_object_name(
-    debug_utils: &ash::ext::debug_utils::Device,
-    object: impl vk::Handle,
-    name: &str,
-) {
+pub fn set_object_name(debug_utils: &ash::ext::debug_utils::Device, object: impl vk::Handle, name: &str) {
     let name = std::ffi::CString::new(name).unwrap();
-    let info = vk::DebugUtilsObjectNameInfoEXT::default()
-        .object_handle(object)
-        .object_name(&name);
+    let info = vk::DebugUtilsObjectNameInfoEXT::default().object_handle(object).object_name(&name);
     unsafe { debug_utils.set_debug_utils_object_name(&info).ok() };
 }
 

@@ -27,23 +27,11 @@ impl GBuffer {
     ) -> anyhow::Result<Self> {
         let extent = vk::Extent2D { width, height };
 
-        let (albedo, albedo_view, albedo_memory) = create_attachment(
-            device,
-            instance,
-            physical_device,
-            Self::ALBEDO_FORMAT,
-            width,
-            height,
-        )?;
+        let (albedo, albedo_view, albedo_memory) =
+            create_attachment(device, instance, physical_device, Self::ALBEDO_FORMAT, width, height)?;
 
-        let (normal, normal_view, normal_memory) = create_attachment(
-            device,
-            instance,
-            physical_device,
-            Self::NORMAL_FORMAT,
-            width,
-            height,
-        )?;
+        let (normal, normal_view, normal_memory) =
+            create_attachment(device, instance, physical_device, Self::NORMAL_FORMAT, width, height)?;
 
         log::debug!("GBuffer: {}x{}", width, height);
         Ok(Self {
@@ -88,11 +76,7 @@ fn create_attachment(
     let image_info = vk::ImageCreateInfo::default()
         .image_type(vk::ImageType::TYPE_2D)
         .format(format)
-        .extent(vk::Extent3D {
-            width,
-            height,
-            depth: 1,
-        })
+        .extent(vk::Extent3D { width, height, depth: 1 })
         .mip_levels(1)
         .array_layers(1)
         .samples(vk::SampleCountFlags::TYPE_1)
@@ -104,18 +88,12 @@ fn create_attachment(
     let image = unsafe { device.create_image(&image_info, None)? };
     let req = unsafe { device.get_image_memory_requirements(image) };
 
-    let mem_type = find_memory_type(
-        instance,
-        physical_device,
-        req.memory_type_bits,
-        vk::MemoryPropertyFlags::DEVICE_LOCAL,
-    )?;
+    let mem_type =
+        find_memory_type(instance, physical_device, req.memory_type_bits, vk::MemoryPropertyFlags::DEVICE_LOCAL)?;
 
     let memory = unsafe {
         device.allocate_memory(
-            &vk::MemoryAllocateInfo::default()
-                .allocation_size(req.size)
-                .memory_type_index(mem_type),
+            &vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(mem_type),
             None,
         )?
     };

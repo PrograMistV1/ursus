@@ -1,6 +1,5 @@
 use crate::render_graph::resource::{
-    DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, LayoutTracker,
-    ResourceHandle, ResourcePool,
+    DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, LayoutTracker, ResourceHandle, ResourcePool,
 };
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
 use crate::vulkan::timestamps::{GpuFrameTimes, GpuTimestampPool};
@@ -28,32 +27,19 @@ unsafe impl Send for FrameDataBox {}
 
 impl PassAccess {
     pub fn read(handle: ResourceHandle, layout: vk::ImageLayout) -> Self {
-        Self {
-            handle,
-            access: AccessType::Read,
-            layout,
-        }
+        Self { handle, access: AccessType::Read, layout }
     }
 
     pub fn write(handle: ResourceHandle, layout: vk::ImageLayout) -> Self {
-        Self {
-            handle,
-            access: AccessType::Write,
-            layout,
-        }
+        Self { handle, access: AccessType::Write, layout }
     }
 
     pub fn read_write(handle: ResourceHandle, layout: vk::ImageLayout) -> Self {
-        Self {
-            handle,
-            access: AccessType::ReadWrite,
-            layout,
-        }
+        Self { handle, access: AccessType::ReadWrite, layout }
     }
 }
 
-pub type RecordFn =
-    Box<dyn FnMut(vk::CommandBuffer, &ResourcePool, *mut ()) -> anyhow::Result<()> + Send>;
+pub type RecordFn = Box<dyn FnMut(vk::CommandBuffer, &ResourcePool, *mut ()) -> anyhow::Result<()> + Send>;
 
 pub struct PassNode {
     pub name: String,
@@ -65,13 +51,7 @@ pub struct PassNode {
 
 impl PassNode {
     pub fn new(name: impl Into<String>, accesses: Vec<PassAccess>, record: RecordFn) -> Self {
-        Self {
-            name: name.into(),
-            accesses,
-            record,
-            enabled: true,
-            depends_on: Vec::new(),
-        }
+        Self { name: name.into(), accesses, record, enabled: true, depends_on: Vec::new() }
     }
 }
 
@@ -175,9 +155,7 @@ impl RenderGraph {
             let extra = match access.layout {
                 vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => vk::ImageUsageFlags::SAMPLED,
                 vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL => vk::ImageUsageFlags::COLOR_ATTACHMENT,
-                vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL => {
-                    vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-                }
+                vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL => vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
                 _ => vk::ImageUsageFlags::empty(),
             };
             self.pool.add_usage(access.handle, extra);
@@ -203,11 +181,7 @@ impl RenderGraph {
         log::info!(
             "RenderGraph скомпилирован: {} пассов → {:?}",
             n,
-            self.nodes
-                .iter()
-                .enumerate()
-                .map(|(i, p)| format!("[{}]{}", i, p.name))
-                .collect::<Vec<_>>()
+            self.nodes.iter().enumerate().map(|(i, p)| format!("[{}]{}", i, p.name)).collect::<Vec<_>>()
         );
         Ok(())
     }
@@ -234,8 +208,7 @@ impl RenderGraph {
     }
 
     pub fn allocate(&mut self) -> anyhow::Result<()> {
-        self.pool
-            .allocate(self.internal_resolution, self.output_resolution)?;
+        self.pool.allocate(self.internal_resolution, self.output_resolution)?;
         self.bindings.flush_all(&self.pool);
         self.allocated = true;
         Ok(())
@@ -256,11 +229,7 @@ impl RenderGraph {
             ts.read_and_reset(self.current_frame, cmd);
         }
 
-        let frame_ptr = self
-            .frame_data
-            .as_ref()
-            .map(|b| b.0)
-            .unwrap_or(std::ptr::null_mut());
+        let frame_ptr = self.frame_data.as_ref().map(|b| b.0).unwrap_or(std::ptr::null_mut());
 
         for (order_idx, &idx) in self.sorted_order.iter().enumerate() {
             let node = &mut self.nodes[idx];
@@ -274,8 +243,7 @@ impl RenderGraph {
 
             let transitions: Vec<(ResourceHandle, vk::ImageLayout)> =
                 node.accesses.iter().map(|a| (a.handle, a.layout)).collect();
-            self.tracker
-                .transition(device, cmd, &self.pool, &transitions);
+            self.tracker.transition(device, cmd, &self.pool, &transitions);
 
             if let Some(ts) = &self.timestamps {
                 ts.begin_pass(cmd, self.current_frame, order_idx);
@@ -320,8 +288,7 @@ impl RenderGraph {
 
     pub fn resize_output(&mut self, new_output: (u32, u32)) -> anyhow::Result<()> {
         self.output_resolution = new_output;
-        self.pool
-            .resize_output(self.internal_resolution, new_output)?;
+        self.pool.resize_output(self.internal_resolution, new_output)?;
         let affected: Vec<ResourceHandle> = self.pool.output_handles().collect();
         self.bindings.flush(&self.pool, &affected);
         self.tracker.invalidate(&affected);
@@ -330,8 +297,7 @@ impl RenderGraph {
 
     pub fn resize_internal(&mut self, new_internal: (u32, u32)) -> anyhow::Result<()> {
         self.internal_resolution = new_internal;
-        self.pool
-            .resize_internal(new_internal, self.output_resolution)?;
+        self.pool.resize_internal(new_internal, self.output_resolution)?;
         let affected: Vec<ResourceHandle> = self.pool.internal_handles().collect();
         self.bindings.flush(&self.pool, &affected);
         self.tracker.invalidate(&affected);
@@ -360,10 +326,7 @@ impl RenderGraph {
     }
 
     pub fn frame_data_ptr(&self) -> *mut () {
-        self.frame_data
-            .as_ref()
-            .map(|b| b.0)
-            .unwrap_or(std::ptr::null_mut())
+        self.frame_data.as_ref().map(|b| b.0).unwrap_or(std::ptr::null_mut())
     }
 
     fn drop_frame_data_inner(&mut self) {
@@ -381,11 +344,7 @@ impl Drop for RenderGraph {
     }
 }
 
-fn build_resource_edges(
-    nodes: &[PassNode],
-    adj: &mut Vec<HashSet<usize>>,
-    in_degree: &mut Vec<usize>,
-) {
+fn build_resource_edges(nodes: &[PassNode], adj: &mut Vec<HashSet<usize>>, in_degree: &mut Vec<usize>) {
     let mut last_writer: HashMap<ResourceHandle, usize> = HashMap::new();
     let mut last_readers: HashMap<ResourceHandle, Vec<usize>> = HashMap::new();
 
@@ -407,11 +366,7 @@ fn build_resource_edges(
     }
 }
 
-fn build_explicit_edges(
-    nodes: &[PassNode],
-    adj: &mut Vec<HashSet<usize>>,
-    in_degree: &mut Vec<usize>,
-) {
+fn build_explicit_edges(nodes: &[PassNode], adj: &mut Vec<HashSet<usize>>, in_degree: &mut Vec<usize>) {
     for (i, node) in nodes.iter().enumerate() {
         for &dep_handle in &node.depends_on {
             add_edge(adj, in_degree, Some(dep_handle.0 as usize), i);
@@ -419,12 +374,7 @@ fn build_explicit_edges(
     }
 }
 
-fn add_edge(
-    adj: &mut Vec<HashSet<usize>>,
-    in_degree: &mut Vec<usize>,
-    from: Option<usize>,
-    to: usize,
-) {
+fn add_edge(adj: &mut Vec<HashSet<usize>>, in_degree: &mut Vec<usize>, from: Option<usize>, to: usize) {
     let Some(from) = from else { return };
     if from != to && !adj[from].contains(&to) {
         adj[from].insert(to);
@@ -447,11 +397,7 @@ fn add_edges_from_readers(
     }
 }
 
-fn topological_sort(
-    n: usize,
-    adj: Vec<HashSet<usize>>,
-    mut in_degree: Vec<usize>,
-) -> anyhow::Result<Vec<usize>> {
+fn topological_sort(n: usize, adj: Vec<HashSet<usize>>, mut in_degree: Vec<usize>) -> anyhow::Result<Vec<usize>> {
     let mut queue: VecDeque<usize> = (0..n).filter(|&i| in_degree[i] == 0).collect();
     let mut order = Vec::with_capacity(n);
 
@@ -480,12 +426,7 @@ pub struct PassBuilder {
 
 impl PassBuilder {
     pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            accesses: Vec::new(),
-            deferred_bindings: Vec::new(),
-            explicit_deps: Vec::new(),
-        }
+        Self { name: name.into(), accesses: Vec::new(), deferred_bindings: Vec::new(), explicit_deps: Vec::new() }
     }
 
     pub fn read(mut self, handle: ResourceHandle, layout: vk::ImageLayout) -> Self {
@@ -553,10 +494,7 @@ impl PassBuilder {
         F: FnMut(vk::CommandBuffer, &ResourcePool, *mut ()) -> anyhow::Result<()> + Send + 'static,
     {
         PassNodeReady {
-            node: PassNode {
-                depends_on: self.explicit_deps,
-                ..PassNode::new(self.name, self.accesses, Box::new(f))
-            },
+            node: PassNode { depends_on: self.explicit_deps, ..PassNode::new(self.name, self.accesses, Box::new(f)) },
             deferred_bindings: self.deferred_bindings,
         }
     }

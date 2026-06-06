@@ -8,10 +8,7 @@ struct MyApp {
 
 impl MyApp {
     fn new() -> Self {
-        Self {
-            sponza: None,
-            frame: 0,
-        }
+        Self { sponza: None, frame: 0 }
     }
 }
 

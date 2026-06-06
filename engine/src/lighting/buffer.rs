@@ -30,14 +30,8 @@ pub struct LightingUbo {
 impl Default for LightingUbo {
     fn default() -> Self {
         Self {
-            directional: DirectionalLight {
-                direction: [-0.3, -1.0, -0.2, 0.0],
-                color: [1.0, 0.95, 0.85, 2.0],
-            },
-            point_lights: [GpuPointLight {
-                position: [0.0; 4],
-                color: [0.0; 4],
-            }; MAX_POINT_LIGHTS],
+            directional: DirectionalLight { direction: [-0.3, -1.0, -0.2, 0.0], color: [1.0, 0.95, 0.85, 2.0] },
+            point_lights: [GpuPointLight { position: [0.0; 4], color: [0.0; 4] }; MAX_POINT_LIGHTS],
             point_light_count: 0,
             _pad: [0; 3],
             light_space_matrix: glam::Mat4::IDENTITY.to_cols_array_2d(),
@@ -79,26 +73,17 @@ impl LightBuffer {
 
         let memory = unsafe {
             device.allocate_memory(
-                &vk::MemoryAllocateInfo::default()
-                    .allocation_size(req.size)
-                    .memory_type_index(mem_type),
+                &vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(mem_type),
                 None,
             )?
         };
         unsafe { device.bind_buffer_memory(buffer, memory, 0)? };
 
-        let mapped = unsafe {
-            device.map_memory(memory, 0, size, vk::MemoryMapFlags::empty())? as *mut LightingUbo
-        };
+        let mapped = unsafe { device.map_memory(memory, 0, size, vk::MemoryMapFlags::empty())? as *mut LightingUbo };
 
         unsafe { std::ptr::write(mapped, LightingUbo::default()) };
 
-        Ok(Self {
-            buffer,
-            memory,
-            mapped,
-            device: device.clone(),
-        })
+        Ok(Self { buffer, memory, mapped, device: device.clone() })
     }
 
     pub fn upload(&self, data: &LightingUbo) {

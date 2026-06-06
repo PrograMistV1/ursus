@@ -32,21 +32,9 @@ impl Aabb {
         for plane in planes {
             let normal = Vec3::new(plane.x, plane.y, plane.z);
             let p = Vec3::new(
-                if normal.x >= 0.0 {
-                    self.max.x
-                } else {
-                    self.min.x
-                },
-                if normal.y >= 0.0 {
-                    self.max.y
-                } else {
-                    self.min.y
-                },
-                if normal.z >= 0.0 {
-                    self.max.z
-                } else {
-                    self.min.z
-                },
+                if normal.x >= 0.0 { self.max.x } else { self.min.x },
+                if normal.y >= 0.0 { self.max.y } else { self.min.y },
+                if normal.z >= 0.0 { self.max.z } else { self.min.z },
             );
             if normal.dot(p) + plane.w < 0.0 {
                 return false;
@@ -61,11 +49,7 @@ unsafe impl bytemuck::Zeroable for Vertex {}
 
 impl Vertex {
     pub fn new(position: Vec3, normal: Vec3, uv: Vec2) -> Self {
-        Self {
-            position: position.into(),
-            normal: normal.into(),
-            uv: uv.into(),
-        }
+        Self { position: position.into(), normal: normal.into(), uv: uv.into() }
     }
 
     pub fn binding_description() -> vk::VertexInputBindingDescription {
@@ -105,11 +89,7 @@ pub struct CpuMesh {
 
 impl CpuMesh {
     pub fn new(name: impl Into<String>, vertices: Vec<Vertex>, indices: Vec<u32>) -> Self {
-        Self {
-            vertices,
-            indices,
-            name: name.into(),
-        }
+        Self { vertices, indices, name: name.into() }
     }
 
     pub fn vertex_count(&self) -> u32 {
@@ -237,12 +217,7 @@ impl GpuMesh {
             queue,
         )?;
 
-        log::debug!(
-            "GpuMesh '{}': {} verts, {} idx",
-            cpu_mesh.name,
-            cpu_mesh.vertex_count(),
-            cpu_mesh.index_count()
-        );
+        log::debug!("GpuMesh '{}': {} verts, {} idx", cpu_mesh.name, cpu_mesh.vertex_count(), cpu_mesh.index_count());
 
         Ok(Self {
             vertex_buffer,
@@ -286,8 +261,7 @@ fn copy_buffer(
     unsafe {
         device.begin_command_buffer(
             cmd,
-            &vk::CommandBufferBeginInfo::default()
-                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+            &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
         )?;
         device.cmd_copy_buffer(cmd, src, dst, &[vk::BufferCopy::default().size(size)]);
         device.end_command_buffer(cmd)?;

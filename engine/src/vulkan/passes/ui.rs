@@ -25,10 +25,7 @@ impl UiPass {
             device.cmd_begin_rendering(
                 cmd,
                 &vk::RenderingInfo::default()
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent,
-                    })
+                    .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent })
                     .layer_count(1)
                     .color_attachments(std::slice::from_ref(&color_attachment)),
             );
@@ -45,24 +42,10 @@ impl UiPass {
                     max_depth: 1.0,
                 }],
             );
-            device.cmd_set_scissor(
-                cmd,
-                0,
-                &[vk::Rect2D {
-                    offset: vk::Offset2D { x: 0, y: 0 },
-                    extent,
-                }],
-            );
+            device.cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent }]);
         }
 
-        egui.end_frame_and_draw(
-            window,
-            graphics_queue,
-            command_pool,
-            cmd,
-            extent,
-            egui_output,
-        )?;
+        egui.end_frame_and_draw(window, graphics_queue, command_pool, cmd, extent, egui_output)?;
 
         unsafe {
             device.cmd_end_rendering(cmd);

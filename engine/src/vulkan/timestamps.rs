@@ -42,9 +42,7 @@ impl GpuTimestampPool {
         for _ in 0..frames_in_flight {
             let pool = unsafe {
                 device.create_query_pool(
-                    &vk::QueryPoolCreateInfo::default()
-                        .query_type(vk::QueryType::TIMESTAMP)
-                        .query_count(query_count),
+                    &vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(query_count),
                     None,
                 )?
             };
@@ -53,19 +51,9 @@ impl GpuTimestampPool {
 
         initial_reset_all(device, command_pool, queue, &raw_pools, query_count)?;
 
-        let pools = raw_pools
-            .into_iter()
-            .map(|pool| FramePool {
-                pool,
-                submitted_count: 0,
-            })
-            .collect();
+        let pools = raw_pools.into_iter().map(|pool| FramePool { pool, submitted_count: 0 }).collect();
 
-        log::info!(
-            "GpuTimestampPool: {} frames × {} passes × 2 queries",
-            frames_in_flight,
-            pass_names.len(),
-        );
+        log::info!("GpuTimestampPool: {} frames × {} passes × 2 queries", frames_in_flight, pass_names.len(),);
 
         Ok(Self {
             pools,
@@ -82,14 +70,7 @@ impl GpuTimestampPool {
 
         if fp.submitted_count > 0 {
             let mut raw = vec![0u64; self.query_count as usize];
-            match unsafe {
-                self.device.get_query_pool_results(
-                    fp.pool,
-                    0,
-                    &mut raw,
-                    vk::QueryResultFlags::TYPE_64,
-                )
-            } {
+            match unsafe { self.device.get_query_pool_results(fp.pool, 0, &mut raw, vk::QueryResultFlags::TYPE_64) } {
                 Ok(()) => {
                     let period_ms = self.timestamp_period * 1e-6;
                     let mut passes = Vec::with_capacity(self.pass_names.len());
@@ -107,10 +88,7 @@ impl GpuTimestampPool {
                         total += ms;
                     }
 
-                    self.last_frame = GpuFrameTimes {
-                        passes,
-                        total_ms: total,
-                    };
+                    self.last_frame = GpuFrameTimes { passes, total_ms: total };
                 }
                 Err(vk::Result::NOT_READY) => {}
                 Err(e) => log::warn!("GpuTimestampPool read: {:?}", e),
@@ -118,8 +96,7 @@ impl GpuTimestampPool {
         }
 
         unsafe {
-            self.device
-                .cmd_reset_query_pool(cmd, fp.pool, 0, self.query_count);
+            self.device.cmd_reset_query_pool(cmd, fp.pool, 0, self.query_count);
         }
     }
 
@@ -176,8 +153,7 @@ fn initial_reset_all(
     unsafe {
         device.begin_command_buffer(
             cmd,
-            &vk::CommandBufferBeginInfo::default()
-                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+            &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
         )?;
         for &pool in pools {
             device.cmd_reset_query_pool(cmd, pool, 0, query_count);

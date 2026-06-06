@@ -29,10 +29,8 @@ impl ShadowPass {
             .offset(0)
             .size(size_of::<ShadowPC>() as u32);
 
-        let binding = vk::VertexInputBindingDescription::default()
-            .binding(0)
-            .stride(32)
-            .input_rate(vk::VertexInputRate::VERTEX);
+        let binding =
+            vk::VertexInputBindingDescription::default().binding(0).stride(32).input_rate(vk::VertexInputRate::VERTEX);
 
         let attributes = [vk::VertexInputAttributeDescription::default()
             .binding(0)
@@ -50,11 +48,7 @@ impl ShadowPass {
         .build(device)?;
 
         log::debug!("ShadowPass создан");
-        Ok(Self {
-            pipeline,
-            layout,
-            device: device.clone(),
-        })
+        Ok(Self { pipeline, layout, device: device.clone() })
     }
 
     pub fn record(
@@ -65,10 +59,7 @@ impl ShadowPass {
         light_view_proj: Mat4,
         draw_calls: &[ShadowDrawCall<'_>],
     ) {
-        let extent = vk::Extent2D {
-            width: SHADOW_MAP_SIZE,
-            height: SHADOW_MAP_SIZE,
-        };
+        let extent = vk::Extent2D { width: SHADOW_MAP_SIZE, height: SHADOW_MAP_SIZE };
 
         cmd::begin_rendering_depth_only(device, cmd_buf, shadow_map.view(), extent);
 
@@ -77,27 +68,11 @@ impl ShadowPass {
 
             for dc in draw_calls {
                 let mvp = light_view_proj * dc.transform.matrix();
-                let pc = ShadowPC {
-                    light_space_mvp: mvp.to_cols_array_2d(),
-                };
-                let pc_bytes = std::slice::from_raw_parts(
-                    &pc as *const ShadowPC as *const u8,
-                    size_of::<ShadowPC>(),
-                );
-                device.cmd_push_constants(
-                    cmd_buf,
-                    self.layout,
-                    vk::ShaderStageFlags::VERTEX,
-                    0,
-                    pc_bytes,
-                );
+                let pc = ShadowPC { light_space_mvp: mvp.to_cols_array_2d() };
+                let pc_bytes = std::slice::from_raw_parts(&pc as *const ShadowPC as *const u8, size_of::<ShadowPC>());
+                device.cmd_push_constants(cmd_buf, self.layout, vk::ShaderStageFlags::VERTEX, 0, pc_bytes);
                 device.cmd_bind_vertex_buffers(cmd_buf, 0, &[dc.gpu_mesh.vertex_buffer], &[0]);
-                device.cmd_bind_index_buffer(
-                    cmd_buf,
-                    dc.gpu_mesh.index_buffer,
-                    0,
-                    vk::IndexType::UINT32,
-                );
+                device.cmd_bind_index_buffer(cmd_buf, dc.gpu_mesh.index_buffer, 0, vk::IndexType::UINT32);
                 device.cmd_draw_indexed(cmd_buf, dc.gpu_mesh.index_count, 1, 0, 0, 0);
             }
 

@@ -28,11 +28,7 @@ impl Device {
 
         let queue_infos: Vec<_> = unique_families
             .iter()
-            .map(|&family| {
-                vk::DeviceQueueCreateInfo::default()
-                    .queue_family_index(family)
-                    .queue_priorities(&[1.0])
-            })
+            .map(|&family| vk::DeviceQueueCreateInfo::default().queue_family_index(family).queue_priorities(&[1.0]))
             .collect();
 
         let extensions = [ash::khr::swapchain::NAME.as_ptr()];
@@ -46,9 +42,8 @@ impl Device {
             .descriptor_binding_partially_bound(true)
             .descriptor_binding_variable_descriptor_count(true);
 
-        let mut features13 = vk::PhysicalDeviceVulkan13Features::default()
-            .dynamic_rendering(true)
-            .synchronization2(true);
+        let mut features13 =
+            vk::PhysicalDeviceVulkan13Features::default().dynamic_rendering(true).synchronization2(true);
 
         let features10 = vk::PhysicalDeviceFeatures::default().sampler_anisotropy(true);
 
@@ -59,26 +54,14 @@ impl Device {
             .push_next(&mut features12)
             .push_next(&mut features13);
 
-        let handle = unsafe {
-            instance
-                .handle
-                .create_device(physical, &create_info, None)?
-        };
+        let handle = unsafe { instance.handle.create_device(physical, &create_info, None)? };
 
         let graphics_queue = unsafe { handle.get_device_queue(graphics_family, 0) };
         let present_queue = unsafe { handle.get_device_queue(present_family, 0) };
 
         log::info!("Logical device создан");
 
-        Ok(Self {
-            handle,
-            physical,
-            physical_props,
-            graphics_queue,
-            present_queue,
-            graphics_family,
-            present_family,
-        })
+        Ok(Self { handle, physical, physical_props, graphics_queue, present_queue, graphics_family, present_family })
     }
 
     fn pick_physical(
@@ -103,9 +86,8 @@ impl Device {
                 if q.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
                     graphics_family = Some(i);
                 }
-                let present_support = unsafe {
-                    surface_loader.get_physical_device_surface_support(device, i, surface)?
-                };
+                let present_support =
+                    unsafe { surface_loader.get_physical_device_surface_support(device, i, surface)? };
                 if present_support {
                     present_family = Some(i);
                 }

@@ -19,23 +19,14 @@ impl EguiLayer {
     ) -> anyhow::Result<Self> {
         let ctx = egui::Context::default();
 
-        let state = EguiWinit::new(
-            ctx.clone(),
-            egui::ViewportId::ROOT,
-            window,
-            Some(window.scale_factor() as f32),
-            None,
-            None,
-        );
+        let state =
+            EguiWinit::new(ctx.clone(), egui::ViewportId::ROOT, window, Some(window.scale_factor() as f32), None, None);
 
         let renderer = Renderer::with_default_allocator(
             instance,
             physical_device,
             device,
-            DynamicRendering {
-                color_attachment_format: swapchain_format,
-                depth_attachment_format: None,
-            },
+            DynamicRendering { color_attachment_format: swapchain_format, depth_attachment_format: None },
             Options {
                 in_flight_frames: 3,
                 srgb_framebuffer: swapchain_format == vk::Format::B8G8R8A8_SRGB
@@ -45,18 +36,10 @@ impl EguiLayer {
             },
         )?;
 
-        Ok(Self {
-            ctx,
-            state,
-            renderer,
-        })
+        Ok(Self { ctx, state, renderer })
     }
 
-    pub fn handle_window_event(
-        &mut self,
-        window: &Window,
-        event: &winit::event::WindowEvent,
-    ) -> bool {
+    pub fn handle_window_event(&mut self, window: &Window, event: &winit::event::WindowEvent) -> bool {
         let resp = self.state.on_window_event(window, event);
         resp.consumed
     }
@@ -74,24 +57,17 @@ impl EguiLayer {
         extent: vk::Extent2D,
         output: egui::FullOutput,
     ) -> anyhow::Result<()> {
-        self.state
-            .handle_platform_output(window, output.platform_output.clone());
+        self.state.handle_platform_output(window, output.platform_output.clone());
         let primitives = self.ctx.tessellate(output.shapes, output.pixels_per_point);
 
         if !output.textures_delta.set.is_empty() {
-            self.renderer.set_textures(
-                queue,
-                command_pool,
-                output.textures_delta.set.as_slice(),
-            )?;
+            self.renderer.set_textures(queue, command_pool, output.textures_delta.set.as_slice())?;
         }
 
-        self.renderer
-            .cmd_draw(cmd, extent, output.pixels_per_point, &primitives)?;
+        self.renderer.cmd_draw(cmd, extent, output.pixels_per_point, &primitives)?;
 
         if !output.textures_delta.free.is_empty() {
-            self.renderer
-                .free_textures(output.textures_delta.free.as_slice())?;
+            self.renderer.free_textures(output.textures_delta.free.as_slice())?;
         }
         Ok(())
     }

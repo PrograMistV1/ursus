@@ -48,12 +48,7 @@ impl Default for LoadingPipeline {
         let s = PENDING
             .with(|c| c.borrow_mut().take())
             .expect("LoadingPipeline::default() вызван без предшествующего build()");
-        Self {
-            start_time: std::time::Instant::now(),
-            pipeline: s.pipeline,
-            layout: s.layout,
-            device: s.device,
-        }
+        Self { start_time: std::time::Instant::now(), pipeline: s.pipeline, layout: s.layout, device: s.device }
     }
 }
 
@@ -68,11 +63,7 @@ impl Drop for LoadingPipeline {
 }
 
 impl RenderPipeline for LoadingPipeline {
-    fn build(
-        ctx: &VulkanContext,
-        _assets: &mut AssetServer,
-        graph: &mut RenderGraph,
-    ) -> anyhow::Result<PipelineHandles>
+    fn build(ctx: &VulkanContext, _assets: &mut AssetServer, graph: &mut RenderGraph) -> anyhow::Result<PipelineHandles>
     where
         Self: Sized,
     {
@@ -103,8 +94,7 @@ impl RenderPipeline for LoadingPipeline {
 
         let layout = unsafe {
             device.create_pipeline_layout(
-                &vk::PipelineLayoutCreateInfo::default()
-                    .push_constant_ranges(std::slice::from_ref(&push_range)),
+                &vk::PipelineLayoutCreateInfo::default().push_constant_ranges(std::slice::from_ref(&push_range)),
                 None,
             )?
         };
@@ -112,11 +102,7 @@ impl RenderPipeline for LoadingPipeline {
         let pipeline = build_vk_pipeline(device, &vert, &frag, layout, swapchain.format)?;
 
         PENDING.with(|c| {
-            *c.borrow_mut() = Some(PendingState {
-                pipeline,
-                layout,
-                device: device.clone(),
-            });
+            *c.borrow_mut() = Some(PendingState { pipeline, layout, device: device.clone() });
         });
 
         let device_bg = device.clone();
@@ -132,19 +118,12 @@ impl RenderPipeline for LoadingPipeline {
                     .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                     .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::STORE)
-                    .clear_value(vk::ClearValue {
-                        color: vk::ClearColorValue {
-                            float32: [0.05, 0.05, 0.08, 1.0],
-                        },
-                    });
+                    .clear_value(vk::ClearValue { color: vk::ClearColorValue { float32: [0.05, 0.05, 0.08, 1.0] } });
 
                 device_bg.cmd_begin_rendering(
                     cmd,
                     &vk::RenderingInfo::default()
-                        .render_area(vk::Rect2D {
-                            offset: vk::Offset2D { x: 0, y: 0 },
-                            extent,
-                        })
+                        .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent })
                         .layer_count(1)
                         .color_attachments(std::slice::from_ref(&color_attachment)),
                 );
@@ -160,34 +139,13 @@ impl RenderPipeline for LoadingPipeline {
                         max_depth: 1.0,
                     }],
                 );
-                device_bg.cmd_set_scissor(
-                    cmd,
-                    0,
-                    &[vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent,
-                    }],
-                );
+                device_bg.cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent }]);
 
                 device_bg.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
 
-                let pc = LoadingPC {
-                    time: data.time,
-                    progress: data.progress,
-                    width: data.width,
-                    height: data.height,
-                };
-                let pc_bytes = std::slice::from_raw_parts(
-                    &pc as *const LoadingPC as *const u8,
-                    size_of::<LoadingPC>(),
-                );
-                device_bg.cmd_push_constants(
-                    cmd,
-                    layout,
-                    vk::ShaderStageFlags::FRAGMENT,
-                    0,
-                    pc_bytes,
-                );
+                let pc = LoadingPC { time: data.time, progress: data.progress, width: data.width, height: data.height };
+                let pc_bytes = std::slice::from_raw_parts(&pc as *const LoadingPC as *const u8, size_of::<LoadingPC>());
+                device_bg.cmd_push_constants(cmd, layout, vk::ShaderStageFlags::FRAGMENT, 0, pc_bytes);
                 device_bg.cmd_draw(cmd, 3, 1, 0, 0);
                 device_bg.cmd_end_rendering(cmd);
                 Ok(())
@@ -210,10 +168,7 @@ impl RenderPipeline for LoadingPipeline {
                 (*data.device).cmd_begin_rendering(
                     cmd,
                     &vk::RenderingInfo::default()
-                        .render_area(vk::Rect2D {
-                            offset: vk::Offset2D { x: 0, y: 0 },
-                            extent,
-                        })
+                        .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent })
                         .layer_count(1)
                         .color_attachments(std::slice::from_ref(&color_attachment)),
                 );
@@ -229,19 +184,9 @@ impl RenderPipeline for LoadingPipeline {
                         max_depth: 1.0,
                     }],
                 );
-                (*data.device).cmd_set_scissor(
-                    cmd,
-                    0,
-                    &[vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent,
-                    }],
-                );
+                (*data.device).cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent }]);
 
-                let egui_output = data
-                    .egui_output
-                    .take()
-                    .expect("egui_output должен быть Some в loading_ui pass");
+                let egui_output = data.egui_output.take().expect("egui_output должен быть Some в loading_ui pass");
 
                 (*data.egui).end_frame_and_draw(
                     &*data.window,
@@ -257,16 +202,10 @@ impl RenderPipeline for LoadingPipeline {
             })
             .build(graph);
 
-        Ok(PipelineHandles {
-            swapchain: h_swapchain,
-        })
+        Ok(PipelineHandles { swapchain: h_swapchain })
     }
 
-    fn prepare_frame(
-        &mut self,
-        graph: &mut RenderGraph,
-        input: FrameInput<'_>,
-    ) -> anyhow::Result<()> {
+    fn prepare_frame(&mut self, graph: &mut RenderGraph, input: FrameInput<'_>) -> anyhow::Result<()> {
         let (w, h) = input.output_resolution;
 
         graph.set_frame_data(Box::new(LoadingFrameData {
@@ -285,12 +224,7 @@ impl RenderPipeline for LoadingPipeline {
         Ok(())
     }
 
-    fn on_resize(
-        &mut self,
-        _graph: &mut RenderGraph,
-        _width: u32,
-        _height: u32,
-    ) -> anyhow::Result<()> {
+    fn on_resize(&mut self, _graph: &mut RenderGraph, _width: u32, _height: u32) -> anyhow::Result<()> {
         Ok(())
     }
 }
@@ -314,27 +248,24 @@ fn build_vk_pipeline(
             .name(entry),
     ];
     let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
-    let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
-        .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
-    let viewport_state = vk::PipelineViewportStateCreateInfo::default()
-        .viewport_count(1)
-        .scissor_count(1);
+    let input_assembly =
+        vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
+    let viewport_state = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
     let rasterizer = vk::PipelineRasterizationStateCreateInfo::default()
         .polygon_mode(vk::PolygonMode::FILL)
         .cull_mode(vk::CullModeFlags::NONE)
         .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
         .line_width(1.0);
-    let multisampling = vk::PipelineMultisampleStateCreateInfo::default()
-        .rasterization_samples(vk::SampleCountFlags::TYPE_1);
-    let blend_attachment = vk::PipelineColorBlendAttachmentState::default()
-        .color_write_mask(vk::ColorComponentFlags::RGBA);
-    let color_blending = vk::PipelineColorBlendStateCreateInfo::default()
-        .attachments(std::slice::from_ref(&blend_attachment));
+    let multisampling =
+        vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
+    let blend_attachment =
+        vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA);
+    let color_blending =
+        vk::PipelineColorBlendStateCreateInfo::default().attachments(std::slice::from_ref(&blend_attachment));
     let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-    let dynamic_state =
-        vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-    let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
-        .color_attachment_formats(std::slice::from_ref(&color_format));
+    let dynamic_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+    let mut rendering_info =
+        vk::PipelineRenderingCreateInfo::default().color_attachment_formats(std::slice::from_ref(&color_format));
 
     let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
         .stages(&stages)
@@ -350,11 +281,7 @@ fn build_vk_pipeline(
 
     let pipeline = unsafe {
         device
-            .create_graphics_pipelines(
-                vk::PipelineCache::null(),
-                std::slice::from_ref(&pipeline_info),
-                None,
-            )
+            .create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&pipeline_info), None)
             .map_err(|(_, e)| e)?[0]
     };
     Ok(pipeline)

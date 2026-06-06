@@ -4,14 +4,8 @@ use glam::{Vec2, Vec3};
 use image::DynamicImage;
 
 pub fn load_obj(path: &std::path::Path) -> anyhow::Result<CpuMesh> {
-    let (models, _materials) = tobj::load_obj(
-        path,
-        &tobj::LoadOptions {
-            triangulate: true,
-            single_index: true,
-            ..Default::default()
-        },
-    )?;
+    let (models, _materials) =
+        tobj::load_obj(path, &tobj::LoadOptions { triangulate: true, single_index: true, ..Default::default() })?;
 
     if models.is_empty() {
         anyhow::bail!("OBJ файл не содержит мешей: {:?}", path);
@@ -28,17 +22,9 @@ pub fn load_obj(path: &std::path::Path) -> anyhow::Result<CpuMesh> {
         let vertex_count = mesh.positions.len() / 3;
 
         for i in 0..vertex_count {
-            let pos = Vec3::new(
-                mesh.positions[i * 3],
-                mesh.positions[i * 3 + 1],
-                mesh.positions[i * 3 + 2],
-            );
+            let pos = Vec3::new(mesh.positions[i * 3], mesh.positions[i * 3 + 1], mesh.positions[i * 3 + 2]);
             let normal = if has_normals {
-                Vec3::new(
-                    mesh.normals[i * 3],
-                    mesh.normals[i * 3 + 1],
-                    mesh.normals[i * 3 + 2],
-                )
+                Vec3::new(mesh.normals[i * 3], mesh.normals[i * 3 + 1], mesh.normals[i * 3 + 2])
             } else {
                 Vec3::Y
             };
@@ -58,12 +44,7 @@ pub fn load_obj(path: &std::path::Path) -> anyhow::Result<CpuMesh> {
     }
 
     let name = models[0].name.clone();
-    log::info!(
-        "OBJ '{}': {} вершин, {} индексов",
-        name,
-        vertices.len(),
-        indices.len()
-    );
+    log::info!("OBJ '{}': {} вершин, {} индексов", name, vertices.len(), indices.len());
     Ok(CpuMesh::new(name, vertices, indices))
 }
 
@@ -133,12 +114,7 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 mesh_base_name.clone()
             };
 
-            log::debug!(
-                "glTF '{}': {} вершин, {} индексов",
-                mesh_name,
-                vertices.len(),
-                indices.len()
-            );
+            log::debug!("glTF '{}': {} вершин, {} индексов", mesh_name, vertices.len(), indices.len());
 
             let mut tex_data: Vec<(TextureSlot, Vec<u8>, u32, u32, String, usize)> = Vec::new();
             let mut mat_out = None;
@@ -160,9 +136,7 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 });
 
                 if let Some(info) = pbr.base_color_texture() {
-                    if let Some((bytes, w, h)) =
-                        image_bytes(&images, info.texture().source().index())
-                    {
+                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
                         tex_data.push((
                             TextureSlot::Diffuse,
                             bytes,
@@ -175,9 +149,7 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 }
 
                 if let Some(info) = pbr.metallic_roughness_texture() {
-                    if let Some((bytes, w, h)) =
-                        image_bytes(&images, info.texture().source().index())
-                    {
+                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
                         tex_data.push((
                             TextureSlot::MetallicRoughness,
                             bytes,
@@ -190,9 +162,7 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 }
 
                 if let Some(info) = mat.normal_texture() {
-                    if let Some((bytes, w, h)) =
-                        image_bytes(&images, info.texture().source().index())
-                    {
+                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
                         tex_data.push((
                             TextureSlot::Normal,
                             bytes,
@@ -205,9 +175,7 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 }
 
                 if let Some(info) = mat.emissive_texture() {
-                    if let Some((bytes, w, h)) =
-                        image_bytes(&images, info.texture().source().index())
-                    {
+                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
                         tex_data.push((
                             TextureSlot::Emissive,
                             bytes,
@@ -220,9 +188,7 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 }
 
                 if let Some(info) = mat.occlusion_texture() {
-                    if let Some((bytes, w, h)) =
-                        image_bytes(&images, info.texture().source().index())
-                    {
+                    if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
                         tex_data.push((
                             TextureSlot::Occlusion,
                             bytes,
@@ -255,23 +221,14 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
 
 fn image_bytes(images: &[gltf::image::Data], index: usize) -> Option<(Vec<u8>, u32, u32)> {
     let data = images.get(index)?;
-    log::debug!(
-        "image_bytes: index={} format={:?} {}x{}",
-        index,
-        data.format,
-        data.width,
-        data.height
-    );
+    log::debug!("image_bytes: index={} format={:?} {}x{}", index, data.format, data.width, data.height);
 
     let img = match data.format {
         gltf::image::Format::R8G8B8A8 => {
-            image::RgbaImage::from_raw(data.width, data.height, data.pixels.clone())
-                .map(DynamicImage::ImageRgba8)?
+            image::RgbaImage::from_raw(data.width, data.height, data.pixels.clone()).map(DynamicImage::ImageRgba8)?
         }
         gltf::image::Format::R8G8B8 => {
-            image::RgbImage::from_raw(data.width, data.height, data.pixels.clone())
-                .map(DynamicImage::ImageRgb8)?
-                .into()
+            image::RgbImage::from_raw(data.width, data.height, data.pixels.clone()).map(DynamicImage::ImageRgb8)?.into()
         }
         _ => {
             log::warn!("Неподдерживаемый формат текстуры glTF: {:?}", data.format);

@@ -14,8 +14,7 @@ pub struct EngineHandle {
 #[repr(C)]
 pub struct EngineCallbacks {
     pub on_start: Option<unsafe extern "C" fn(handle: *mut EngineHandle, userdata: *mut c_void)>,
-    pub on_update:
-        Option<unsafe extern "C" fn(handle: *mut EngineHandle, userdata: *mut c_void, dt: f32)>,
+    pub on_update: Option<unsafe extern "C" fn(handle: *mut EngineHandle, userdata: *mut c_void, dt: f32)>,
     pub on_stop: Option<unsafe extern "C" fn(handle: *mut EngineHandle, userdata: *mut c_void)>,
     pub userdata: *mut c_void,
 }
@@ -51,10 +50,7 @@ pub unsafe extern "C" fn engine_destroy(handle: *mut EngineHandle) {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn engine_set_title(
-    handle: *mut EngineHandle,
-    title: *const std::ffi::c_char,
-) {
+pub unsafe extern "C" fn engine_set_title(handle: *mut EngineHandle, title: *const std::ffi::c_char) {
     if handle.is_null() || title.is_null() {
         return;
     }
@@ -83,13 +79,7 @@ pub unsafe extern "C" fn engine_set_validation(handle: *mut EngineHandle, enable
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn engine_set_clear_color(
-    handle: *mut EngineHandle,
-    r: f32,
-    g: f32,
-    b: f32,
-    a: f32,
-) {
+pub unsafe extern "C" fn engine_set_clear_color(handle: *mut EngineHandle, r: f32, g: f32, b: f32, a: f32) {
     if handle.is_null() {
         return;
     }
@@ -97,10 +87,7 @@ pub unsafe extern "C" fn engine_set_clear_color(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn engine_run(
-    handle: *mut EngineHandle,
-    callbacks: *const EngineCallbacks,
-) -> i32 {
+pub unsafe extern "C" fn engine_run(handle: *mut EngineHandle, callbacks: *const EngineCallbacks) -> i32 {
     if handle.is_null() {
         return -1;
     }
@@ -158,26 +145,13 @@ pub unsafe extern "C" fn engine_set_camera_fov(handle: *mut EngineHandle, fov_de
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn engine_spawn_mesh(
-    handle: *mut EngineHandle,
-    mesh_id: u32,
-    x: f32,
-    y: f32,
-    z: f32,
-) -> u64 {
+pub unsafe extern "C" fn engine_spawn_mesh(handle: *mut EngineHandle, mesh_id: u32, x: f32, y: f32, z: f32) -> u64 {
     let ctx = ctx_mut(handle);
     if ctx.is_null() {
         return u64::MAX;
     }
     use crate::ecs::components::{MeshHandle, Transform};
-    let entity = unsafe {
-        (*ctx)
-            .world
-            .spawn()
-            .insert(MeshHandle(mesh_id))
-            .insert(Transform::at(x, y, z))
-            .build()
-    };
+    let entity = unsafe { (*ctx).world.spawn().insert(MeshHandle(mesh_id)).insert(Transform::at(x, y, z)).build() };
     entity.id() as u64
 }
 

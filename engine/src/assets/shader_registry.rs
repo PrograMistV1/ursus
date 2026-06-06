@@ -37,11 +37,7 @@ pub struct ShaderDef {
 }
 
 impl ShaderDef {
-    pub fn from_files(
-        name: impl Into<String>,
-        vert: impl Into<PathBuf>,
-        frag: impl Into<PathBuf>,
-    ) -> Self {
+    pub fn from_files(name: impl Into<String>, vert: impl Into<PathBuf>, frag: impl Into<PathBuf>) -> Self {
         Self {
             name: name.into(),
             vert: ShaderSource::File(vert.into()),
@@ -51,12 +47,7 @@ impl ShaderDef {
     }
 
     pub fn from_bytes(name: impl Into<String>, vert: Vec<u8>, frag: Vec<u8>) -> Self {
-        Self {
-            name: name.into(),
-            vert: ShaderSource::Bytes(vert),
-            frag: ShaderSource::Bytes(frag),
-            slots: Vec::new(),
-        }
+        Self { name: name.into(), vert: ShaderSource::Bytes(vert), frag: ShaderSource::Bytes(frag), slots: Vec::new() }
     }
 
     pub fn with_slot(mut self, slot: TextureSlot) -> Self {
@@ -81,11 +72,7 @@ pub struct ShaderRegistry {
 
 impl ShaderRegistry {
     pub fn new() -> Self {
-        let mut reg = Self {
-            shaders: Vec::new(),
-            by_name: HashMap::new(),
-            compiled: HashMap::new(),
-        };
+        let mut reg = Self { shaders: Vec::new(), by_name: HashMap::new(), compiled: HashMap::new() };
 
         reg.register(ShaderDef::from_bytes(
             "unlit",
@@ -132,15 +119,12 @@ impl ShaderRegistry {
                 .get(handle.0 as usize)
                 .ok_or_else(|| anyhow::anyhow!("ShaderHandle {:?} не найден", handle))?;
 
-            let vert_spv = load_source(&def.vert).map_err(|e| {
-                anyhow::anyhow!("Ошибка загрузки vert шейдера '{}': {}", def.name, e)
-            })?;
-            let frag_spv = load_source(&def.frag).map_err(|e| {
-                anyhow::anyhow!("Ошибка загрузки frag шейдера '{}': {}", def.name, e)
-            })?;
+            let vert_spv = load_source(&def.vert)
+                .map_err(|e| anyhow::anyhow!("Ошибка загрузки vert шейдера '{}': {}", def.name, e))?;
+            let frag_spv = load_source(&def.frag)
+                .map_err(|e| anyhow::anyhow!("Ошибка загрузки frag шейдера '{}': {}", def.name, e))?;
 
-            self.compiled
-                .insert(handle, CompiledShader { vert_spv, frag_spv });
+            self.compiled.insert(handle, CompiledShader { vert_spv, frag_spv });
             log::info!("Шейдер '{}' загружен", def.name);
         }
 
@@ -180,7 +164,8 @@ impl Default for ShaderRegistry {
 fn load_source(source: &ShaderSource) -> anyhow::Result<Vec<u8>> {
     match source {
         ShaderSource::Bytes(bytes) => Ok(bytes.clone()),
-        ShaderSource::File(path) => std::fs::read(path)
-            .map_err(|e| anyhow::anyhow!("Не удалось прочитать {:?}: {}", path, e)),
+        ShaderSource::File(path) => {
+            std::fs::read(path).map_err(|e| anyhow::anyhow!("Не удалось прочитать {:?}: {}", path, e))
+        }
     }
 }

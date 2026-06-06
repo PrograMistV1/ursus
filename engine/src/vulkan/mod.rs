@@ -47,50 +47,25 @@ impl VulkanContext {
             None
         };
 
-        let surface = unsafe {
-            ash_window::create_surface(&instance.entry, &instance.handle, display, whandle, None)?
-        };
+        let surface = unsafe { ash_window::create_surface(&instance.entry, &instance.handle, display, whandle, None)? };
 
         let device = Arc::new(Device::new(&instance, surface)?);
         let size = window.inner_size();
-        let swapchain =
-            Swapchain::new(&instance, &device, surface, size.width, size.height, false)?;
+        let swapchain = Swapchain::new(&instance, &device, surface, size.width, size.height, false)?;
 
         let debug_utils = if validation {
-            Some(Arc::new(debug_utils::Device::new(
-                &instance.handle,
-                &device.handle,
-            )))
+            Some(Arc::new(debug_utils::Device::new(&instance.handle, &device.handle)))
         } else {
             None
         };
 
-        Ok(Self {
-            swapchain: Some(swapchain),
-            debug_utils,
-            device,
-            surface,
-            _debug: debug,
-            instance,
-        })
+        Ok(Self { swapchain: Some(swapchain), debug_utils, device, surface, _debug: debug, instance })
     }
 
-    pub fn recreate_swapchain(
-        &mut self,
-        width: u32,
-        height: u32,
-        vsync: bool,
-    ) -> anyhow::Result<()> {
+    pub fn recreate_swapchain(&mut self, width: u32, height: u32, vsync: bool) -> anyhow::Result<()> {
         unsafe { self.device.handle.device_wait_idle()? };
         drop(self.swapchain.take());
-        self.swapchain = Some(Swapchain::new(
-            &self.instance,
-            &self.device,
-            self.surface,
-            width,
-            height,
-            vsync,
-        )?);
+        self.swapchain = Some(Swapchain::new(&self.instance, &self.device, self.surface, width, height, vsync)?);
         Ok(())
     }
 }
@@ -100,8 +75,7 @@ impl Drop for VulkanContext {
         unsafe {
             self.device.handle.device_wait_idle().ok();
             drop(self.swapchain.take());
-            let surface_loader =
-                ash::khr::surface::Instance::new(&self.instance.entry, &self.instance.handle);
+            let surface_loader = ash::khr::surface::Instance::new(&self.instance.entry, &self.instance.handle);
             surface_loader.destroy_surface(self.surface, None);
         }
     }

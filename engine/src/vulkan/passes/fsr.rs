@@ -44,15 +44,11 @@ impl FsrPass {
             )?
         };
 
-        let pool_sizes = [vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            descriptor_count: 2,
-        }];
+        let pool_sizes =
+            [vk::DescriptorPoolSize { ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER, descriptor_count: 2 }];
         let descriptor_pool = unsafe {
             device.create_descriptor_pool(
-                &vk::DescriptorPoolCreateInfo::default()
-                    .pool_sizes(&pool_sizes)
-                    .max_sets(2),
+                &vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(2),
                 None,
             )?
         };
@@ -61,9 +57,7 @@ impl FsrPass {
 
         let sets = unsafe {
             device.allocate_descriptor_sets(
-                &vk::DescriptorSetAllocateInfo::default()
-                    .descriptor_pool(descriptor_pool)
-                    .set_layouts(&[dsl, dsl]),
+                &vk::DescriptorSetAllocateInfo::default().descriptor_pool(descriptor_pool).set_layouts(&[dsl, dsl]),
             )?
         };
         let easu_descriptor_set = sets[0];
@@ -127,13 +121,7 @@ impl FsrPass {
         })
     }
 
-    pub fn record_easu(
-        &self,
-        device: &ash::Device,
-        cmd: vk::CommandBuffer,
-        dst: &impl GpuImage,
-        easu_pc: &EasuPC,
-    ) {
+    pub fn record_easu(&self, device: &ash::Device, cmd: vk::CommandBuffer, dst: &impl GpuImage, easu_pc: &EasuPC) {
         self.record_fullscreen_pass(
             device,
             cmd,
@@ -141,22 +129,11 @@ impl FsrPass {
             self.easu_pipeline,
             self.easu_layout,
             self.easu_descriptor_set,
-            unsafe {
-                std::slice::from_raw_parts(
-                    easu_pc as *const EasuPC as *const u8,
-                    size_of::<EasuPC>(),
-                )
-            },
+            unsafe { std::slice::from_raw_parts(easu_pc as *const EasuPC as *const u8, size_of::<EasuPC>()) },
         );
     }
 
-    pub fn record_rcas(
-        &self,
-        device: &ash::Device,
-        cmd: vk::CommandBuffer,
-        dst: &impl GpuImage,
-        rcas_pc: &RcasPC,
-    ) {
+    pub fn record_rcas(&self, device: &ash::Device, cmd: vk::CommandBuffer, dst: &impl GpuImage, rcas_pc: &RcasPC) {
         self.record_fullscreen_pass(
             device,
             cmd,
@@ -164,12 +141,7 @@ impl FsrPass {
             self.rcas_pipeline,
             self.rcas_layout,
             self.rcas_descriptor_set,
-            unsafe {
-                std::slice::from_raw_parts(
-                    rcas_pc as *const RcasPC as *const u8,
-                    size_of::<RcasPC>(),
-                )
-            },
+            unsafe { std::slice::from_raw_parts(rcas_pc as *const RcasPC as *const u8, size_of::<RcasPC>()) },
         );
     }
 
@@ -194,10 +166,7 @@ impl FsrPass {
             device.cmd_begin_rendering(
                 cmd,
                 &vk::RenderingInfo::default()
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent,
-                    })
+                    .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent })
                     .layer_count(1)
                     .color_attachments(std::slice::from_ref(&color_attachment)),
             );
@@ -214,24 +183,10 @@ impl FsrPass {
                     max_depth: 1.0,
                 }],
             );
-            device.cmd_set_scissor(
-                cmd,
-                0,
-                &[vk::Rect2D {
-                    offset: vk::Offset2D { x: 0, y: 0 },
-                    extent,
-                }],
-            );
+            device.cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent }]);
 
             device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
-            device.cmd_bind_descriptor_sets(
-                cmd,
-                vk::PipelineBindPoint::GRAPHICS,
-                layout,
-                0,
-                &[set],
-                &[],
-            );
+            device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, layout, 0, &[set], &[]);
             device.cmd_push_constants(cmd, layout, vk::ShaderStageFlags::FRAGMENT, 0, pc_bytes);
             device.cmd_draw(cmd, 3, 1, 0, 0);
             device.cmd_end_rendering(cmd);
@@ -246,10 +201,8 @@ impl Drop for FsrPass {
             self.device.destroy_pipeline_layout(self.easu_layout, None);
             self.device.destroy_pipeline(self.rcas_pipeline, None);
             self.device.destroy_pipeline_layout(self.rcas_layout, None);
-            self.device
-                .destroy_descriptor_set_layout(self.easu_descriptor_set_layout, None);
-            self.device
-                .destroy_descriptor_pool(self.descriptor_pool, None);
+            self.device.destroy_descriptor_set_layout(self.easu_descriptor_set_layout, None);
+            self.device.destroy_descriptor_pool(self.descriptor_pool, None);
             self.device.destroy_sampler(self.sampler, None);
         }
     }
@@ -295,30 +248,26 @@ fn build_fullscreen_pipeline(
     ];
 
     let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
-    let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
-        .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
-    let viewport_state = vk::PipelineViewportStateCreateInfo::default()
-        .viewport_count(1)
-        .scissor_count(1);
+    let input_assembly =
+        vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
+    let viewport_state = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
     let rasterizer = vk::PipelineRasterizationStateCreateInfo::default()
         .polygon_mode(vk::PolygonMode::FILL)
         .cull_mode(vk::CullModeFlags::NONE)
         .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
         .line_width(1.0);
-    let multisampling = vk::PipelineMultisampleStateCreateInfo::default()
-        .rasterization_samples(vk::SampleCountFlags::TYPE_1);
-    let blend_attachment = vk::PipelineColorBlendAttachmentState::default()
-        .color_write_mask(vk::ColorComponentFlags::RGBA);
-    let color_blending = vk::PipelineColorBlendStateCreateInfo::default()
-        .attachments(std::slice::from_ref(&blend_attachment));
+    let multisampling =
+        vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
+    let blend_attachment =
+        vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA);
+    let color_blending =
+        vk::PipelineColorBlendStateCreateInfo::default().attachments(std::slice::from_ref(&blend_attachment));
     let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-    let dynamic_state =
-        vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-    let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
-        .depth_test_enable(false)
-        .depth_write_enable(false);
-    let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
-        .color_attachment_formats(std::slice::from_ref(&color_format));
+    let dynamic_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+    let depth_stencil =
+        vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(false).depth_write_enable(false);
+    let mut rendering_info =
+        vk::PipelineRenderingCreateInfo::default().color_attachment_formats(std::slice::from_ref(&color_format));
 
     let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
         .stages(&stages)
@@ -335,22 +284,14 @@ fn build_fullscreen_pipeline(
 
     let pipeline = unsafe {
         device
-            .create_graphics_pipelines(
-                vk::PipelineCache::null(),
-                std::slice::from_ref(&pipeline_info),
-                None,
-            )
+            .create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&pipeline_info), None)
             .map_err(|(_, e)| e)?[0]
     };
 
     Ok(pipeline)
 }
 
-pub fn compute_easu_con(
-    input_viewport: (f32, f32),
-    input_size: (f32, f32),
-    output_size: (f32, f32),
-) -> EasuPC {
+pub fn compute_easu_con(input_viewport: (f32, f32), input_size: (f32, f32), output_size: (f32, f32)) -> EasuPC {
     let (ivw, ivh) = input_viewport;
     let (isw, ish) = input_size;
     let (osw, osh) = output_size;
@@ -380,9 +321,7 @@ pub fn compute_easu_con(
 
 pub fn compute_rcas_con(sharpness: f32) -> RcasPC {
     let sharpness_stop = sharpness.exp2();
-    RcasPC {
-        con0: [f32_to_bits(sharpness_stop), 0, 0, 0],
-    }
+    RcasPC { con0: [f32_to_bits(sharpness_stop), 0, 0, 0] }
 }
 
 #[inline]

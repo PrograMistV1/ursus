@@ -71,14 +71,8 @@ impl BindlessSet {
         };
 
         let pool_sizes = [
-            vk::DescriptorPoolSize {
-                ty: vk::DescriptorType::SAMPLER,
-                descriptor_count: 1,
-            },
-            vk::DescriptorPoolSize {
-                ty: vk::DescriptorType::SAMPLED_IMAGE,
-                descriptor_count: MAX_TEXTURES,
-            },
+            vk::DescriptorPoolSize { ty: vk::DescriptorType::SAMPLER, descriptor_count: 1 },
+            vk::DescriptorPoolSize { ty: vk::DescriptorType::SAMPLED_IMAGE, descriptor_count: MAX_TEXTURES },
         ];
         let pool = unsafe {
             device.create_descriptor_pool(
@@ -90,9 +84,8 @@ impl BindlessSet {
             )?
         };
 
-        let mut variable_count_info =
-            vk::DescriptorSetVariableDescriptorCountAllocateInfo::default()
-                .descriptor_counts(std::slice::from_ref(&MAX_TEXTURES));
+        let mut variable_count_info = vk::DescriptorSetVariableDescriptorCountAllocateInfo::default()
+            .descriptor_counts(std::slice::from_ref(&MAX_TEXTURES));
 
         let set = unsafe {
             device.allocate_descriptor_sets(
@@ -103,15 +96,8 @@ impl BindlessSet {
             )?[0]
         };
 
-        let mut bindless = Self {
-            layout,
-            set,
-            pool,
-            sampler,
-            next_slot: 0,
-            owned_textures: Vec::new(),
-            device: device.clone(),
-        };
+        let mut bindless =
+            Self { layout, set, pool, sampler, next_slot: 0, owned_textures: Vec::new(), device: device.clone() };
 
         let white = GpuTexture::upload(
             device,
@@ -138,9 +124,8 @@ impl BindlessSet {
         let slot = self.next_slot;
         assert!(slot < MAX_TEXTURES, "bindless texture array переполнен");
 
-        let image_info = vk::DescriptorImageInfo::default()
-            .image_view(view)
-            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+        let image_info =
+            vk::DescriptorImageInfo::default().image_view(view).image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
 
         let write = vk::WriteDescriptorSet::default()
             .dst_set(self.set)
@@ -149,20 +134,13 @@ impl BindlessSet {
             .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
             .image_info(std::slice::from_ref(&image_info));
 
-        unsafe {
-            self.device
-                .update_descriptor_sets(std::slice::from_ref(&write), &[])
-        };
+        unsafe { self.device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
 
         self.next_slot += 1;
         slot
     }
 
-    fn max_anisotropy(
-        _device: &ash::Device,
-        physical_device: vk::PhysicalDevice,
-        instance: &ash::Instance,
-    ) -> f32 {
+    fn max_anisotropy(_device: &ash::Device, physical_device: vk::PhysicalDevice, instance: &ash::Instance) -> f32 {
         let props = unsafe { instance.get_physical_device_properties(physical_device) };
         props.limits.max_sampler_anisotropy.min(16.0)
     }

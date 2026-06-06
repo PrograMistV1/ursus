@@ -9,11 +9,7 @@ pub struct CpuFrameHistory {
 
 impl CpuFrameHistory {
     pub fn new(capacity: usize) -> Self {
-        Self {
-            samples: VecDeque::with_capacity(capacity),
-            capacity,
-            max_ms: 33.3,
-        }
+        Self { samples: VecDeque::with_capacity(capacity), capacity, max_ms: 33.3 }
     }
 
     pub fn push(&mut self, frame_ms: f32) {
@@ -96,9 +92,7 @@ fn draw_overlay(
         .frame(egui::Frame::window(&ctx.style()).multiply_with_opacity(0.6))
         .show(ctx, |ui| {
             let avg_cpu = cpu_history.avg_ms();
-            ui.label(format!(
-                "FPS  {fps:.0}  |  CPU {avg_cpu:.2} ms  |  ents {entity_count}"
-            ));
+            ui.label(format!("FPS  {fps:.0}  |  CPU {avg_cpu:.2} ms  |  ents {entity_count}"));
 
             if let Some(gpu) = gpu_times {
                 ui.separator();
@@ -122,10 +116,7 @@ fn draw_overlay(
                             }
                             let frac = ms / gpu.total_ms;
                             let w = frac * rect.width();
-                            let seg = egui::Rect::from_min_size(
-                                egui::pos2(x, rect.top()),
-                                egui::vec2(w, bar_h),
-                            );
+                            let seg = egui::Rect::from_min_size(egui::pos2(x, rect.top()), egui::vec2(w, bar_h));
                             painter.rect_filled(seg, 0.0, pass_color(i));
                             if w > 24.0 {
                                 painter.text(
@@ -141,22 +132,19 @@ fn draw_overlay(
                     }
 
                     ui.add_space(2.0);
-                    egui::Grid::new("gpu_passes")
-                        .num_columns(3)
-                        .spacing([12.0, 1.0])
-                        .show(ui, |ui| {
-                            for (i, (name, ms)) in gpu.passes.iter().enumerate() {
-                                let pct = if gpu.total_ms > 0.0 {
-                                    ms / gpu.total_ms * 100.0
-                                } else {
-                                    0.0
-                                };
-                                ui.colored_label(pass_color(i), name);
-                                ui.label(format!("{ms:.3} ms"));
-                                ui.label(format!("{pct:.1}%"));
-                                ui.end_row();
-                            }
-                        });
+                    egui::Grid::new("gpu_passes").num_columns(3).spacing([12.0, 1.0]).show(ui, |ui| {
+                        for (i, (name, ms)) in gpu.passes.iter().enumerate() {
+                            let pct = if gpu.total_ms > 0.0 {
+                                ms / gpu.total_ms * 100.0
+                            } else {
+                                0.0
+                            };
+                            ui.colored_label(pass_color(i), name);
+                            ui.label(format!("{ms:.3} ms"));
+                            ui.label(format!("{pct:.1}%"));
+                            ui.end_row();
+                        }
+                    });
                 }
             }
 
@@ -170,20 +158,8 @@ fn draw_overlay(
                 let painter = ui.painter_at(rect);
                 painter.rect_filled(rect, 2.0, egui::Color32::from_black_alpha(120));
 
-                draw_threshold_line(
-                    &painter,
-                    rect,
-                    16.667,
-                    max_ms,
-                    egui::Color32::from_rgb(80, 200, 80),
-                );
-                draw_threshold_line(
-                    &painter,
-                    rect,
-                    33.333,
-                    max_ms,
-                    egui::Color32::from_rgb(200, 120, 40),
-                );
+                draw_threshold_line(&painter, rect, 16.667, max_ms, egui::Color32::from_rgb(80, 200, 80));
+                draw_threshold_line(&painter, rect, 33.333, max_ms, egui::Color32::from_rgb(200, 120, 40));
 
                 if !samples.is_empty() {
                     let bar_w = rect.width() / samples.len() as f32;
@@ -213,32 +189,25 @@ fn draw_overlay(
 }
 
 fn draw_settings(ctx: &egui::Context, state: &mut DebugUiState) {
-    egui::Window::new("Settings")
-        .resizable(true)
-        .default_width(280.0)
-        .show(ctx, |ui| {
-            ui.heading("Display");
-            ui.checkbox(&mut state.show_overlay, "Show overlay");
+    egui::Window::new("Settings").resizable(true).default_width(280.0).show(ctx, |ui| {
+        ui.heading("Display");
+        ui.checkbox(&mut state.show_overlay, "Show overlay");
 
-            let prev_vsync = state.vsync;
-            ui.checkbox(&mut state.vsync, "VSync (FIFO)");
-            if state.vsync != prev_vsync {
-                state.swapchain_dirty = true;
-            }
+        let prev_vsync = state.vsync;
+        ui.checkbox(&mut state.vsync, "VSync (FIFO)");
+        if state.vsync != prev_vsync {
+            state.swapchain_dirty = true;
+        }
 
-            ui.separator();
-            ui.heading("Post-process");
-            ui.add(
-                egui::Slider::new(&mut state.exposure, 0.05..=4.0)
-                    .text("Exposure")
-                    .logarithmic(false),
-            );
+        ui.separator();
+        ui.heading("Post-process");
+        ui.add(egui::Slider::new(&mut state.exposure, 0.05..=4.0).text("Exposure").logarithmic(false));
 
-            ui.separator();
-            if ui.button("Close").clicked() {
-                state.show_settings = false;
-            }
-        });
+        ui.separator();
+        if ui.button("Close").clicked() {
+            state.show_settings = false;
+        }
+    });
 }
 
 fn draw_threshold_line(

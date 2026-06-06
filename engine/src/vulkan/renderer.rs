@@ -88,64 +88,6 @@ pub struct Renderer<P: RenderPipeline> {
 }
 
 impl<P: RenderPipeline> Renderer<P> {
-    pub fn with_pipeline(
-        ctx: &VulkanContext,
-        assets: &mut AssetServer,
-        build_fn: impl FnOnce(
-            &VulkanContext,
-            &mut AssetServer,
-            &mut RenderGraph,
-        ) -> anyhow::Result<(P, PipelineHandles)>,
-    ) -> anyhow::Result<Self> {
-        let swapchain = ctx.swapchain.as_ref().unwrap();
-
-        let pool = ResourcePool::new(
-            ctx.device.handle.clone(),
-            ctx.device.physical,
-            ctx.instance.handle.clone(),
-            ctx.debug_utils.clone(),
-        );
-
-        let mut graph = RenderGraph::new(
-            pool,
-            ctx.device.handle.clone(),
-            (1280, 720),
-            (swapchain.extent.width, swapchain.extent.height),
-            ctx.debug_utils.clone(),
-        );
-
-        let (pipeline, handles) = build_fn(ctx, assets, &mut graph)?;
-
-        graph.allocate()?;
-        graph.compile()?;
-
-        let frames: Vec<_> = (0..FRAMES_IN_FLIGHT)
-            .map(|_| FrameSync::new(&ctx.device.handle))
-            .collect::<anyhow::Result<_>>()?;
-
-        let commands = Commands::new(
-            &ctx.device.handle,
-            ctx.device.graphics_family,
-            FRAMES_IN_FLIGHT,
-        )?;
-
-        let swapchain_loader =
-            ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
-
-        Ok(Self {
-            graph,
-            pipeline,
-            commands,
-            frames,
-            current_frame: 0,
-            swapchain_loader,
-            device: ctx.device.clone(),
-            handles,
-            exposure: 0.5,
-            fsr_sharpness: 0.2,
-        })
-    }
-
     pub fn draw_frame(
         &mut self,
         ctx: &VulkanContext,
@@ -169,8 +111,7 @@ impl<P: RenderPipeline> Renderer<P> {
         let view_proj = camera.view_proj(aspect);
 
         let light_dir: [f32; 3] = lighting.directional.direction[0..3].try_into()?;
-        let light_view_proj =
-            crate::lighting::compute_light_view_proj(light_dir, Vec3::new(0.0, 2.0, 0.0), 20.0);
+        let light_view_proj = crate::lighting::compute_light_view_proj(light_dir, Vec3::new(0.0, 2.0, 0.0), 20.0);
 
         unsafe {
             puffin::profile_scope!("wait_for_fences");
@@ -203,8 +144,7 @@ impl<P: RenderPipeline> Renderer<P> {
             device.reset_command_buffer(cmd, vk::CommandBufferResetFlags::empty())?;
             device.begin_command_buffer(
                 cmd,
-                &vk::CommandBufferBeginInfo::default()
-                    .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+                &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )?;
         }
 
@@ -287,8 +227,7 @@ impl<P: RenderPipeline> Renderer<P> {
     pub fn resize_internal(&mut self, new_w: u32, new_h: u32) -> anyhow::Result<()> {
         unsafe { self.device.handle.device_wait_idle()? };
         self.graph.resize_internal((new_w, new_h))?;
-        self.pipeline
-            .on_resize_internal(&mut self.graph, new_w, new_h)
+        self.pipeline.on_resize_internal(&mut self.graph, new_w, new_h)
     }
 }
 
@@ -305,17 +244,7 @@ impl<P: RenderPipeline> DynRenderer for Renderer<P> {
         window: &winit::window::Window,
         clear_color: [f32; 4],
     ) -> anyhow::Result<bool> {
-        self.draw_frame(
-            ctx,
-            world,
-            assets,
-            camera,
-            lighting,
-            egui,
-            egui_output,
-            window,
-            clear_color,
-        )
+        self.draw_frame(ctx, world, assets, camera, lighting, egui, egui_output, window, clear_color)
     }
 
     fn resize_output(&mut self, w: u32, h: u32) -> anyhow::Result<()> {
@@ -372,18 +301,12 @@ pub fn build_dyn_renderer<P: RenderPipeline + Default + 'static>(
     graph.allocate()?;
     graph.compile()?;
 
-    let frames: Vec<_> = (0..FRAMES_IN_FLIGHT)
-        .map(|_| FrameSync::new(&ctx.device.handle))
-        .collect::<anyhow::Result<_>>()?;
+    let frames: Vec<_> =
+        (0..FRAMES_IN_FLIGHT).map(|_| FrameSync::new(&ctx.device.handle)).collect::<anyhow::Result<_>>()?;
 
-    let commands = Commands::new(
-        &ctx.device.handle,
-        ctx.device.graphics_family,
-        FRAMES_IN_FLIGHT,
-    )?;
+    let commands = Commands::new(&ctx.device.handle, ctx.device.graphics_family, FRAMES_IN_FLIGHT)?;
 
-    let swapchain_loader =
-        ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
+    let swapchain_loader = ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
 
     Ok(Box::new(Renderer::<P> {
         graph,

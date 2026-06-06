@@ -63,8 +63,7 @@ impl EngineContext {
         let prev_exposure = self.renderer.exposure();
         let prev_fsr = self.renderer.fsr_sharpness();
 
-        let new_renderer =
-            build_dyn_renderer::<P>(&self.vk, &mut self.assets, prev_exposure, prev_fsr)?;
+        let new_renderer = build_dyn_renderer::<P>(&self.vk, &mut self.assets, prev_exposure, prev_fsr)?;
 
         self.renderer = new_renderer;
         log::info!("Pipeline switched to {}", std::any::type_name::<P>());
@@ -106,10 +105,7 @@ impl Drop for EngineContext {
             if let Err(e) = self.vk.device.handle.device_wait_idle() {
                 log::error!("device_wait_idle failed on shutdown: {e}");
             }
-            self.vk
-                .device
-                .handle
-                .destroy_command_pool(self.temp_pool, None);
+            self.vk.device.handle.destroy_command_pool(self.temp_pool, None);
         }
     }
 }
@@ -118,18 +114,12 @@ pub struct Engine;
 
 impl Engine {
     pub fn run(app: impl App + 'static) -> anyhow::Result<()> {
-        env_logger::builder()
-            .filter_level(log::LevelFilter::Info)
-            .parse_default_env()
-            .init();
+        env_logger::builder().filter_level(log::LevelFilter::Info).parse_default_env().init();
 
         let event_loop = EventLoop::new()?;
         event_loop.set_control_flow(ControlFlow::Poll);
 
-        let mut handler = EngineHandler {
-            app: Box::new(app),
-            state: None,
-        };
+        let mut handler = EngineHandler { app: Box::new(app), state: None };
         event_loop.run_app(&mut handler)?;
         Ok(())
     }
@@ -181,8 +171,7 @@ impl ApplicationHandler for EngineHandler {
             )
             .expect("Failed to create window");
 
-        let vk =
-            VulkanContext::new(&window, cfg!(debug_assertions)).expect("Failed to init Vulkan");
+        let vk = VulkanContext::new(&window, cfg!(debug_assertions)).expect("Failed to init Vulkan");
 
         let mut ctx = EngineContext::new(vk).expect("Failed to create EngineContext");
 
@@ -199,8 +188,7 @@ impl ApplicationHandler for EngineHandler {
         .expect("Failed to create EguiLayer");
 
         if ctx.is_loading() {
-            ctx.set_pipeline::<LoadingPipeline>()
-                .expect("Failed to switch to LoadingPipeline");
+            ctx.set_pipeline::<LoadingPipeline>().expect("Failed to switch to LoadingPipeline");
 
             log::info!("Входим в Loading state");
             self.state = Some(EngineState::Loading(LoadingState { window, egui, ctx }));
@@ -210,12 +198,7 @@ impl ApplicationHandler for EngineHandler {
         }
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: winit::window::WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: winit::window::WindowId, event: WindowEvent) {
         if self.state.is_none() {
             return;
         }
@@ -231,9 +214,7 @@ impl ApplicationHandler for EngineHandler {
                         unsafe {
                             ls.ctx.vk.device.handle.device_wait_idle().ok();
                         }
-                        ls.ctx
-                            .set_pipeline::<DefaultPipeline>()
-                            .expect("Failed to switch to DefaultPipeline");
+                        ls.ctx.set_pipeline::<DefaultPipeline>().expect("Failed to switch to DefaultPipeline");
                         self.app.on_start(&mut ls.ctx);
                         let running = make_running_state(ls.window, ls.egui, ls.ctx);
                         self.state = Some(EngineState::Running(running));
@@ -259,11 +240,7 @@ impl ApplicationHandler for EngineHandler {
     }
 }
 
-fn handle_loading_event(
-    state: &mut LoadingState,
-    event: &WindowEvent,
-    event_loop: &ActiveEventLoop,
-) {
+fn handle_loading_event(state: &mut LoadingState, event: &WindowEvent, event_loop: &ActiveEventLoop) {
     match event {
         WindowEvent::CloseRequested => {
             event_loop.exit();
@@ -273,11 +250,7 @@ fn handle_loading_event(
             if size.width == 0 || size.height == 0 {
                 return;
             }
-            if let Err(e) = state
-                .ctx
-                .vk
-                .recreate_swapchain(size.width, size.height, false)
-            {
+            if let Err(e) = state.ctx.vk.recreate_swapchain(size.width, size.height, false) {
                 log::error!("Resize during loading failed: {e}");
                 return;
             }
@@ -296,11 +269,7 @@ fn handle_loading_event(
                 draw_loading_ui(ctx, &progress);
             });
 
-            if let Err(e) =
-                state
-                    .ctx
-                    .render_frame(&state.window, &mut state.egui, egui_output, [0.0; 4])
-            {
+            if let Err(e) = state.ctx.render_frame(&state.window, &mut state.egui, egui_output, [0.0; 4]) {
                 log::error!("Loading render error: {e}");
             }
 
@@ -312,30 +281,16 @@ fn handle_loading_event(
 }
 
 fn draw_loading_ui(ctx: &egui::Context, progress: &crate::assets::LoadProgress) {
-    egui::Area::new("loading".into())
-        .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -60.0])
-        .show(ctx, |ui| {
-            ui.set_min_width(400.0);
-            ui.vertical_centered(|ui| {
-                ui.label(
-                    egui::RichText::new("Loading...")
-                        .size(18.0)
-                        .color(egui::Color32::WHITE),
-                );
-                ui.add_space(8.0);
-                ui.add(
-                    egui::ProgressBar::new(progress.fraction())
-                        .desired_width(400.0)
-                        .show_percentage(),
-                );
-                ui.add_space(4.0);
-                ui.label(
-                    egui::RichText::new(&progress.current)
-                        .size(11.0)
-                        .color(egui::Color32::GRAY),
-                );
-            });
+    egui::Area::new("loading".into()).anchor(egui::Align2::CENTER_BOTTOM, [0.0, -60.0]).show(ctx, |ui| {
+        ui.set_min_width(400.0);
+        ui.vertical_centered(|ui| {
+            ui.label(egui::RichText::new("Loading...").size(18.0).color(egui::Color32::WHITE));
+            ui.add_space(8.0);
+            ui.add(egui::ProgressBar::new(progress.fraction()).desired_width(400.0).show_percentage());
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new(&progress.current).size(11.0).color(egui::Color32::GRAY));
         });
+    });
 }
 
 fn handle_running_event(state: &mut RunningState, event: &WindowEvent, app: &mut dyn App) {
@@ -366,8 +321,7 @@ fn handle_running_event(state: &mut RunningState, event: &WindowEvent, app: &mut
             state.fps_frames += 1;
 
             if now.duration_since(state.fps_timer).as_secs_f32() >= 1.0 {
-                state.fps_current =
-                    state.fps_frames as f32 / now.duration_since(state.fps_timer).as_secs_f32();
+                state.fps_current = state.fps_frames as f32 / now.duration_since(state.fps_timer).as_secs_f32();
                 state.fps_frames = 0;
                 state.fps_timer = now;
             }
@@ -405,12 +359,7 @@ fn handle_running_event(state: &mut RunningState, event: &WindowEvent, app: &mut
                 puffin::profile_scope!("render_frame");
                 state
                     .ctx
-                    .render_frame(
-                        &state.window,
-                        &mut state.egui,
-                        egui_output,
-                        [0.0, 0.0, 0.0, 1.0],
-                    )
+                    .render_frame(&state.window, &mut state.egui, egui_output, [0.0, 0.0, 0.0, 1.0])
                     .expect("render failed")
             };
 
@@ -472,10 +421,7 @@ pub fn create_temp_pool(vk: &VulkanContext) -> anyhow::Result<ash::vk::CommandPo
 
 fn handle_resize(state: &mut RunningState, width: u32, height: u32) -> anyhow::Result<()> {
     unsafe { state.ctx.vk.device.handle.device_wait_idle()? };
-    state
-        .ctx
-        .vk
-        .recreate_swapchain(width, height, state.debug.vsync)?;
+    state.ctx.vk.recreate_swapchain(width, height, state.debug.vsync)?;
     state.ctx.renderer.resize_output(width, height)?;
     Ok(())
 }

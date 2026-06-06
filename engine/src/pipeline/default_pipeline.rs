@@ -55,16 +55,9 @@ impl RenderPipeline for DefaultPipeline {
             vk::Format::R16G16B16A16_SFLOAT,
             ResourceExtent::ScaleInternal(1.0),
         ));
-        let h_ldr = graph.pool.register(ResourceDesc::color(
-            "ldr",
-            LDR_FORMAT,
-            ResourceExtent::ScaleInternal(1.0),
-        ));
-        let h_fsr_easu = graph.pool.register(ResourceDesc::color(
-            "fsr_easu",
-            LDR_FORMAT,
-            ResourceExtent::ScaleOutput(1.0),
-        ));
+        let h_ldr = graph.pool.register(ResourceDesc::color("ldr", LDR_FORMAT, ResourceExtent::ScaleInternal(1.0)));
+        let h_fsr_easu =
+            graph.pool.register(ResourceDesc::color("fsr_easu", LDR_FORMAT, ResourceExtent::ScaleOutput(1.0)));
         let h_fsr_rcas = graph.pool.register(
             ResourceDesc::color("fsr_rcas", LDR_FORMAT, ResourceExtent::ScaleOutput(1.0))
                 .with_usage(vk::ImageUsageFlags::TRANSFER_SRC),
@@ -103,11 +96,8 @@ impl RenderPipeline for DefaultPipeline {
                     let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
                     let sm = pool.image(h_shadow_map);
 
-                    let calls: Vec<ShadowDrawCall> = data
-                        .shadow_calls
-                        .iter()
-                        .map(|dc| dc.as_shadow_draw_call())
-                        .collect();
+                    let calls: Vec<ShadowDrawCall> =
+                        data.shadow_calls.iter().map(|dc| dc.as_shadow_draw_call()).collect();
 
                     shadow_pass.record(&*data.device, cmd, &sm, data.light_view_proj, &calls);
                     Ok(())
@@ -126,8 +116,7 @@ impl RenderPipeline for DefaultPipeline {
                     let normal = pool.image(h_gbuffer_normal);
                     let depth = pool.image(h_depth);
 
-                    let draw_calls: Vec<DrawCall> =
-                        data.draw_calls.iter().map(|dc| dc.as_draw_call()).collect();
+                    let draw_calls: Vec<DrawCall> = data.draw_calls.iter().map(|dc| dc.as_draw_call()).collect();
 
                     geometry_pass.record(
                         &*data.device,
@@ -151,30 +140,10 @@ impl RenderPipeline for DefaultPipeline {
             .read(h_depth, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .read(h_shadow_map, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .write(h_hdr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .bind_sampled(
-                h_gbuffer_albedo,
-                lighting_pass.descriptor_set,
-                0,
-                lighting_pass.sampler,
-            )
-            .bind_sampled(
-                h_gbuffer_normal,
-                lighting_pass.descriptor_set,
-                1,
-                lighting_pass.sampler,
-            )
-            .bind_sampled(
-                h_depth,
-                lighting_pass.descriptor_set,
-                2,
-                lighting_pass.sampler,
-            )
-            .bind_sampled(
-                h_shadow_map,
-                lighting_pass.descriptor_set,
-                4,
-                lighting_pass.shadow_sampler,
-            )
+            .bind_sampled(h_gbuffer_albedo, lighting_pass.descriptor_set, 0, lighting_pass.sampler)
+            .bind_sampled(h_gbuffer_normal, lighting_pass.descriptor_set, 1, lighting_pass.sampler)
+            .bind_sampled(h_depth, lighting_pass.descriptor_set, 2, lighting_pass.sampler)
+            .bind_sampled(h_shadow_map, lighting_pass.descriptor_set, 4, lighting_pass.shadow_sampler)
             .record({
                 move |cmd, pool, ctx_ptr| unsafe {
                     let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
@@ -217,11 +186,7 @@ impl RenderPipeline for DefaultPipeline {
                     let dst = pool.image(h_fsr_easu);
                     let (iw, ih) = data.internal_resolution;
                     let (ow, oh) = data.output_resolution;
-                    let pc = compute_easu_con(
-                        (iw as f32, ih as f32),
-                        (iw as f32, ih as f32),
-                        (ow as f32, oh as f32),
-                    );
+                    let pc = compute_easu_con((iw as f32, ih as f32), (iw as f32, ih as f32), (ow as f32, oh as f32));
                     fsr_pass_easu.record_easu(&*data.device, cmd, &dst, &pc);
                     Ok(())
                 }
@@ -260,11 +225,7 @@ impl RenderPipeline for DefaultPipeline {
                         })
                         .src_offsets([
                             vk::Offset3D::default(),
-                            vk::Offset3D {
-                                x: src.extent.width as i32,
-                                y: src.extent.height as i32,
-                                z: 1,
-                            },
+                            vk::Offset3D { x: src.extent.width as i32, y: src.extent.height as i32, z: 1 },
                         ])
                         .dst_subresource(vk::ImageSubresourceLayers {
                             aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -274,11 +235,7 @@ impl RenderPipeline for DefaultPipeline {
                         })
                         .dst_offsets([
                             vk::Offset3D::default(),
-                            vk::Offset3D {
-                                x: dst.extent.width as i32,
-                                y: dst.extent.height as i32,
-                                z: 1,
-                            },
+                            vk::Offset3D { x: dst.extent.width as i32, y: dst.extent.height as i32, z: 1 },
                         ]);
 
                     unsafe {
@@ -306,10 +263,7 @@ impl RenderPipeline for DefaultPipeline {
                 move |cmd, pool, ctx_ptr| unsafe {
                     let data = &mut *(ctx_ptr as *mut DefaultPipelineFrameData);
                     let sc = pool.image(h_swapchain);
-                    let egui_output = data
-                        .egui_output
-                        .take()
-                        .expect("egui_output должен быть Some в ui pass");
+                    let egui_output = data.egui_output.take().expect("egui_output должен быть Some в ui pass");
                     UiPass.record(
                         &*data.device,
                         cmd,
@@ -326,16 +280,10 @@ impl RenderPipeline for DefaultPipeline {
             })
             .build(graph);
 
-        Ok(PipelineHandles {
-            swapchain: h_swapchain,
-        })
+        Ok(PipelineHandles { swapchain: h_swapchain })
     }
 
-    fn prepare_frame(
-        &mut self,
-        graph: &mut RenderGraph,
-        input: FrameInput<'_>,
-    ) -> anyhow::Result<()> {
+    fn prepare_frame(&mut self, graph: &mut RenderGraph, input: FrameInput<'_>) -> anyhow::Result<()> {
         use crate::math::frustum::extract_planes;
 
         let frustum = extract_planes(input.view_proj);
@@ -412,10 +360,7 @@ unsafe impl Send for OwnedDrawCall {}
 
 impl OwnedDrawCall {
     fn as_shadow_draw_call(&self) -> ShadowDrawCall<'_> {
-        ShadowDrawCall {
-            gpu_mesh: unsafe { &*self.gpu_mesh_ptr },
-            transform: &self.transform,
-        }
+        ShadowDrawCall { gpu_mesh: unsafe { &*self.gpu_mesh_ptr }, transform: &self.transform }
     }
 
     fn as_draw_call(&self) -> DrawCall<'_> {

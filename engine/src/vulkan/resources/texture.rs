@@ -39,8 +39,7 @@ impl GpuTexture {
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
         unsafe {
-            let ptr =
-                device.map_memory(staging_mem, 0, size, vk::MemoryMapFlags::empty())? as *mut u8;
+            let ptr = device.map_memory(staging_mem, 0, size, vk::MemoryMapFlags::empty())? as *mut u8;
             std::ptr::copy_nonoverlapping(pixels.as_ptr(), ptr, pixels.len());
             device.unmap_memory(staging_mem);
         }
@@ -48,34 +47,21 @@ impl GpuTexture {
         let image_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .format(format)
-            .extent(vk::Extent3D {
-                width,
-                height,
-                depth: 1,
-            })
+            .extent(vk::Extent3D { width, height, depth: 1 })
             .mip_levels(mip_levels)
             .array_layers(1)
             .samples(vk::SampleCountFlags::TYPE_1)
             .tiling(vk::ImageTiling::OPTIMAL)
-            .usage(
-                vk::ImageUsageFlags::TRANSFER_DST
-                    | vk::ImageUsageFlags::TRANSFER_SRC
-                    | vk::ImageUsageFlags::SAMPLED,
-            )
+            .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::SAMPLED)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .initial_layout(vk::ImageLayout::UNDEFINED);
 
         let image = unsafe { device.create_image(&image_info, None)? };
 
         let req = unsafe { device.get_image_memory_requirements(image) };
-        let alloc_info = vk::MemoryAllocateInfo::default()
-            .allocation_size(req.size)
-            .memory_type_index(find_memory_type(
-                instance,
-                physical_device,
-                req.memory_type_bits,
-                vk::MemoryPropertyFlags::DEVICE_LOCAL,
-            )?);
+        let alloc_info = vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(
+            find_memory_type(instance, physical_device, req.memory_type_bits, vk::MemoryPropertyFlags::DEVICE_LOCAL)?,
+        );
         let memory = unsafe { device.allocate_memory(&alloc_info, None)? };
         unsafe { device.bind_image_memory(image, memory, 0)? };
 
@@ -101,11 +87,7 @@ impl GpuTexture {
                     layer_count: 1,
                 })
                 .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
-                .image_extent(vk::Extent3D {
-                    width,
-                    height,
-                    depth: 1,
-                });
+                .image_extent(vk::Extent3D { width, height, depth: 1 });
 
             device.cmd_copy_buffer_to_image(
                 cmd,
@@ -138,11 +120,7 @@ impl GpuTexture {
                     })
                     .src_offsets([
                         vk::Offset3D { x: 0, y: 0, z: 0 },
-                        vk::Offset3D {
-                            x: mip_w,
-                            y: mip_h,
-                            z: 1,
-                        },
+                        vk::Offset3D { x: mip_w, y: mip_h, z: 1 },
                     ])
                     .dst_subresource(vk::ImageSubresourceLayers {
                         aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -218,16 +196,7 @@ impl GpuTexture {
 
         log::debug!("GpuTexture '{}': {}x{} {:?}", name, width, height, format);
 
-        Ok(Self {
-            image,
-            view,
-            memory,
-            format,
-            width,
-            height,
-            name,
-            device: device.clone(),
-        })
+        Ok(Self { image, view, memory, format, width, height, name, device: device.clone() })
     }
 }
 
@@ -276,10 +245,7 @@ fn transition_image_layout(
             vk::PipelineStageFlags2::FRAGMENT_SHADER,
             vk::AccessFlags2::SHADER_READ,
         ),
-        _ => panic!(
-            "transition_image_layout: неизвестная пара {:?} → {:?}",
-            from, to
-        ),
+        _ => panic!("transition_image_layout: неизвестная пара {:?} → {:?}", from, to),
     };
 
     let barrier = vk::ImageMemoryBarrier2::default()
@@ -321,8 +287,7 @@ fn one_shot(
     unsafe {
         device.begin_command_buffer(
             cmd,
-            &vk::CommandBufferBeginInfo::default()
-                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+            &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
         )?;
     }
 

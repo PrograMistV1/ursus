@@ -40,21 +40,15 @@ impl PostProcessPass {
 
         let descriptor_set_layout = unsafe {
             device.create_descriptor_set_layout(
-                &vk::DescriptorSetLayoutCreateInfo::default()
-                    .bindings(std::slice::from_ref(&binding)),
+                &vk::DescriptorSetLayoutCreateInfo::default().bindings(std::slice::from_ref(&binding)),
                 None,
             )?
         };
 
-        let pool_size = vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            descriptor_count: 1,
-        };
+        let pool_size = vk::DescriptorPoolSize { ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER, descriptor_count: 1 };
         let descriptor_pool = unsafe {
             device.create_descriptor_pool(
-                &vk::DescriptorPoolCreateInfo::default()
-                    .pool_sizes(std::slice::from_ref(&pool_size))
-                    .max_sets(1),
+                &vk::DescriptorPoolCreateInfo::default().pool_sizes(std::slice::from_ref(&pool_size)).max_sets(1),
                 None,
             )?
         };
@@ -121,17 +115,9 @@ impl PostProcessPass {
                 exposure,
                 flags: 0,
             };
-            let pc_bytes = std::slice::from_raw_parts(
-                &pc as *const PostProcessPC as *const u8,
-                size_of::<PostProcessPC>(),
-            );
-            device.cmd_push_constants(
-                cmd_buf,
-                self.layout,
-                vk::ShaderStageFlags::FRAGMENT,
-                0,
-                pc_bytes,
-            );
+            let pc_bytes =
+                std::slice::from_raw_parts(&pc as *const PostProcessPC as *const u8, size_of::<PostProcessPC>());
+            device.cmd_push_constants(cmd_buf, self.layout, vk::ShaderStageFlags::FRAGMENT, 0, pc_bytes);
 
             device.cmd_draw(cmd_buf, 3, 1, 0, 0);
             device.cmd_end_rendering(cmd_buf);
@@ -144,10 +130,8 @@ impl Drop for PostProcessPass {
         unsafe {
             self.device.destroy_pipeline(self.pipeline, None);
             self.device.destroy_pipeline_layout(self.layout, None);
-            self.device
-                .destroy_descriptor_pool(self.descriptor_pool, None);
-            self.device
-                .destroy_descriptor_set_layout(self.descriptor_set_layout, None);
+            self.device.destroy_descriptor_pool(self.descriptor_pool, None);
+            self.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             self.device.destroy_sampler(self.sampler, None);
         }
     }

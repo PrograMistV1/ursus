@@ -70,27 +70,17 @@ impl LightingPass {
         ];
 
         let descriptor_set_layout = unsafe {
-            device.create_descriptor_set_layout(
-                &vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings),
-                None,
-            )?
+            device
+                .create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings), None)?
         };
 
         let pool_sizes = [
-            vk::DescriptorPoolSize {
-                ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                descriptor_count: 4,
-            },
-            vk::DescriptorPoolSize {
-                ty: vk::DescriptorType::UNIFORM_BUFFER,
-                descriptor_count: 1,
-            },
+            vk::DescriptorPoolSize { ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER, descriptor_count: 4 },
+            vk::DescriptorPoolSize { ty: vk::DescriptorType::UNIFORM_BUFFER, descriptor_count: 1 },
         ];
         let descriptor_pool = unsafe {
             device.create_descriptor_pool(
-                &vk::DescriptorPoolCreateInfo::default()
-                    .pool_sizes(&pool_sizes)
-                    .max_sets(1),
+                &vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(1),
                 None,
             )?
         };
@@ -159,13 +149,7 @@ impl LightingPass {
         self.light_buffer.upload(data);
     }
 
-    pub fn record(
-        &self,
-        device: &ash::Device,
-        cmd: vk::CommandBuffer,
-        hdr: &impl GpuImage,
-        camera: &Camera,
-    ) {
+    pub fn record(&self, device: &ash::Device, cmd: vk::CommandBuffer, hdr: &impl GpuImage, camera: &Camera) {
         let extent = hdr.extent();
 
         unsafe {
@@ -178,10 +162,7 @@ impl LightingPass {
             device.cmd_begin_rendering(
                 cmd,
                 &vk::RenderingInfo::default()
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent,
-                    })
+                    .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent })
                     .layer_count(1)
                     .color_attachments(std::slice::from_ref(&color_attachment)),
             );
@@ -198,14 +179,7 @@ impl LightingPass {
                     max_depth: 1.0,
                 }],
             );
-            device.cmd_set_scissor(
-                cmd,
-                0,
-                &[vk::Rect2D {
-                    offset: vk::Offset2D { x: 0, y: 0 },
-                    extent,
-                }],
-            );
+            device.cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent }]);
 
             device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
             device.cmd_bind_descriptor_sets(
@@ -219,8 +193,7 @@ impl LightingPass {
 
             let aspect = extent.width as f32 / extent.height as f32;
             let view = glam::Mat4::look_at_rh(camera.eye, camera.target, camera.up);
-            let mut proj =
-                glam::Mat4::perspective_rh(camera.fov_y, aspect, camera.z_near, camera.z_far);
+            let mut proj = glam::Mat4::perspective_rh(camera.fov_y, aspect, camera.z_near, camera.z_far);
             proj.y_axis.y *= -1.0;
 
             let pc = LightingPC {
@@ -229,17 +202,8 @@ impl LightingPass {
                 viewport: [extent.width as f32, extent.height as f32],
                 _pad: [0.0; 2],
             };
-            let pc_bytes = std::slice::from_raw_parts(
-                &pc as *const LightingPC as *const u8,
-                size_of::<LightingPC>(),
-            );
-            device.cmd_push_constants(
-                cmd,
-                self.layout,
-                vk::ShaderStageFlags::FRAGMENT,
-                0,
-                pc_bytes,
-            );
+            let pc_bytes = std::slice::from_raw_parts(&pc as *const LightingPC as *const u8, size_of::<LightingPC>());
+            device.cmd_push_constants(cmd, self.layout, vk::ShaderStageFlags::FRAGMENT, 0, pc_bytes);
 
             device.cmd_draw(cmd, 3, 1, 0, 0);
             device.cmd_end_rendering(cmd);
@@ -252,10 +216,8 @@ impl Drop for LightingPass {
         unsafe {
             self.device.destroy_pipeline(self.pipeline, None);
             self.device.destroy_pipeline_layout(self.layout, None);
-            self.device
-                .destroy_descriptor_pool(self.descriptor_pool, None);
-            self.device
-                .destroy_descriptor_set_layout(self.descriptor_set_layout, None);
+            self.device.destroy_descriptor_pool(self.descriptor_pool, None);
+            self.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             self.device.destroy_sampler(self.sampler, None);
             self.device.destroy_sampler(self.shadow_sampler, None);
         }
@@ -289,30 +251,26 @@ fn build_fullscreen_pipeline(
             .name(entry),
     ];
     let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
-    let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
-        .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
-    let viewport_state = vk::PipelineViewportStateCreateInfo::default()
-        .viewport_count(1)
-        .scissor_count(1);
+    let input_assembly =
+        vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
+    let viewport_state = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
     let rasterizer = vk::PipelineRasterizationStateCreateInfo::default()
         .polygon_mode(vk::PolygonMode::FILL)
         .cull_mode(vk::CullModeFlags::NONE)
         .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
         .line_width(1.0);
-    let multisampling = vk::PipelineMultisampleStateCreateInfo::default()
-        .rasterization_samples(vk::SampleCountFlags::TYPE_1);
-    let blend_attachment = vk::PipelineColorBlendAttachmentState::default()
-        .color_write_mask(vk::ColorComponentFlags::RGBA);
-    let color_blending = vk::PipelineColorBlendStateCreateInfo::default()
-        .attachments(std::slice::from_ref(&blend_attachment));
+    let multisampling =
+        vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
+    let blend_attachment =
+        vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA);
+    let color_blending =
+        vk::PipelineColorBlendStateCreateInfo::default().attachments(std::slice::from_ref(&blend_attachment));
     let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-    let dynamic_state =
-        vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-    let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
-        .depth_test_enable(false)
-        .depth_write_enable(false);
-    let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
-        .color_attachment_formats(std::slice::from_ref(&color_format));
+    let dynamic_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+    let depth_stencil =
+        vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(false).depth_write_enable(false);
+    let mut rendering_info =
+        vk::PipelineRenderingCreateInfo::default().color_attachment_formats(std::slice::from_ref(&color_format));
     let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
         .stages(&stages)
         .vertex_input_state(&vertex_input)
@@ -327,11 +285,7 @@ fn build_fullscreen_pipeline(
         .push_next(&mut rendering_info);
     let pipeline = unsafe {
         device
-            .create_graphics_pipelines(
-                vk::PipelineCache::null(),
-                std::slice::from_ref(&pipeline_info),
-                None,
-            )
+            .create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&pipeline_info), None)
             .map_err(|(_, e)| e)?[0]
     };
     Ok(pipeline)

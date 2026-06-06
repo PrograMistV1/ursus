@@ -7,11 +7,7 @@ pub struct Commands {
 }
 
 impl Commands {
-    pub fn new(
-        device: &ash::Device,
-        graphics_family: u32,
-        frames_in_flight: u32,
-    ) -> anyhow::Result<Self> {
+    pub fn new(device: &ash::Device, graphics_family: u32, frames_in_flight: u32) -> anyhow::Result<Self> {
         let pool_info = vk::CommandPoolCreateInfo::default()
             .queue_family_index(graphics_family)
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
@@ -26,11 +22,7 @@ impl Commands {
         let buffers = unsafe { device.allocate_command_buffers(&alloc_info)? };
 
         log::info!("Command pool создан ({} буферов)", frames_in_flight);
-        Ok(Self {
-            pool,
-            buffers,
-            device: device.clone(),
-        })
+        Ok(Self { pool, buffers, device: device.clone() })
     }
 }
 

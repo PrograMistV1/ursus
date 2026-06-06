@@ -9,18 +9,11 @@ pub struct Transform {
 
 impl Transform {
     pub fn identity() -> Self {
-        Self {
-            position: Vec3::ZERO,
-            rotation: Quat::IDENTITY,
-            scale: Vec3::ONE,
-        }
+        Self { position: Vec3::ZERO, rotation: Quat::IDENTITY, scale: Vec3::ONE }
     }
 
     pub fn at(x: f32, y: f32, z: f32) -> Self {
-        Self {
-            position: Vec3::new(x, y, z),
-            ..Self::identity()
-        }
+        Self { position: Vec3::new(x, y, z), ..Self::identity() }
     }
 
     pub fn with_scale(mut self, s: f32) -> Self {

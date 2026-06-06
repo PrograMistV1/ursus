@@ -8,8 +8,8 @@ pub struct ShaderModule {
 
 impl ShaderModule {
     pub fn from_file(device: &ash::Device, path: &Path) -> anyhow::Result<Self> {
-        let bytes = std::fs::read(path)
-            .map_err(|e| anyhow::anyhow!("Не удалось прочитать шейдер {:?}: {}", path, e))?;
+        let bytes =
+            std::fs::read(path).map_err(|e| anyhow::anyhow!("Не удалось прочитать шейдер {:?}: {}", path, e))?;
         Self::from_bytes(device, &bytes)
     }
 
@@ -17,10 +17,7 @@ impl ShaderModule {
         let code = ash::util::read_spv(&mut std::io::Cursor::new(bytes))?;
         let create_info = vk::ShaderModuleCreateInfo::default().code(&code);
         let handle = unsafe { device.create_shader_module(&create_info, None)? };
-        Ok(Self {
-            handle,
-            device: device.clone(),
-        })
+        Ok(Self { handle, device: device.clone() })
     }
 }
 

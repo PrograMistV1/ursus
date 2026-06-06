@@ -12,11 +12,7 @@ pub struct PipelineDesc<'a> {
 }
 
 impl<'a> PipelineDesc<'a> {
-    pub fn standard(
-        vert_spv: &'a [u8],
-        frag_spv: &'a [u8],
-        color_formats: &'a [vk::Format],
-    ) -> Self {
+    pub fn standard(vert_spv: &'a [u8], frag_spv: &'a [u8], color_formats: &'a [vk::Format]) -> Self {
         Self {
             vert_spv,
             frag_spv,
@@ -56,10 +52,8 @@ impl Pipeline {
                 .name(entry),
         ];
 
-        let binding = vk::VertexInputBindingDescription::default()
-            .binding(0)
-            .stride(32)
-            .input_rate(vk::VertexInputRate::VERTEX);
+        let binding =
+            vk::VertexInputBindingDescription::default().binding(0).stride(32).input_rate(vk::VertexInputRate::VERTEX);
 
         let attributes = [
             vk::VertexInputAttributeDescription::default()
@@ -83,12 +77,10 @@ impl Pipeline {
             .vertex_binding_descriptions(std::slice::from_ref(&binding))
             .vertex_attribute_descriptions(&attributes);
 
-        let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
-            .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
+        let input_assembly =
+            vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
 
-        let viewport_state = vk::PipelineViewportStateCreateInfo::default()
-            .viewport_count(1)
-            .scissor_count(1);
+        let viewport_state = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
 
         let rasterizer = vk::PipelineRasterizationStateCreateInfo::default()
             .polygon_mode(vk::PolygonMode::FILL)
@@ -96,22 +88,18 @@ impl Pipeline {
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .line_width(1.0);
 
-        let multisampling = vk::PipelineMultisampleStateCreateInfo::default()
-            .rasterization_samples(vk::SampleCountFlags::TYPE_1);
+        let multisampling =
+            vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
         let blend_attachments = [
-            vk::PipelineColorBlendAttachmentState::default()
-                .color_write_mask(vk::ColorComponentFlags::RGBA),
-            vk::PipelineColorBlendAttachmentState::default()
-                .color_write_mask(vk::ColorComponentFlags::RGBA),
+            vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA),
+            vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA),
         ];
 
-        let color_blending =
-            vk::PipelineColorBlendStateCreateInfo::default().attachments(&blend_attachments);
+        let color_blending = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blend_attachments);
 
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-        let dynamic_state =
-            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+        let dynamic_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
 
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
@@ -153,19 +141,11 @@ impl Pipeline {
 
         let handle = unsafe {
             device
-                .create_graphics_pipelines(
-                    vk::PipelineCache::null(),
-                    std::slice::from_ref(&pipeline_info),
-                    None,
-                )
+                .create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&pipeline_info), None)
                 .map_err(|(_, e)| e)?[0]
         };
 
-        Ok(Self {
-            handle,
-            layout,
-            device: device.clone(),
-        })
+        Ok(Self { handle, layout, device: device.clone() })
     }
 }
 

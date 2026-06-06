@@ -6,9 +6,7 @@ pub struct GameWorld {
 
 impl GameWorld {
     pub fn new() -> Self {
-        Self {
-            inner: World::new(),
-        }
+        Self { inner: World::new() }
     }
 
     pub fn spawn(&mut self) -> EntityBuilder<'_> {
@@ -37,10 +35,7 @@ pub struct EntityBuilder<'w> {
 
 impl<'w> EntityBuilder<'w> {
     fn new(world: &'w mut GameWorld) -> Self {
-        Self {
-            world,
-            builder: hecs::EntityBuilder::new(),
-        }
+        Self { world, builder: hecs::EntityBuilder::new() }
     }
 
     pub fn insert<T: hecs::Component>(mut self, component: T) -> Self {
