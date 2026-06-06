@@ -7,6 +7,7 @@ use crate::pipeline::FrameInput;
 use crate::render_graph::{RenderGraph, ResourcePool};
 use crate::vulkan::core::commands::Commands;
 use crate::vulkan::core::sync::FrameSync;
+use crate::vulkan::timestamps::GpuFrameTimes;
 use crate::vulkan::{Device, VulkanContext};
 use ash::vk;
 use glam::{Mat4, Vec3};
@@ -45,16 +46,42 @@ impl Camera {
     }
 }
 
+pub trait DynRenderer: Send {
+    fn draw_frame(
+        &mut self,
+        ctx: &VulkanContext,
+        world: &mut GameWorld,
+        assets: &AssetServer,
+        camera: &Camera,
+        lighting: &LightingUbo,
+        egui: &mut EguiLayer,
+        egui_output: egui::FullOutput,
+        window: &winit::window::Window,
+        clear_color: [f32; 4],
+    ) -> anyhow::Result<bool>;
+
+    fn resize_output(&mut self, w: u32, h: u32) -> anyhow::Result<()>;
+    fn resize_internal(&mut self, w: u32, h: u32) -> anyhow::Result<()>;
+
+    fn last_frame_times(&self) -> Option<&GpuFrameTimes>;
+
+    fn exposure(&self) -> f32;
+    fn set_exposure(&mut self, v: f32);
+
+    fn fsr_sharpness(&self) -> f32;
+    fn set_fsr_sharpness(&mut self, v: f32);
+}
+
 pub struct Renderer<P: RenderPipeline> {
     pub graph: RenderGraph,
     pub pipeline: P,
 
     pub commands: Commands,
-    frames: Vec<FrameSync>,
-    current_frame: usize,
-    swapchain_loader: ash::khr::swapchain::Device,
-    device: Arc<Device>,
-    handles: PipelineHandles,
+    pub(crate) frames: Vec<FrameSync>,
+    pub(crate) current_frame: usize,
+    pub(crate) swapchain_loader: ash::khr::swapchain::Device,
+    pub(crate) device: Arc<Device>,
+    pub(crate) handles: PipelineHandles,
 
     pub exposure: f32,
     pub fsr_sharpness: f32,
@@ -263,6 +290,113 @@ impl<P: RenderPipeline> Renderer<P> {
         self.pipeline
             .on_resize_internal(&mut self.graph, new_w, new_h)
     }
+}
+
+impl<P: RenderPipeline> DynRenderer for Renderer<P> {
+    fn draw_frame(
+        &mut self,
+        ctx: &VulkanContext,
+        world: &mut GameWorld,
+        assets: &AssetServer,
+        camera: &Camera,
+        lighting: &LightingUbo,
+        egui: &mut EguiLayer,
+        egui_output: egui::FullOutput,
+        window: &winit::window::Window,
+        clear_color: [f32; 4],
+    ) -> anyhow::Result<bool> {
+        self.draw_frame(
+            ctx,
+            world,
+            assets,
+            camera,
+            lighting,
+            egui,
+            egui_output,
+            window,
+            clear_color,
+        )
+    }
+
+    fn resize_output(&mut self, w: u32, h: u32) -> anyhow::Result<()> {
+        self.resize_output(w, h)
+    }
+
+    fn resize_internal(&mut self, w: u32, h: u32) -> anyhow::Result<()> {
+        self.resize_internal(w, h)
+    }
+
+    fn last_frame_times(&self) -> Option<&GpuFrameTimes> {
+        self.graph.last_frame_times.as_ref()
+    }
+
+    fn exposure(&self) -> f32 {
+        self.exposure
+    }
+    fn set_exposure(&mut self, v: f32) {
+        self.exposure = v;
+    }
+
+    fn fsr_sharpness(&self) -> f32 {
+        self.fsr_sharpness
+    }
+    fn set_fsr_sharpness(&mut self, v: f32) {
+        self.fsr_sharpness = v;
+    }
+}
+
+pub fn build_dyn_renderer<P: RenderPipeline + Default + 'static>(
+    ctx: &VulkanContext,
+    assets: &mut AssetServer,
+    prev_exposure: f32,
+    prev_fsr_sharpness: f32,
+) -> anyhow::Result<Box<dyn DynRenderer>> {
+    let swapchain = ctx.swapchain.as_ref().unwrap();
+
+    let pool = ResourcePool::new(
+        ctx.device.handle.clone(),
+        ctx.device.physical,
+        ctx.instance.handle.clone(),
+        ctx.debug_utils.clone(),
+    );
+
+    let mut graph = RenderGraph::new(
+        pool,
+        ctx.device.handle.clone(),
+        (1280, 720),
+        (swapchain.extent.width, swapchain.extent.height),
+        ctx.debug_utils.clone(),
+    );
+
+    let handles = P::build(ctx, assets, &mut graph)?;
+    graph.allocate()?;
+    graph.compile()?;
+
+    let frames: Vec<_> = (0..FRAMES_IN_FLIGHT)
+        .map(|_| FrameSync::new(&ctx.device.handle))
+        .collect::<anyhow::Result<_>>()?;
+
+    let commands = Commands::new(
+        &ctx.device.handle,
+        ctx.device.graphics_family,
+        FRAMES_IN_FLIGHT,
+    )?;
+
+    let swapchain_loader =
+        ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
+
+    Ok(Box::new(Renderer::<P> {
+        graph,
+        pipeline: Default::default(),
+        commands,
+        frames,
+        current_frame: 0,
+        swapchain_loader,
+        device: ctx.device.clone(),
+        handles,
+        exposure: prev_exposure,
+        fsr_sharpness: prev_fsr_sharpness,
+    }))
 }
 
 impl<P: RenderPipeline> Drop for Renderer<P> {

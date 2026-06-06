@@ -3,9 +3,10 @@ use crate::debug_ui::{self, DebugUiState};
 use crate::ecs::GameWorld;
 use crate::egui_layer::EguiLayer;
 use crate::lighting::LightingUbo;
-use crate::vulkan::{Camera, Renderer, VulkanContext};
-
 use crate::pipeline::{DefaultPipeline, RenderPipeline};
+use crate::vulkan::{build_dyn_renderer, DynRenderer};
+use crate::vulkan::{Camera, VulkanContext};
+
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -25,7 +26,7 @@ pub struct EngineContext {
     pub camera: Camera,
     pub lighting: LightingUbo,
     pub world: GameWorld,
-    pub renderer: Renderer<DefaultPipeline>,
+    pub renderer: Box<dyn DynRenderer>,
     pub assets: AssetServer,
     temp_pool: ash::vk::CommandPool,
     pub vk: VulkanContext,
@@ -43,10 +44,7 @@ impl EngineContext {
             vk.device.graphics_queue,
         )?;
 
-        let renderer = Renderer::with_pipeline(&vk, &mut assets, |ctx, assets, graph| {
-            let handles = DefaultPipeline::build(ctx, assets, graph)?;
-            Ok((DefaultPipeline, handles))
-        })?;
+        let renderer = build_dyn_renderer::<DefaultPipeline>(&vk, &mut assets, 0.5, 0.2)?;
 
         Ok(Self {
             camera: Camera::default(),
@@ -57,6 +55,20 @@ impl EngineContext {
             temp_pool,
             vk,
         })
+    }
+
+    pub fn set_pipeline<P: RenderPipeline + Default + 'static>(&mut self) -> anyhow::Result<()> {
+        unsafe { self.vk.device.handle.device_wait_idle()? };
+
+        let prev_exposure = self.renderer.exposure();
+        let prev_fsr = self.renderer.fsr_sharpness();
+
+        let new_renderer =
+            build_dyn_renderer::<P>(&self.vk, &mut self.assets, prev_exposure, prev_fsr)?;
+
+        self.renderer = new_renderer;
+        log::info!("Pipeline switched to {}", std::any::type_name::<P>());
+        Ok(())
     }
 
     pub fn poll_assets(&mut self) {
@@ -381,12 +393,12 @@ fn handle_running_event(state: &mut RunningState, event: &WindowEvent, app: &mut
                         state.fps_current,
                         state.ctx.world.entity_count(),
                         &state.cpu_history,
-                        state.ctx.renderer.graph.last_frame_times.as_ref(),
+                        state.ctx.renderer.last_frame_times(),
                     );
                 })
             };
             puffin::set_scopes_on(state.debug.show_profiler);
-            state.ctx.renderer.exposure = state.debug.exposure;
+            state.ctx.renderer.set_exposure(state.debug.exposure);
 
             app.on_render(&mut state.ctx);
 

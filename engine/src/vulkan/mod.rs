@@ -13,14 +13,14 @@ pub use core::swapchain::Swapchain;
 pub use passes::geometry::DrawCall;
 pub use pipeline::material_buffer::MaterialBuffer;
 pub use pipeline::Pipeline;
-pub use renderer::{Camera, Renderer};
+pub use renderer::{build_dyn_renderer, Camera, DynRenderer, Renderer};
 pub use resources::bindless::BindlessSet;
+pub use resources::depth::DepthBuffer;
+pub use resources::render_target::RenderTarget;
 pub use resources::texture::GpuTexture;
 
 use ash::ext::debug_utils;
 use ash::vk;
-pub use resources::depth::DepthBuffer;
-pub use resources::render_target::RenderTarget;
 use std::sync::Arc;
 
 pub struct VulkanContext {
