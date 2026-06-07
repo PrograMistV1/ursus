@@ -128,7 +128,7 @@ impl GeometryPass {
             let mut sorted: Vec<&DrawCall> = draw_calls.iter().collect();
             {
                 puffin::profile_scope!("sort_draw_calls");
-                sorted.sort_by_key(|dc| dc.shader.0);
+                sorted.sort_by_key(|dc| (dc.shader.0, dc.gpu_mesh as *const _ as usize));
             }
 
             let mut current_shader: Option<ShaderHandle> = None;
