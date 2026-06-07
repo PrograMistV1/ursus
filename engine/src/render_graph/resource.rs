@@ -272,7 +272,6 @@ impl ResourcePool {
                         set_object_name(du, ti.image, &desc.name);
                         set_object_name(du, ti.view, &format!("{}_view", desc.name));
                         set_object_name(du, ti.memory, &format!("{}_memory", desc.name));
-                        log::info!("ResourcePool: выделен ресурс '{}' ({}x{}, {:?})", desc.name, w, h, desc.format);
                     }
                     *image = Some(ti);
                 }
