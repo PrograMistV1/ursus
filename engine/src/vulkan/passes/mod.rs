@@ -1,3 +1,4 @@
+pub mod depth_prepass;
 pub mod fsr;
 pub mod geometry;
 pub mod lighting;

@@ -306,6 +306,15 @@ pub fn build_dyn_renderer<P: RenderPipeline + Default + 'static>(
 
     let commands = Commands::new(&ctx.device.handle, ctx.device.graphics_family, FRAMES_IN_FLIGHT)?;
 
+    graph.enable_timestamps(
+        &ctx.device.handle,
+        ctx.device.physical,
+        &ctx.instance.handle,
+        FRAMES_IN_FLIGHT,
+        commands.pool,
+        ctx.device.graphics_queue,
+    )?;
+
     let swapchain_loader = ash::khr::swapchain::Device::new(&ctx.instance.handle, &ctx.device.handle);
 
     Ok(Box::new(Renderer::<P> {

@@ -5,6 +5,7 @@ use crate::math::frustum::transform_aabb;
 use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
 use crate::render_graph::resource::ExternalImageDesc;
 use crate::render_graph::{pass, RenderGraph, ResourceDesc, ResourceExtent, ResourceKind};
+use crate::vulkan::passes::depth_prepass::{DepthPrepass, DepthPrepassDrawCall};
 use crate::vulkan::passes::fsr::{compute_easu_con, compute_rcas_con, FsrPass};
 use crate::vulkan::passes::geometry::GeometryPass;
 use crate::vulkan::passes::lighting::LightingPass;
@@ -71,6 +72,7 @@ impl RenderPipeline for DefaultPipeline {
         });
 
         let shadow_pass = ShadowPass::new(&ctx.device.handle)?;
+        let depth_prepass = DepthPrepass::new(&ctx.device.handle)?;
 
         let mut geometry_pass = GeometryPass::new(
             &ctx.device.handle,
@@ -104,6 +106,26 @@ impl RenderPipeline for DefaultPipeline {
                 }
             })
             .build(graph);
+
+        pass("depth_prepass")
+            .write(h_depth, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
+            .record({
+                move |cmd, pool, ctx_ptr| unsafe {
+                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+                    let depth = pool.image(h_depth);
+
+                    let calls: Vec<DepthPrepassDrawCall> = data
+                        .prepass_calls
+                        .iter()
+                        .map(|dc| DepthPrepassDrawCall { gpu_mesh: &*dc.gpu_mesh_ptr, transform: &dc.transform })
+                        .collect();
+
+                    depth_prepass.record(&*data.device, cmd, &depth, data.view_proj, &calls);
+                    Ok(())
+                }
+            })
+            .build(graph);
+
         let debug_utils = ctx.debug_utils.clone();
         pass("geometry")
             .write(h_gbuffer_albedo, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
@@ -292,22 +314,35 @@ impl RenderPipeline for DefaultPipeline {
         let ecs_calls = collect_draw_calls(input.world, input.assets);
         input.assets.upload_materials();
 
-        let draw_calls: Vec<OwnedDrawCall> = ecs_calls
-            .iter()
-            .filter_map(|dc| {
-                let gpu = input.assets.get_gpu_mesh(dc.mesh)?;
-                let model = dc.transform.matrix();
-                if !transform_aabb(&gpu.aabb, model).intersects_frustum(&frustum) {
-                    return None;
-                }
-                Some(OwnedDrawCall {
-                    gpu_mesh_ptr: gpu as *const _,
-                    transform: dc.transform.clone(),
-                    material: dc.material,
-                    shader: dc.shader,
-                })
-            })
-            .collect();
+        let mut draw_calls: Vec<OwnedDrawCall> = Vec::new();
+        let mut prepass_calls: Vec<OwnedDrawCall> = Vec::new();
+
+        for dc in &ecs_calls {
+            let gpu = match input.assets.get_gpu_mesh(dc.mesh) {
+                Some(g) => g,
+                None => continue,
+            };
+            let model = dc.transform.matrix();
+            if !transform_aabb(&gpu.aabb, model).intersects_frustum(&frustum) {
+                continue;
+            }
+
+            prepass_calls.push(OwnedDrawCall {
+                gpu_mesh_ptr: gpu as *const _,
+                transform: dc.transform.clone(),
+                material: None,
+                shader: dc.shader,
+            });
+
+            draw_calls.push(OwnedDrawCall {
+                gpu_mesh_ptr: gpu as *const _,
+                transform: dc.transform.clone(),
+                material: dc.material,
+                shader: dc.shader,
+            });
+        }
+
+        draw_calls.sort_by_key(|dc| dc.shader.0);
 
         let shadow_calls: Vec<OwnedDrawCall> = ecs_calls
             .iter()
@@ -328,6 +363,7 @@ impl RenderPipeline for DefaultPipeline {
         let frame_data = Box::new(DefaultPipelineFrameData {
             device: input.device,
             draw_calls,
+            prepass_calls,
             shadow_calls,
             camera: input.camera,
             view_proj: input.view_proj,
@@ -373,9 +409,11 @@ impl OwnedDrawCall {
         }
     }
 }
+
 struct DefaultPipelineFrameData {
     device: *const ash::Device,
     draw_calls: Vec<OwnedDrawCall>,
+    prepass_calls: Vec<OwnedDrawCall>,
     shadow_calls: Vec<OwnedDrawCall>,
     camera: *const crate::vulkan::Camera,
     view_proj: glam::Mat4,

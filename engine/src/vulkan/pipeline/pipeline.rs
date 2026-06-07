@@ -10,6 +10,7 @@ pub struct PipelineDesc<'a> {
     pub cull_mode: vk::CullModeFlags,
     pub depth_test: bool,
     pub depth_write: bool,
+    pub depth_compare: vk::CompareOp,
 }
 
 impl<'a> PipelineDesc<'a> {
@@ -22,6 +23,20 @@ impl<'a> PipelineDesc<'a> {
             cull_mode: vk::CullModeFlags::NONE,
             depth_test: true,
             depth_write: true,
+            depth_compare: vk::CompareOp::LESS,
+        }
+    }
+
+    pub fn with_depth_equal(vert_spv: &'a [u8], frag_spv: &'a [u8], color_formats: &'a [vk::Format]) -> Self {
+        Self {
+            vert_spv,
+            frag_spv,
+            color_formats,
+            depth_format: vk::Format::D32_SFLOAT,
+            cull_mode: vk::CullModeFlags::NONE,
+            depth_test: true,
+            depth_write: false,
+            depth_compare: vk::CompareOp::EQUAL,
         }
     }
 }
@@ -105,7 +120,7 @@ impl Pipeline {
         let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
             .depth_test_enable(desc.depth_test)
             .depth_write_enable(desc.depth_write)
-            .depth_compare_op(vk::CompareOp::LESS)
+            .depth_compare_op(desc.depth_compare)
             .depth_bounds_test_enable(false)
             .stencil_test_enable(false);
 

@@ -19,6 +19,7 @@ fn compile_shaders() {
         ("shaders/fsr_easu.frag", "fsr_easu.frag.spv"),
         ("shaders/fsr_rcas.frag", "fsr_rcas.frag.spv"),
         ("shaders/loading_pipeline.frag", "loading_pipeline.frag.spv"),
+        ("shaders/depth_prepass.vert", "depth_prepass.vert.spv"),
     ];
 
     for (src, dst) in &shaders {
