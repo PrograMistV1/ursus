@@ -16,12 +16,12 @@ layout(location = 2) out vec3 fragNormal;
 layout(location = 3) out vec2 fragUV;
 
 void main() {
-    mat3 normalMatrix = mat3(pc.model);
+    mat3 normalMatrix = transpose(inverse(mat3(pc.model)));
 
     vec3 N = normalize(normalMatrix * inNormal);
     vec3 T = normalize(normalMatrix * inTangent.xyz);
     T = normalize(T - dot(T, N) * N);
-    vec3 B = cross(N, T) * inTangent.w;
+    vec3 B = cross(T, N) * inTangent.w * -1.0;
 
     fragTangent   = T;
     fragBitangent = B;

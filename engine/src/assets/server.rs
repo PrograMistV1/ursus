@@ -288,7 +288,13 @@ impl AssetServer {
             let handle = if let Some(&cached) = image_cache.get(&image_index) {
                 cached
             } else {
-                match self.upload_texture_raw(&bytes, width, height, vk::Format::R8G8B8A8_SRGB, &name) {
+                let format = match slot {
+                    TextureSlot::Normal | TextureSlot::MetallicRoughness | TextureSlot::Occlusion => {
+                        vk::Format::R8G8B8A8_UNORM
+                    }
+                    TextureSlot::Diffuse | TextureSlot::Emissive => vk::Format::R8G8B8A8_SRGB,
+                };
+                match self.upload_texture_raw(&bytes, width, height, format, &name) {
                     Ok(h) => {
                         image_cache.insert(image_index, h);
                         h
