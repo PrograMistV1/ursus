@@ -58,8 +58,11 @@ impl GeometryPass {
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.to_vec();
         let set_layouts = [self.bindless_layout, self.material_layout];
-        let pipeline =
-            Pipeline::new(device, &PipelineDesc::standard(&vert_spv, &frag_spv, &self.color_formats), &set_layouts)?;
+        let pipeline = Pipeline::new(
+            device,
+            &PipelineDesc::with_depth_equal(&vert_spv, &frag_spv, &self.color_formats),
+            &set_layouts,
+        )?;
         self.pipelines.insert(shader, pipeline);
         Ok(&self.pipelines[&shader])
     }
@@ -98,9 +101,8 @@ impl GeometryPass {
             let depth_attachment = vk::RenderingAttachmentInfo::default()
                 .image_view(depth.view())
                 .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::STORE)
-                .clear_value(vk::ClearValue { depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 } });
+                .load_op(vk::AttachmentLoadOp::LOAD)
+                .store_op(vk::AttachmentStoreOp::STORE);
 
             device.cmd_begin_rendering(
                 cmd,

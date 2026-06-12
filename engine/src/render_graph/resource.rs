@@ -433,10 +433,8 @@ impl DescriptorBindingRegistry {
     }
 
     pub fn flush(&self, pool: &ResourcePool, affected: &[ResourceHandle]) {
-        let affected_set: std::collections::HashSet<ResourceHandle> = affected.iter().copied().collect();
-
         let relevant: Vec<&DescriptorBinding> =
-            self.bindings.iter().filter(|b| affected_set.contains(&b.resource)).collect();
+            self.bindings.iter().filter(|b| affected.contains(&b.resource)).collect();
 
         if relevant.is_empty() {
             return;

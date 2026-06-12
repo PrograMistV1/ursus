@@ -68,6 +68,17 @@ impl std::fmt::Debug for PassNode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PassHandle(pub(crate) u32);
 
+#[derive(Clone)]
+struct CompiledBarrier {
+    handle: ResourceHandle,
+    new_layout: vk::ImageLayout,
+}
+
+struct CompiledPass {
+    node_index: usize,
+    barriers: Vec<CompiledBarrier>,
+}
+
 pub struct RenderGraph {
     pub pool: ResourcePool,
     nodes: Vec<PassNode>,
@@ -82,8 +93,13 @@ pub struct RenderGraph {
     compiled: bool,
     allocated: bool,
 
+    compiled_passes: Vec<CompiledPass>,
+    compiled_finals: Vec<CompiledBarrier>,
+
     frame_data: Option<FrameDataBox>,
     frame_data_drop: Option<Box<dyn FnOnce(*mut ()) + Send>>,
+
+    barrier_scratch: Vec<vk::ImageMemoryBarrier2<'static>>,
 
     timestamps: Option<GpuTimestampPool>,
     pub last_frame_times: Option<GpuFrameTimes>,
@@ -109,9 +125,12 @@ impl RenderGraph {
             output_resolution,
             compiled: false,
             allocated: false,
+            compiled_passes: Vec::new(),
+            compiled_finals: Vec::new(),
             debug_utils,
             frame_data: None,
             frame_data_drop: None,
+            barrier_scratch: Vec::new(),
             timestamps: None,
             last_frame_times: None,
             current_frame: 0,
@@ -178,12 +197,46 @@ impl RenderGraph {
         self.sorted_order = topological_sort(n, adj, in_degree)?;
         self.compiled = true;
 
+        self.build_compiled_passes();
+
         log::info!(
-            "RenderGraph скомпилирован: {} пассов → {:?}",
+            "RenderGraph скомпилирован: {} пассов -> {:?}",
             n,
             self.nodes.iter().enumerate().map(|(i, p)| format!("[{}]{}", i, p.name)).collect::<Vec<_>>()
         );
         Ok(())
+    }
+
+    fn build_compiled_passes(&mut self) {
+        let mut sim_layouts: HashMap<ResourceHandle, vk::ImageLayout> = HashMap::new();
+
+        self.compiled_passes.clear();
+        self.compiled_finals.clear();
+
+        for &idx in &self.sorted_order {
+            let node = &self.nodes[idx];
+            if !node.enabled {
+                self.compiled_passes.push(CompiledPass { node_index: idx, barriers: Vec::new() });
+                continue;
+            }
+
+            let mut barriers = Vec::new();
+            for access in &node.accesses {
+                let old = sim_layouts.get(&access.handle).copied().unwrap_or(vk::ImageLayout::UNDEFINED);
+                if old != access.layout {
+                    barriers.push(CompiledBarrier { handle: access.handle, new_layout: access.layout });
+                    sim_layouts.insert(access.handle, access.layout);
+                }
+            }
+
+            self.compiled_passes.push(CompiledPass { node_index: idx, barriers });
+        }
+
+        for handle in self.pool.external_handles().collect::<Vec<_>>() {
+            if let Some(final_layout) = self.pool.external_final_layout(handle) {
+                self.compiled_finals.push(CompiledBarrier { handle, new_layout: final_layout });
+            }
+        }
     }
 
     pub fn bind_resource(&mut self, binding: DescriptorBinding) {
@@ -231,8 +284,8 @@ impl RenderGraph {
 
         let frame_ptr = self.frame_data.as_ref().map(|b| b.0).unwrap_or(std::ptr::null_mut());
 
-        for (order_idx, &idx) in self.sorted_order.iter().enumerate() {
-            let node = &mut self.nodes[idx];
+        for (order_idx, cp) in self.compiled_passes.iter().enumerate() {
+            let node = &mut self.nodes[cp.node_index];
             if !node.enabled {
                 continue;
             }
@@ -241,9 +294,26 @@ impl RenderGraph {
                 cmd_begin_label(du, cmd, &node.name);
             }
 
-            let transitions: Vec<(ResourceHandle, vk::ImageLayout)> =
-                node.accesses.iter().map(|a| (a.handle, a.layout)).collect();
-            self.tracker.transition(device, cmd, &self.pool, &transitions);
+            if !cp.barriers.is_empty() {
+                self.barrier_scratch.clear();
+                for cb in &cp.barriers {
+                    let old = self.tracker.current(cb.handle);
+                    if old == cb.new_layout {
+                        continue;
+                    }
+                    let img = self.pool.image(cb.handle);
+                    self.barrier_scratch.push(make_barrier(img.image, img.kind, old, cb.new_layout));
+                    self.tracker.set(cb.handle, cb.new_layout);
+                }
+                if !self.barrier_scratch.is_empty() {
+                    unsafe {
+                        device.cmd_pipeline_barrier2(
+                            cmd,
+                            &vk::DependencyInfo::default().image_memory_barriers(&self.barrier_scratch),
+                        );
+                    }
+                }
+            }
 
             if let Some(ts) = &self.timestamps {
                 ts.begin_pass(cmd, self.current_frame, order_idx);
@@ -260,16 +330,25 @@ impl RenderGraph {
             }
         }
 
-        let finals: Vec<(ResourceHandle, vk::ImageLayout)> = self
-            .pool
-            .external_handles()
-            .collect::<Vec<_>>()
-            .into_iter()
-            .filter_map(|h| self.pool.external_final_layout(h).map(|l| (h, l)))
-            .collect();
-
-        if !finals.is_empty() {
-            self.tracker.transition(device, cmd, &self.pool, &finals);
+        if !self.compiled_finals.is_empty() {
+            self.barrier_scratch.clear();
+            for cb in &self.compiled_finals {
+                let old = self.tracker.current(cb.handle);
+                if old == cb.new_layout {
+                    continue;
+                }
+                let img = self.pool.image(cb.handle);
+                self.barrier_scratch.push(make_barrier(img.image, img.kind, old, cb.new_layout));
+                self.tracker.set(cb.handle, cb.new_layout);
+            }
+            if !self.barrier_scratch.is_empty() {
+                unsafe {
+                    device.cmd_pipeline_barrier2(
+                        cmd,
+                        &vk::DependencyInfo::default().image_memory_barriers(&self.barrier_scratch),
+                    );
+                }
+            }
         }
 
         if let Some(ts) = &self.timestamps {
@@ -292,6 +371,7 @@ impl RenderGraph {
         let affected: Vec<ResourceHandle> = self.pool.output_handles().collect();
         self.bindings.flush(&self.pool, &affected);
         self.tracker.invalidate(&affected);
+        self.build_compiled_passes();
         Ok(())
     }
 
@@ -417,6 +497,103 @@ fn topological_sort(n: usize, adj: Vec<HashSet<usize>>, mut in_degree: Vec<usize
     Ok(order)
 }
 
+fn make_barrier(
+    image: vk::Image,
+    kind: crate::render_graph::resource::ResourceKind,
+    old_layout: vk::ImageLayout,
+    new_layout: vk::ImageLayout,
+) -> vk::ImageMemoryBarrier2<'static> {
+    let (src_stage, src_access, dst_stage, dst_access) = layout_transition_masks(old_layout, new_layout, kind);
+
+    vk::ImageMemoryBarrier2::default()
+        .src_stage_mask(src_stage)
+        .src_access_mask(src_access)
+        .dst_stage_mask(dst_stage)
+        .dst_access_mask(dst_access)
+        .old_layout(old_layout)
+        .new_layout(new_layout)
+        .image(image)
+        .subresource_range(vk::ImageSubresourceRange {
+            aspect_mask: kind.aspect_mask(),
+            base_mip_level: 0,
+            level_count: 1,
+            base_array_layer: 0,
+            layer_count: 1,
+        })
+}
+
+fn layout_transition_masks(
+    from: vk::ImageLayout,
+    to: vk::ImageLayout,
+    kind: crate::render_graph::resource::ResourceKind,
+) -> (vk::PipelineStageFlags2, vk::AccessFlags2, vk::PipelineStageFlags2, vk::AccessFlags2) {
+    use vk::AccessFlags2 as A;
+    use vk::ImageLayout as L;
+    use vk::PipelineStageFlags2 as S;
+
+    match (from, to) {
+        (L::UNDEFINED, L::COLOR_ATTACHMENT_OPTIMAL) => {
+            (S::TOP_OF_PIPE, A::empty(), S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE)
+        }
+        (L::UNDEFINED, L::DEPTH_ATTACHMENT_OPTIMAL) => (
+            S::TOP_OF_PIPE,
+            A::empty(),
+            S::EARLY_FRAGMENT_TESTS,
+            A::DEPTH_STENCIL_ATTACHMENT_READ | A::DEPTH_STENCIL_ATTACHMENT_WRITE,
+        ),
+        (L::UNDEFINED, L::SHADER_READ_ONLY_OPTIMAL) => (S::TOP_OF_PIPE, A::empty(), S::FRAGMENT_SHADER, A::SHADER_READ),
+        (L::COLOR_ATTACHMENT_OPTIMAL, L::SHADER_READ_ONLY_OPTIMAL) => {
+            (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE, S::FRAGMENT_SHADER, A::SHADER_READ)
+        }
+        (L::DEPTH_ATTACHMENT_OPTIMAL, L::SHADER_READ_ONLY_OPTIMAL) => {
+            (S::LATE_FRAGMENT_TESTS, A::DEPTH_STENCIL_ATTACHMENT_WRITE, S::FRAGMENT_SHADER, A::SHADER_READ)
+        }
+        (L::SHADER_READ_ONLY_OPTIMAL, L::COLOR_ATTACHMENT_OPTIMAL) => {
+            (S::FRAGMENT_SHADER, A::SHADER_READ, S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE)
+        }
+        (L::SHADER_READ_ONLY_OPTIMAL, L::DEPTH_ATTACHMENT_OPTIMAL) => (
+            S::FRAGMENT_SHADER,
+            A::SHADER_READ,
+            S::EARLY_FRAGMENT_TESTS,
+            A::DEPTH_STENCIL_ATTACHMENT_READ | A::DEPTH_STENCIL_ATTACHMENT_WRITE,
+        ),
+        (L::DEPTH_ATTACHMENT_OPTIMAL, L::DEPTH_ATTACHMENT_OPTIMAL) => (
+            S::LATE_FRAGMENT_TESTS,
+            A::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            S::EARLY_FRAGMENT_TESTS,
+            A::DEPTH_STENCIL_ATTACHMENT_READ | A::DEPTH_STENCIL_ATTACHMENT_WRITE,
+        ),
+        (L::UNDEFINED, L::PRESENT_SRC_KHR) => (S::TOP_OF_PIPE, A::empty(), S::BOTTOM_OF_PIPE, A::empty()),
+        (L::COLOR_ATTACHMENT_OPTIMAL, L::PRESENT_SRC_KHR) => {
+            (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE, S::BOTTOM_OF_PIPE, A::empty())
+        }
+        (L::PRESENT_SRC_KHR, L::COLOR_ATTACHMENT_OPTIMAL) => {
+            (S::BOTTOM_OF_PIPE, A::empty(), S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE)
+        }
+        (L::COLOR_ATTACHMENT_OPTIMAL, L::TRANSFER_SRC_OPTIMAL) => {
+            (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE, S::TRANSFER, A::TRANSFER_READ)
+        }
+        (L::SHADER_READ_ONLY_OPTIMAL, L::TRANSFER_SRC_OPTIMAL) => {
+            (S::FRAGMENT_SHADER, A::SHADER_READ, S::TRANSFER, A::TRANSFER_READ)
+        }
+        (L::TRANSFER_SRC_OPTIMAL, L::SHADER_READ_ONLY_OPTIMAL) => {
+            (S::TRANSFER, A::TRANSFER_READ, S::FRAGMENT_SHADER, A::SHADER_READ)
+        }
+        (L::TRANSFER_SRC_OPTIMAL, L::COLOR_ATTACHMENT_OPTIMAL) => {
+            (S::TRANSFER, A::TRANSFER_READ, S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE)
+        }
+        (L::UNDEFINED, L::TRANSFER_SRC_OPTIMAL) => (S::TOP_OF_PIPE, A::empty(), S::TRANSFER, A::TRANSFER_READ),
+        (L::TRANSFER_DST_OPTIMAL, L::PRESENT_SRC_KHR) => {
+            (S::TRANSFER, A::TRANSFER_WRITE, S::BOTTOM_OF_PIPE, A::empty())
+        }
+        (L::UNDEFINED, L::TRANSFER_DST_OPTIMAL) => (S::TOP_OF_PIPE, A::empty(), S::TRANSFER, A::TRANSFER_WRITE),
+        (L::TRANSFER_DST_OPTIMAL, L::COLOR_ATTACHMENT_OPTIMAL) => {
+            (S::TRANSFER, A::TRANSFER_WRITE, S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE)
+        }
+        other => panic!("layout_transition_masks: неизвестная пара {:?} (kind={:?})", other, kind),
+    }
+}
+
 pub struct PassBuilder {
     name: String,
     accesses: Vec<PassAccess>,
@@ -466,6 +643,7 @@ impl PassBuilder {
         });
         self
     }
+
     pub fn bind_sampled_at(
         mut self,
         resource: ResourceHandle,
@@ -485,10 +663,12 @@ impl PassBuilder {
         });
         self
     }
+
     pub fn after(mut self, handle: PassHandle) -> Self {
         self.explicit_deps.push(handle);
         self
     }
+
     pub fn record<F>(self, f: F) -> PassNodeReady
     where
         F: FnMut(vk::CommandBuffer, &ResourcePool, *mut ()) -> anyhow::Result<()> + Send + 'static,

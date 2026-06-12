@@ -79,7 +79,7 @@ impl<'a> PipelineBuilder<'a> {
             frag_spv: None,
             color_formats: &[],
             depth_format: vk::Format::D32_SFLOAT,
-            cull_mode: vk::CullModeFlags::FRONT,
+            cull_mode: vk::CullModeFlags::NONE,
             depth_test: true,
             depth_write: true,
             depth_compare: vk::CompareOp::LESS_OR_EQUAL,
