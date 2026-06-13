@@ -1,4 +1,5 @@
-use crate::assets::AssetServer;
+use crate::assets::gpu_server::GpuAssetServer;
+use crate::assets::CpuAssetServer;
 use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
 use crate::render_graph::{pass, ExternalImageDesc, RenderGraph, ResourceKind};
 use crate::vulkan::VulkanContext;
@@ -63,7 +64,12 @@ impl Drop for LoadingPipeline {
 }
 
 impl RenderPipeline for LoadingPipeline {
-    fn build(ctx: &VulkanContext, _assets: &mut AssetServer, graph: &mut RenderGraph) -> anyhow::Result<PipelineHandles>
+    fn build(
+        ctx: &VulkanContext,
+        _cpu_assets: &mut CpuAssetServer,
+        _gpu_assets: &mut GpuAssetServer,
+        graph: &mut RenderGraph,
+    ) -> anyhow::Result<PipelineHandles>
     where
         Self: Sized,
     {
@@ -211,7 +217,7 @@ impl RenderPipeline for LoadingPipeline {
         graph.set_frame_data(Box::new(LoadingFrameData {
             device: input.device,
             time: self.start_time.elapsed().as_secs_f32(),
-            progress: input.assets.load_progress.fraction(),
+            progress: input.cpu_assets.load_progress.fraction(),
             width: w as f32,
             height: h as f32,
             egui: input.egui,

@@ -14,17 +14,17 @@ impl MyApp {
 
 impl App for MyApp {
     fn on_load(&mut self, ctx: &mut EngineContext) {
-        self.sponza = Some(ctx.assets.load_mesh_async("assets/sponza/glTF/Sponza.gltf"));
+        self.sponza = Some(ctx.cpu_assets.load_mesh_async("assets/sponza/glTF/Sponza.gltf"));
     }
 
     fn on_start(&mut self, ctx: &mut EngineContext) {
         if let Some(handle) = &self.sponza {
-            for (mesh, mat, transform) in ctx.assets.get_mesh_instances(handle).unwrap() {
+            for (mesh, mat, transform) in ctx.cpu_assets.get_mesh_instances(handle).unwrap() {
                 let mut builder = ctx.world.spawn();
-                builder = builder.insert(*mesh);
+                builder = builder.insert(mesh);
                 builder = builder.insert(transform.clone());
                 if let Some(m) = mat {
-                    builder = builder.insert(*m);
+                    builder = builder.insert(m);
                 }
                 builder.build();
             }

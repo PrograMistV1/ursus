@@ -1,5 +1,6 @@
+use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::shader_registry::ShaderHandle;
-use crate::assets::{AssetServer, GpuMesh};
+use crate::assets::{CpuAssetServer, GpuMesh};
 use crate::ecs::components::{MaterialHandle, Transform};
 use crate::render_graph::GpuImage;
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
@@ -37,11 +38,11 @@ impl GeometryPass {
         color_formats: [vk::Format; 2],
         bindless_layout: vk::DescriptorSetLayout,
         material_layout: vk::DescriptorSetLayout,
-        assets: &mut AssetServer,
+        cpu_assets: &mut CpuAssetServer,
     ) -> anyhow::Result<Self> {
         let mut pass = Self { pipelines: HashMap::new(), bindless_layout, material_layout, color_formats };
-        let default = assets.shaders.diffuse();
-        pass.get_or_create_pipeline(device, default, &mut assets.shaders)?;
+        let default = cpu_assets.shaders.diffuse();
+        pass.get_or_create_pipeline(device, default, &mut cpu_assets.shaders)?;
         Ok(pass)
     }
 
@@ -77,7 +78,7 @@ impl GeometryPass {
         clear_color: [f32; 4],
         view_proj: Mat4,
         draw_calls: &[DrawCall<'_>],
-        assets: &AssetServer,
+        gpu_assets: &GpuAssetServer,
         debug_utils: Option<&Device>,
     ) {
         let extent = albedo.extent();
@@ -156,7 +157,7 @@ impl GeometryPass {
                         vk::PipelineBindPoint::GRAPHICS,
                         pipeline.layout,
                         0,
-                        &[assets.bindless.set, assets.material_buffer_set()],
+                        &[gpu_assets.bindless.set, gpu_assets.material_buffer.set],
                         &[],
                     );
                     current_shader = Some(dc.shader);

@@ -1,5 +1,6 @@
-use crate::assets::AssetServer;
-use crate::ecs::systems::collect_draw_calls;
+use crate::assets::gpu_server::GpuAssetServer;
+use crate::assets::{CpuAssetServer, MaterialHandle, MeshHandle};
+use crate::components::Transform;
 use crate::lighting::LightingUbo;
 use crate::math::frustum::transform_aabb;
 use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
@@ -26,7 +27,8 @@ pub struct DefaultPipeline;
 impl RenderPipeline for DefaultPipeline {
     fn build(
         ctx: &VulkanContext,
-        assets: &mut AssetServer,
+        cpu_assets: &mut CpuAssetServer,
+        gpu_assets: &mut GpuAssetServer,
         graph: &mut RenderGraph,
     ) -> anyhow::Result<PipelineHandles> {
         let swapchain = ctx.swapchain.as_ref().unwrap();
@@ -77,9 +79,9 @@ impl RenderPipeline for DefaultPipeline {
         let mut geometry_pass = GeometryPass::new(
             &ctx.device.handle,
             GBuffer::color_formats(),
-            assets.bindless.layout,
-            assets.material_buffer.layout,
-            assets,
+            gpu_assets.bindless.layout,
+            gpu_assets.material_buffer.layout,
+            cpu_assets,
         )?;
 
         let lighting_pass = LightingPass::new(
@@ -149,7 +151,7 @@ impl RenderPipeline for DefaultPipeline {
                         data.clear_color,
                         data.view_proj,
                         &draw_calls,
-                        &*data.assets,
+                        &*data.gpu_assets,
                         debug_utils.as_deref(),
                     );
                     Ok(())
@@ -310,50 +312,51 @@ impl RenderPipeline for DefaultPipeline {
         use crate::math::frustum::extract_planes;
 
         let frustum = extract_planes(input.view_proj);
-
-        let ecs_calls = collect_draw_calls(input.world, input.assets);
-        input.assets.upload_materials();
+        input.gpu_assets.upload_materials(&input.cpu_assets);
 
         let mut draw_calls: Vec<OwnedDrawCall> = Vec::new();
         let mut prepass_calls: Vec<OwnedDrawCall> = Vec::new();
 
-        for dc in &ecs_calls {
-            let gpu = match input.assets.get_gpu_mesh(dc.mesh) {
+        for (mesh, transform, mat) in
+            input.world.inner.query::<(&MeshHandle, &Transform, Option<&MaterialHandle>)>().iter()
+        {
+            let gpu = match input.gpu_assets.get_gpu_mesh(*mesh) {
                 Some(g) => g,
                 None => continue,
             };
-            let model = dc.transform.matrix();
+            let shader = mat
+                .and_then(|m| input.cpu_assets.get_material(*m))
+                .map(|m| m.shader)
+                .unwrap_or(input.cpu_assets.shaders.diffuse());
+
+            let model = transform.matrix();
             if !transform_aabb(&gpu.aabb, model).intersects_frustum(&frustum) {
                 continue;
             }
 
             prepass_calls.push(OwnedDrawCall {
                 gpu_mesh_ptr: gpu as *const _,
-                transform: dc.transform.clone(),
+                transform: transform.clone(),
                 material: None,
-                shader: dc.shader,
+                shader,
             });
-
             draw_calls.push(OwnedDrawCall {
                 gpu_mesh_ptr: gpu as *const _,
-                transform: dc.transform.clone(),
-                material: dc.material,
-                shader: dc.shader,
+                transform: transform.clone(),
+                material: mat.copied(),
+                shader,
             });
         }
 
         draw_calls.sort_by_key(|dc| dc.shader.0);
 
-        let shadow_calls: Vec<OwnedDrawCall> = ecs_calls
+        let shadow_calls: Vec<OwnedDrawCall> = draw_calls
             .iter()
-            .filter_map(|dc| {
-                let gpu = input.assets.get_gpu_mesh(dc.mesh)?;
-                Some(OwnedDrawCall {
-                    gpu_mesh_ptr: gpu as *const _,
-                    transform: dc.transform.clone(),
-                    material: dc.material,
-                    shader: dc.shader,
-                })
+            .map(|dc| OwnedDrawCall {
+                gpu_mesh_ptr: dc.gpu_mesh_ptr,
+                transform: dc.transform.clone(),
+                material: dc.material,
+                shader: dc.shader,
             })
             .collect();
 
@@ -369,7 +372,7 @@ impl RenderPipeline for DefaultPipeline {
             view_proj: input.view_proj,
             light_view_proj: input.light_view_proj,
             lighting: lighting_frame,
-            assets: input.assets,
+            gpu_assets: input.gpu_assets, // было assets: input.assets
             egui: input.egui,
             egui_output: Some(input.egui_output),
             window: input.window,
@@ -419,7 +422,7 @@ struct DefaultPipelineFrameData {
     view_proj: glam::Mat4,
     light_view_proj: glam::Mat4,
     lighting: LightingUbo,
-    assets: *const AssetServer,
+    gpu_assets: *const GpuAssetServer,
     egui: *mut crate::egui_layer::EguiLayer,
     egui_output: Option<egui::FullOutput>,
     window: *const winit::window::Window,

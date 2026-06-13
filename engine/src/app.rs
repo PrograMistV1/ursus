@@ -1,4 +1,6 @@
-use crate::assets::AssetServer;
+use crate::assets::cpu_server::CpuAssetServer;
+use crate::assets::gpu_server::GpuAssetServer;
+use crate::assets::CpuMesh;
 use crate::debug_ui::{self, DebugUiState};
 use crate::ecs::GameWorld;
 use crate::egui_layer::EguiLayer;
@@ -6,6 +8,7 @@ use crate::lighting::LightingUbo;
 use crate::pipeline::{DefaultPipeline, LoadingPipeline, RenderPipeline};
 use crate::vulkan::{build_dyn_renderer, DynRenderer};
 use crate::vulkan::{Camera, VulkanContext};
+use std::sync::{Arc, Mutex};
 
 use winit::{
     application::ApplicationHandler,
@@ -27,7 +30,8 @@ pub struct EngineContext {
     pub lighting: LightingUbo,
     pub world: GameWorld,
     pub renderer: Box<dyn DynRenderer>,
-    pub assets: AssetServer,
+    pub cpu_assets: CpuAssetServer,
+    pub gpu_assets: GpuAssetServer,
     temp_pool: ash::vk::CommandPool,
     pub vk: VulkanContext,
 }
@@ -36,25 +40,47 @@ impl EngineContext {
     fn new(vk: VulkanContext) -> anyhow::Result<Self> {
         let temp_pool = create_temp_pool(&vk)?;
 
-        let mut assets = AssetServer::new(
+        let upload_queue = Arc::new(Mutex::new(Vec::new()));
+        let mut cpu_assets = CpuAssetServer::new(Arc::clone(&upload_queue));
+
+        let mut gpu_assets = GpuAssetServer::new(
             vk.device.handle.clone(),
             vk.device.physical,
             vk.instance.handle.clone(),
             temp_pool,
             vk.device.graphics_queue,
+            upload_queue,
+            Arc::clone(&cpu_assets.mesh_path_cache),
         )?;
 
-        let renderer = build_dyn_renderer::<DefaultPipeline>(&vk, &mut assets, 0.5, 0.2)?;
+        let tri = cpu_assets.register_mesh(CpuMesh::triangle());
+        let cube = cpu_assets.register_mesh(CpuMesh::cube());
+        let plane = cpu_assets.register_mesh(CpuMesh::plane(10.0, 10));
+        gpu_assets.upload_mesh(tri, cpu_assets.get_cpu_mesh(tri).unwrap())?;
+        gpu_assets.upload_mesh(cube, cpu_assets.get_cpu_mesh(cube).unwrap())?;
+        gpu_assets.upload_mesh(plane, cpu_assets.get_cpu_mesh(plane).unwrap())?;
+
+        let renderer = build_dyn_renderer::<DefaultPipeline>(&vk, &mut cpu_assets, &mut gpu_assets, 0.5, 0.2)?;
 
         Ok(Self {
             camera: Camera::default(),
             lighting: LightingUbo::default(),
             world: GameWorld::new(),
             renderer,
-            assets,
+            cpu_assets,
+            gpu_assets,
             temp_pool,
             vk,
         })
+    }
+
+    pub fn poll_assets(&mut self) {
+        self.cpu_assets.poll_loader();
+        self.gpu_assets.flush_uploads(&mut self.cpu_assets).ok();
+    }
+
+    pub fn is_loading(&self) -> bool {
+        self.cpu_assets.is_loading()
     }
 
     pub fn set_pipeline<P: RenderPipeline + Default + 'static>(&mut self) -> anyhow::Result<()> {
@@ -63,19 +89,12 @@ impl EngineContext {
         let prev_exposure = self.renderer.exposure();
         let prev_fsr = self.renderer.fsr_sharpness();
 
-        let new_renderer = build_dyn_renderer::<P>(&self.vk, &mut self.assets, prev_exposure, prev_fsr)?;
+        let new_renderer =
+            build_dyn_renderer::<P>(&self.vk, &mut self.cpu_assets, &mut self.gpu_assets, prev_exposure, prev_fsr)?;
 
         self.renderer = new_renderer;
         log::info!("Pipeline switched to {}", std::any::type_name::<P>());
         Ok(())
-    }
-
-    pub fn poll_assets(&mut self) {
-        self.assets.poll_loader();
-    }
-
-    pub fn is_loading(&self) -> bool {
-        self.assets.is_loading()
     }
 
     pub fn render_frame(
@@ -88,7 +107,8 @@ impl EngineContext {
         self.renderer.draw_frame(
             &self.vk,
             &mut self.world,
-            &self.assets,
+            &mut self.cpu_assets,
+            &mut self.gpu_assets,
             &self.camera,
             &self.lighting,
             egui,
@@ -262,7 +282,7 @@ fn handle_loading_event(state: &mut LoadingState, event: &WindowEvent, event_loo
         WindowEvent::RedrawRequested => {
             state.ctx.poll_assets();
 
-            let progress = state.ctx.assets.load_progress.clone();
+            let progress = state.ctx.cpu_assets.load_progress.clone();
 
             let raw = state.egui.begin_frame(&state.window);
             let egui_output = state.egui.ctx.run(raw, |ctx| {

@@ -1,4 +1,5 @@
-use crate::assets::AssetServer;
+use crate::assets::cpu_server::CpuAssetServer;
+use crate::assets::gpu_server::GpuAssetServer;
 use crate::ecs::GameWorld;
 use crate::egui_layer::EguiLayer;
 use crate::lighting::LightingUbo;
@@ -51,7 +52,8 @@ pub trait DynRenderer: Send {
         &mut self,
         ctx: &VulkanContext,
         world: &mut GameWorld,
-        assets: &AssetServer,
+        cpu_assets: &mut CpuAssetServer,
+        gpu_assets: &mut GpuAssetServer,
         camera: &Camera,
         lighting: &LightingUbo,
         egui: &mut EguiLayer,
@@ -92,7 +94,8 @@ impl<P: RenderPipeline> Renderer<P> {
         &mut self,
         ctx: &VulkanContext,
         world: &mut GameWorld,
-        assets: &AssetServer,
+        cpu_assets: &mut CpuAssetServer,
+        gpu_assets: &mut GpuAssetServer,
         camera: &Camera,
         lighting: &LightingUbo,
         egui: &mut EguiLayer,
@@ -151,7 +154,8 @@ impl<P: RenderPipeline> Renderer<P> {
         let input = FrameInput {
             device,
             world,
-            assets,
+            cpu_assets,
+            gpu_assets,
             camera,
             lighting,
             view_proj,
@@ -236,7 +240,8 @@ impl<P: RenderPipeline> DynRenderer for Renderer<P> {
         &mut self,
         ctx: &VulkanContext,
         world: &mut GameWorld,
-        assets: &AssetServer,
+        cpu_assets: &mut CpuAssetServer,
+        gpu_assets: &mut GpuAssetServer,
         camera: &Camera,
         lighting: &LightingUbo,
         egui: &mut EguiLayer,
@@ -244,7 +249,7 @@ impl<P: RenderPipeline> DynRenderer for Renderer<P> {
         window: &winit::window::Window,
         clear_color: [f32; 4],
     ) -> anyhow::Result<bool> {
-        self.draw_frame(ctx, world, assets, camera, lighting, egui, egui_output, window, clear_color)
+        self.draw_frame(ctx, world, cpu_assets, gpu_assets, camera, lighting, egui, egui_output, window, clear_color)
     }
 
     fn resize_output(&mut self, w: u32, h: u32) -> anyhow::Result<()> {
@@ -276,7 +281,8 @@ impl<P: RenderPipeline> DynRenderer for Renderer<P> {
 
 pub fn build_dyn_renderer<P: RenderPipeline + Default + 'static>(
     ctx: &VulkanContext,
-    assets: &mut AssetServer,
+    cpu_assets: &mut CpuAssetServer,
+    gpu_assets: &mut GpuAssetServer,
     prev_exposure: f32,
     prev_fsr_sharpness: f32,
 ) -> anyhow::Result<Box<dyn DynRenderer>> {
@@ -297,7 +303,7 @@ pub fn build_dyn_renderer<P: RenderPipeline + Default + 'static>(
         ctx.debug_utils.clone(),
     );
 
-    let handles = P::build(ctx, assets, &mut graph)?;
+    let handles = P::build(ctx, cpu_assets, gpu_assets, &mut graph)?;
     graph.allocate()?;
     graph.compile()?;
 

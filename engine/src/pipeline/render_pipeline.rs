@@ -1,4 +1,5 @@
-use crate::assets::AssetServer;
+use crate::assets::cpu_server::CpuAssetServer;
+use crate::assets::gpu_server::GpuAssetServer;
 use crate::ecs::GameWorld;
 use crate::egui_layer::EguiLayer;
 use crate::lighting::LightingUbo;
@@ -10,7 +11,8 @@ use glam::Mat4;
 pub struct FrameInput<'a> {
     pub device: &'a ash::Device,
     pub world: &'a mut GameWorld,
-    pub assets: &'a AssetServer,
+    pub cpu_assets: &'a mut CpuAssetServer,
+    pub gpu_assets: &'a mut GpuAssetServer,
     pub camera: &'a Camera,
     pub lighting: &'a LightingUbo,
     pub view_proj: Mat4,
@@ -28,7 +30,12 @@ pub struct FrameInput<'a> {
 }
 
 pub trait RenderPipeline: Send + 'static {
-    fn build(ctx: &VulkanContext, assets: &mut AssetServer, graph: &mut RenderGraph) -> anyhow::Result<PipelineHandles>
+    fn build(
+        ctx: &VulkanContext,
+        cpu_assets: &mut CpuAssetServer,
+        gpu_assets: &mut GpuAssetServer,
+        graph: &mut RenderGraph,
+    ) -> anyhow::Result<PipelineHandles>
     where
         Self: Sized;
 

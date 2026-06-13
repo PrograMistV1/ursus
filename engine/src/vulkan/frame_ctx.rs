@@ -1,12 +1,12 @@
-use crate::assets::AssetServer;
+use crate::assets::gpu_server::GpuAssetServer;
+use crate::assets::CpuAssetServer;
 use crate::lighting::LightingUbo;
 use crate::vulkan::passes::geometry::DrawCall;
+pub use crate::vulkan::passes::geometry::DrawCall as FrameDrawCall;
+use crate::vulkan::timestamps::GpuTimestampPool;
 use crate::vulkan::Camera;
 use ash::vk;
 use glam::Mat4;
-
-pub use crate::vulkan::passes::geometry::DrawCall as FrameDrawCall;
-use crate::vulkan::timestamps::GpuTimestampPool;
 
 pub struct FrameCtx<'a> {
     pub device: &'a ash::Device,
@@ -31,7 +31,8 @@ pub struct FrameCtx<'a> {
     pub exposure: f32,
     pub clear_color: [f32; 4],
 
-    pub assets: &'a AssetServer,
+    pub cpu_assets: &'a CpuAssetServer,
+    pub gpu_assets: &'a GpuAssetServer,
 
     pub egui: *mut crate::egui_layer::EguiLayer,
     pub egui_output: Option<egui::FullOutput>,
