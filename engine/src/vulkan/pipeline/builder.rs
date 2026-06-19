@@ -250,12 +250,7 @@ pub mod cmd {
         extent: vk::Extent2D,
         clear: [f32; 4],
     ) {
-        let color_attachment = vk::RenderingAttachmentInfo::default()
-            .image_view(view)
-            .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::STORE)
-            .clear_value(vk::ClearValue { color: vk::ClearColorValue { float32: clear } });
+        let color_attachment = color_attachment_clear(view, clear);
         begin_rendering_impl(device, cmd, &[color_attachment], None, extent);
     }
 
@@ -294,25 +289,10 @@ pub mod cmd {
         depth_view: vk::ImageView,
         extent: vk::Extent2D,
     ) {
-        let color_attachments: Vec<vk::RenderingAttachmentInfo> = color_views
-            .iter()
-            .map(|&(view, clear)| {
-                vk::RenderingAttachmentInfo::default()
-                    .image_view(view)
-                    .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                    .load_op(vk::AttachmentLoadOp::CLEAR)
-                    .store_op(vk::AttachmentStoreOp::STORE)
-                    .clear_value(vk::ClearValue { color: vk::ClearColorValue { float32: clear } })
-            })
-            .collect();
+        let color_attachments: Vec<_> =
+            color_views.iter().map(|&(view, clear)| color_attachment_clear(view, clear)).collect();
 
-        let depth_attachment = vk::RenderingAttachmentInfo::default()
-            .image_view(depth_view)
-            .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::STORE)
-            .clear_value(vk::ClearValue { depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 } });
-
+        let depth_attachment = depth_attachment_clear(depth_view);
         begin_rendering_impl(device, cmd, &color_attachments, Some(depth_attachment), extent);
     }
 
@@ -322,12 +302,7 @@ pub mod cmd {
         depth_view: vk::ImageView,
         extent: vk::Extent2D,
     ) {
-        let depth_attachment = vk::RenderingAttachmentInfo::default()
-            .image_view(depth_view)
-            .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::STORE)
-            .clear_value(vk::ClearValue { depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 } });
+        let depth_attachment = depth_attachment_clear(depth_view);
         begin_rendering_impl(device, cmd, &[], Some(depth_attachment), extent);
     }
 
@@ -369,5 +344,23 @@ pub mod cmd {
             );
             device.cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent }]);
         }
+    }
+
+    pub fn color_attachment_clear(view: vk::ImageView, clear: [f32; 4]) -> vk::RenderingAttachmentInfo<'static> {
+        vk::RenderingAttachmentInfo::default()
+            .image_view(view)
+            .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .clear_value(vk::ClearValue { color: vk::ClearColorValue { float32: clear } })
+    }
+
+    pub fn depth_attachment_clear(view: vk::ImageView) -> vk::RenderingAttachmentInfo<'static> {
+        vk::RenderingAttachmentInfo::default()
+            .image_view(view)
+            .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .clear_value(vk::ClearValue { depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 } })
     }
 }
