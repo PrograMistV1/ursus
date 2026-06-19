@@ -1,60 +1,25 @@
 use crate::assets::cpu_server::CpuAssetServer;
 use crate::assets::gpu_server::GpuAssetServer;
-use crate::ecs::GameWorld;
-use crate::lighting::LightingUbo;
 use crate::pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use crate::pipeline::FrameInput;
 use crate::render_graph::{RenderGraph, ResourcePool};
+use crate::render_world::RenderWorld;
 use crate::vulkan::core::commands::Commands;
 use crate::vulkan::core::sync::FrameSync;
 use crate::vulkan::timestamps::GpuFrameTimes;
 use crate::vulkan::{Device, VulkanContext};
 use ash::vk;
-use glam::{Mat4, Vec3};
 use std::sync::Arc;
 
 const FRAMES_IN_FLIGHT: u32 = 3;
-
-pub struct Camera {
-    pub eye: Vec3,
-    pub target: Vec3,
-    pub up: Vec3,
-    pub fov_y: f32,
-    pub z_near: f32,
-    pub z_far: f32,
-}
-
-impl Default for Camera {
-    fn default() -> Self {
-        Self {
-            eye: Vec3::new(2.0, 2.0, 3.0),
-            target: Vec3::ZERO,
-            up: Vec3::Y,
-            fov_y: 60_f32.to_radians(),
-            z_near: 0.1,
-            z_far: 100.0,
-        }
-    }
-}
-
-impl Camera {
-    pub fn view_proj(&self, aspect: f32) -> Mat4 {
-        let view = Mat4::look_at_rh(self.eye, self.target, self.up);
-        let mut proj = Mat4::perspective_rh(self.fov_y, aspect, self.z_near, self.z_far);
-        proj.y_axis.y *= -1.0;
-        proj * view
-    }
-}
 
 pub trait DynRenderer: Send {
     fn draw_frame(
         &mut self,
         ctx: &VulkanContext,
-        world: &mut GameWorld,
+        render_world: &RenderWorld,
         cpu_assets: &mut CpuAssetServer,
         gpu_assets: &mut GpuAssetServer,
-        camera: &Camera,
-        lighting: &LightingUbo,
         clear_color: [f32; 4],
     ) -> anyhow::Result<bool>;
 
@@ -89,11 +54,9 @@ impl<P: RenderPipeline> Renderer<P> {
     pub fn draw_frame(
         &mut self,
         ctx: &VulkanContext,
-        world: &mut GameWorld,
+        render_world: &RenderWorld,
         cpu_assets: &mut CpuAssetServer,
         gpu_assets: &mut GpuAssetServer,
-        camera: &Camera,
-        lighting: &LightingUbo,
         clear_color: [f32; 4],
     ) -> anyhow::Result<bool> {
         puffin::profile_function!();
@@ -102,12 +65,6 @@ impl<P: RenderPipeline> Renderer<P> {
         let cmd = self.commands.buffers[self.current_frame];
         let device = &ctx.device.handle;
         let swapchain = ctx.swapchain.as_ref().unwrap();
-
-        let aspect = swapchain.extent.width as f32 / swapchain.extent.height as f32;
-        let view_proj = camera.view_proj(aspect);
-
-        let light_dir: [f32; 3] = lighting.directional.direction[0..3].try_into()?;
-        let light_view_proj = crate::lighting::compute_light_view_proj(light_dir, Vec3::new(0.0, 2.0, 0.0), 20.0);
 
         unsafe {
             puffin::profile_scope!("wait_for_fences");
@@ -146,13 +103,9 @@ impl<P: RenderPipeline> Renderer<P> {
 
         let input = FrameInput {
             device,
-            world,
+            render_world,
             cpu_assets,
             gpu_assets,
-            camera,
-            lighting,
-            view_proj,
-            light_view_proj,
             graphics_queue: ctx.device.graphics_queue,
             command_pool: self.commands.pool,
             exposure: self.exposure,
@@ -166,7 +119,6 @@ impl<P: RenderPipeline> Renderer<P> {
             puffin::profile_scope!("pipeline_prepare");
             self.pipeline.prepare_frame(&mut self.graph, input)?;
         }
-
         {
             puffin::profile_scope!("graph_execute");
             self.graph.execute(device, cmd)?;
@@ -236,14 +188,12 @@ impl<P: RenderPipeline> DynRenderer for Renderer<P> {
     fn draw_frame(
         &mut self,
         ctx: &VulkanContext,
-        world: &mut GameWorld,
+        render_world: &RenderWorld,
         cpu_assets: &mut CpuAssetServer,
         gpu_assets: &mut GpuAssetServer,
-        camera: &Camera,
-        lighting: &LightingUbo,
         clear_color: [f32; 4],
     ) -> anyhow::Result<bool> {
-        self.draw_frame(ctx, world, cpu_assets, gpu_assets, camera, lighting, clear_color)
+        self.draw_frame(ctx, render_world, cpu_assets, gpu_assets, clear_color)
     }
 
     fn resize_output(&mut self, w: u32, h: u32) -> anyhow::Result<()> {

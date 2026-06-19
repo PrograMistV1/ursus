@@ -1,7 +1,7 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::shader_registry::ShaderHandle;
 use crate::assets::{CpuAssetServer, GpuMesh};
-use crate::ecs::components::{MaterialHandle, Transform};
+use crate::ecs::components::MaterialHandle;
 use crate::render_graph::GpuImage;
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
 use crate::vulkan::pipeline::pipeline::PipelineDesc;
@@ -20,7 +20,7 @@ pub struct MeshPushConstants {
 
 pub struct DrawCall<'a> {
     pub gpu_mesh: &'a GpuMesh,
-    pub transform: &'a Transform,
+    pub model: Mat4,
     pub material: Option<MaterialHandle>,
     pub shader: ShaderHandle,
 }
@@ -164,11 +164,10 @@ impl GeometryPass {
                     current_layout = pipeline.layout;
                 }
 
-                let model = dc.transform.matrix();
-                let mvp = view_proj * model;
+                let mvp = view_proj * dc.model;
                 let pc = MeshPushConstants {
                     mvp: mvp.to_cols_array_2d(),
-                    model: model.to_cols_array_2d(),
+                    model: dc.model.to_cols_array_2d(),
                     material_id: dc.material.map(|m| m.0).unwrap_or(0),
                 };
                 let pc_bytes = std::slice::from_raw_parts(

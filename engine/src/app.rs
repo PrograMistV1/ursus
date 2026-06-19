@@ -2,10 +2,9 @@ use crate::assets::cpu_server::CpuAssetServer;
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::{ui, CpuMesh};
 use crate::ecs::GameWorld;
-use crate::lighting::LightingUbo;
 use crate::pipeline::{DefaultPipeline, LoadingPipeline, RenderPipeline};
+use crate::vulkan::VulkanContext;
 use crate::vulkan::{build_dyn_renderer, DynRenderer};
-use crate::vulkan::{Camera, VulkanContext};
 use std::sync::{Arc, Mutex};
 
 use crate::assets::ui::FontAtlas;
@@ -25,8 +24,6 @@ pub trait App {
 }
 
 pub struct EngineContext {
-    pub camera: Camera,
-    pub lighting: LightingUbo,
     pub world: GameWorld,
     pub renderer: Box<dyn DynRenderer>,
     pub cpu_assets: CpuAssetServer,
@@ -68,16 +65,7 @@ impl EngineContext {
 
         let renderer = build_dyn_renderer::<DefaultPipeline>(&vk, &mut cpu_assets, &mut gpu_assets, 0.5, 0.2)?;
 
-        Ok(Self {
-            camera: Camera::default(),
-            lighting: LightingUbo::default(),
-            world: GameWorld::new(),
-            renderer,
-            cpu_assets,
-            gpu_assets,
-            temp_pool,
-            vk,
-        })
+        Ok(Self { world: GameWorld::new(), renderer, cpu_assets, gpu_assets, temp_pool, vk })
     }
 
     pub fn poll_assets(&mut self) {
@@ -104,15 +92,14 @@ impl EngineContext {
     }
 
     pub fn render_frame(&mut self, clear_color: [f32; 4]) -> anyhow::Result<bool> {
-        self.renderer.draw_frame(
-            &self.vk,
-            &mut self.world,
-            &mut self.cpu_assets,
-            &mut self.gpu_assets,
-            &self.camera,
-            &self.lighting,
-            clear_color,
-        )
+        let swapchain = self.vk.swapchain.as_ref().unwrap();
+        let aspect = swapchain.extent.width as f32 / swapchain.extent.height as f32;
+        let output_size = (swapchain.extent.width as f32, swapchain.extent.height as f32);
+
+        let render_world =
+            crate::render_world_extract::extract_render_world(&self.world, &self.gpu_assets, output_size, aspect);
+
+        self.renderer.draw_frame(&self.vk, &render_world, &mut self.cpu_assets, &mut self.gpu_assets, clear_color)
     }
 }
 
@@ -276,8 +263,6 @@ fn handle_loading_event(state: &mut LoadingState, event: &WindowEvent, event_loo
     }
 }
 
-fn draw_loading_ui(progress: &crate::assets::LoadProgress) {}
-
 fn handle_running_event(state: &mut RunningState, event: &WindowEvent, app: &mut dyn App) {
     match event {
         WindowEvent::Resized(size) => {
@@ -322,8 +307,6 @@ fn handle_running_event(state: &mut RunningState, event: &WindowEvent, app: &mut
                 puffin::profile_scope!("render_frame");
                 state.ctx.render_frame([0.0, 0.0, 0.0, 1.0]).expect("render failed")
             };
-
-            let frame_ms = frame_start.elapsed().as_secs_f32() * 1000.0;
 
             if needs_recreate {
                 let size = state.window.inner_size();

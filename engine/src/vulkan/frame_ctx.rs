@@ -4,7 +4,6 @@ use crate::lighting::LightingUbo;
 use crate::vulkan::passes::geometry::DrawCall;
 pub use crate::vulkan::passes::geometry::DrawCall as FrameDrawCall;
 use crate::vulkan::timestamps::GpuTimestampPool;
-use crate::vulkan::Camera;
 use ash::vk;
 use glam::Mat4;
 
@@ -14,7 +13,6 @@ pub struct FrameCtx<'a> {
     pub draw_calls: Vec<DrawCall<'a>>,
     pub shadow_calls: Vec<DrawCall<'a>>,
 
-    pub camera: &'a Camera,
     pub view_proj: Mat4,
     pub light_view_proj: Mat4,
 

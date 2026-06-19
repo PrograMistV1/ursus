@@ -2,10 +2,10 @@ use crate::assets::ShaderRegistry;
 use crate::lighting::buffer::LightBuffer;
 use crate::render_graph::GpuImage;
 use crate::vulkan::pipeline::builder::{cmd, descriptor, PipelineBuilder};
-use crate::vulkan::Camera;
 use ash::vk;
 use cmd::begin_rendering_discard;
 use descriptor::alloc_single_set;
+use glam::Mat4;
 
 #[repr(C)]
 struct LightingPC {
@@ -131,7 +131,7 @@ impl LightingPass {
         self.light_buffer.upload(data);
     }
 
-    pub fn record(&self, device: &ash::Device, cmd: vk::CommandBuffer, hdr: &impl GpuImage, camera: &Camera) {
+    pub fn record(&self, device: &ash::Device, cmd: vk::CommandBuffer, hdr: &impl GpuImage, view: Mat4, proj: Mat4) {
         let extent = hdr.extent();
 
         begin_rendering_discard(device, cmd, hdr.view(), extent);
@@ -146,11 +146,6 @@ impl LightingPass {
                 &[self.descriptor_set],
                 &[],
             );
-
-            let aspect = extent.width as f32 / extent.height as f32;
-            let view = glam::Mat4::look_at_rh(camera.eye, camera.target, camera.up);
-            let mut proj = glam::Mat4::perspective_rh(camera.fov_y, aspect, camera.z_near, camera.z_far);
-            proj.y_axis.y *= -1.0;
 
             let pc = LightingPC {
                 inv_proj: proj.inverse().to_cols_array_2d(),

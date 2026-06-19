@@ -98,3 +98,57 @@ pub struct UiRect {
     pub color: [f32; 4],
     pub border_radius: f32,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct ActiveCamera;
+
+#[derive(Debug, Clone)]
+pub struct CameraComponent {
+    pub eye: Vec3,
+    pub target: Vec3,
+    pub up: Vec3,
+    pub fov_y: f32,
+    pub z_near: f32,
+    pub z_far: f32,
+}
+
+impl Default for CameraComponent {
+    fn default() -> Self {
+        Self {
+            eye: Vec3::new(2.0, 2.0, 3.0),
+            target: Vec3::ZERO,
+            up: Vec3::Y,
+            fov_y: 60_f32.to_radians(),
+            z_near: 0.1,
+            z_far: 100.0,
+        }
+    }
+}
+
+impl CameraComponent {
+    pub fn view_proj(&self, aspect: f32) -> Mat4 {
+        let view = Mat4::look_at_rh(self.eye, self.target, self.up);
+        let mut proj = Mat4::perspective_rh(self.fov_y, aspect, self.z_near, self.z_far);
+        proj.y_axis.y *= -1.0;
+        proj * view
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DirectionalLightComponent {
+    pub direction: Vec3,
+    pub color: [f32; 4], // rgb + intensity в alpha
+}
+
+impl Default for DirectionalLightComponent {
+    fn default() -> Self {
+        Self { direction: Vec3::new(-0.3, -1.0, -0.2), color: [1.0, 0.95, 0.85, 2.0] }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PointLightComponent {
+    pub position: Vec3,
+    pub radius: f32,
+    pub color: [f32; 4], // rgb + intensity
+}

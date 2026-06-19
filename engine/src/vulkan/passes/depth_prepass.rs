@@ -1,6 +1,5 @@
 use crate::assets::mesh::Vertex;
 use crate::assets::{GpuMesh, ShaderRegistry};
-use crate::ecs::components::Transform;
 use crate::render_graph::GpuImage;
 use crate::vulkan::pipeline::builder::{cmd, PipelineBuilder};
 use ash::vk;
@@ -13,9 +12,8 @@ struct DepthPrepassPC {
 
 pub struct DepthPrepassDrawCall<'a> {
     pub gpu_mesh: &'a GpuMesh,
-    pub transform: &'a Transform,
+    pub model: Mat4,
 }
-
 pub struct DepthPrepass {
     pub pipeline: vk::Pipeline,
     pub layout: vk::PipelineLayout,
@@ -65,7 +63,7 @@ impl DepthPrepass {
             device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
 
             for dc in draw_calls {
-                let mvp = view_proj * dc.transform.matrix();
+                let mvp = view_proj * dc.model;
                 let pc = DepthPrepassPC { mvp: mvp.to_cols_array_2d() };
                 let pc_bytes =
                     std::slice::from_raw_parts(&pc as *const DepthPrepassPC as *const u8, size_of::<DepthPrepassPC>());

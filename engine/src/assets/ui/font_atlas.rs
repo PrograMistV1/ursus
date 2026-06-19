@@ -1,31 +1,24 @@
 use fontdue::{Font, FontSettings};
 use std::collections::HashMap;
 
-/// UV-координаты глифа в атласе (нормализованные 0..1)
 #[derive(Debug, Clone, Copy)]
 pub struct GlyphUv {
     pub u0: f32,
     pub v0: f32,
     pub u1: f32,
     pub v1: f32,
-    /// Размер глифа в пикселях
     pub width: u32,
     pub height: u32,
-    /// Смещение от baseline в пикселях
     pub offset_x: i32,
     pub offset_y: i32,
 }
 
 pub struct FontAtlas {
-    /// RGBA пиксели атласа
     pub pixels: Vec<u8>,
     pub atlas_width: u32,
     pub atlas_height: u32,
-    /// Таблица char → UV для каждого размера шрифта
     glyphs: HashMap<(char, u32), GlyphUv>,
-    /// Продвижение курсора для каждой пары (char, размер)
     pub advances: HashMap<(char, u32), f32>,
-    font: Font,
 }
 
 impl FontAtlas {
@@ -56,7 +49,6 @@ impl FontAtlas {
                 let (metrics, bitmap) = font.rasterize(ch, px);
 
                 if bitmap.is_empty() {
-                    // Пробел или невидимый символ — сохраняем advance без глифа
                     advances.insert((ch, size), metrics.advance_width);
                     glyphs.insert(
                         (ch, size),
@@ -68,7 +60,6 @@ impl FontAtlas {
                 let gw = metrics.width as u32;
                 let gh = metrics.height as u32;
 
-                // Перенос на новую строку если не влезает
                 if cursor_x + gw + padding > atlas_width {
                     cursor_y += row_height + padding;
                     cursor_x = padding;
@@ -80,7 +71,6 @@ impl FontAtlas {
                     break;
                 }
 
-                // Пишем глиф в атлас (R8)
                 for row in 0..gh {
                     for col in 0..gw {
                         let src = (row * gw + col) as usize;
@@ -107,10 +97,9 @@ impl FontAtlas {
             }
         }
 
-        // Конвертируем R8 → RGBA8 (движок ожидает RGBA)
         let rgba: Vec<u8> = pixels.iter().flat_map(|&a| [255, 255, 255, a]).collect();
 
-        Ok(Self { pixels: rgba, atlas_width, atlas_height, glyphs, advances, font })
+        Ok(Self { pixels: rgba, atlas_width, atlas_height, glyphs, advances })
     }
 
     pub fn get_glyph(&self, ch: char, size: u32) -> Option<&GlyphUv> {

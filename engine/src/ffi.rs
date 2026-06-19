@@ -115,36 +115,6 @@ pub unsafe extern "C" fn engine_run(handle: *mut EngineHandle, callbacks: *const
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn engine_set_camera(
-    handle: *mut EngineHandle,
-    eye_x: f32,
-    eye_y: f32,
-    eye_z: f32,
-    target_x: f32,
-    target_y: f32,
-    target_z: f32,
-) {
-    let ctx = ctx_mut(handle);
-    if ctx.is_null() {
-        return;
-    }
-    use glam::Vec3;
-    unsafe {
-        (*ctx).camera.eye = Vec3::new(eye_x, eye_y, eye_z);
-        (*ctx).camera.target = Vec3::new(target_x, target_y, target_z);
-    }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn engine_set_camera_fov(handle: *mut EngineHandle, fov_degrees: f32) {
-    let ctx = ctx_mut(handle);
-    if ctx.is_null() {
-        return;
-    }
-    unsafe { (*ctx).camera.fov_y = fov_degrees.to_radians() };
-}
-
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn engine_spawn_mesh(handle: *mut EngineHandle, mesh_id: u32, x: f32, y: f32, z: f32) -> u64 {
     let ctx = ctx_mut(handle);
     if ctx.is_null() {

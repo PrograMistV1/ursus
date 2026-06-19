@@ -1,6 +1,5 @@
 use crate::assets::mesh::Vertex;
 use crate::assets::{GpuMesh, ShaderRegistry};
-use crate::ecs::components::Transform;
 use crate::render_graph::GpuImage;
 use crate::vulkan::pipeline::builder::{cmd, PipelineBuilder};
 use crate::vulkan::resources::shadow_map::SHADOW_MAP_SIZE;
@@ -14,7 +13,7 @@ pub struct ShadowPC {
 
 pub struct ShadowDrawCall<'a> {
     pub gpu_mesh: &'a GpuMesh,
-    pub transform: &'a Transform,
+    pub model: Mat4,
 }
 
 pub struct ShadowPass {
@@ -70,7 +69,7 @@ impl ShadowPass {
             device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
 
             for dc in draw_calls {
-                let mvp = light_view_proj * dc.transform.matrix();
+                let mvp = light_view_proj * dc.model;
                 let pc = ShadowPC { light_space_mvp: mvp.to_cols_array_2d() };
                 let pc_bytes = std::slice::from_raw_parts(&pc as *const ShadowPC as *const u8, size_of::<ShadowPC>());
                 device.cmd_push_constants(cmd_buf, self.layout, vk::ShaderStageFlags::VERTEX, 0, pc_bytes);

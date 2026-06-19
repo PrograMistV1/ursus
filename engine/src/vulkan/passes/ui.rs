@@ -1,9 +1,8 @@
 use crate::assets::ui::FontAtlas;
 use crate::assets::ShaderRegistry;
-use crate::ecs::components::{UiLayout, UiRect, UiText};
-use crate::ecs::GameWorld;
 use crate::vulkan::pipeline::builder::{cmd, PipelineBuilder};
 use ash::vk;
+use glam::Vec2;
 
 #[repr(C)]
 struct UiPC {
@@ -69,7 +68,8 @@ impl UiPass {
         swapchain_view: vk::ImageView,
         extent: vk::Extent2D,
         bindless_set: vk::DescriptorSet,
-        world: &mut GameWorld,
+        rects: &[(Vec2, Vec2, [f32; 4])],
+        texts: &[(Vec2, String, f32, [f32; 4])],
         font_atlas: Option<&FontAtlas>,
         font_atlas_tex: u32,
     ) -> anyhow::Result<()> {
@@ -89,17 +89,13 @@ impl UiPass {
 
         let screen_size = [extent.width as f32, extent.height as f32];
 
-        for (ui_layout, rect) in world.inner.query_mut::<(&UiLayout, &UiRect)>() {
-            let pos = [
-                ui_layout.anchor.x * screen_size[0] + ui_layout.offset.x - ui_layout.pivot.x * rect.size.x,
-                ui_layout.anchor.y * screen_size[1] + ui_layout.offset.y - ui_layout.pivot.y * rect.size.y,
-            ];
+        for (pos, size, color) in rects {
             let pc = UiPC {
                 screen_size,
-                pos,
-                size: [rect.size.x, rect.size.y],
+                pos: [pos.x, pos.y],
+                size: [size.x, size.y],
                 _pad0: [0.0; 2],
-                color: rect.color,
+                color: *color,
                 uv_rect: [0.0, 0.0, 1.0, 1.0],
                 tex_index: 0,
                 use_texture: 0,
@@ -109,19 +105,14 @@ impl UiPass {
         }
 
         if let Some(atlas) = font_atlas {
-            for (ui_layout, text) in world.inner.query_mut::<(&UiLayout, &UiText)>() {
-                let font_size = text.font_size as u32;
-                let text_width = atlas.measure_text(&text.text, font_size);
+            for (origin, text, font_size, color) in texts {
+                let font_size = *font_size as u32;
                 let line_height = atlas.line_height(font_size);
 
-                let origin_x =
-                    ui_layout.anchor.x * screen_size[0] + ui_layout.offset.x - ui_layout.pivot.x * text_width;
-                let origin_y =
-                    ui_layout.anchor.y * screen_size[1] + ui_layout.offset.y - ui_layout.pivot.y * line_height;
+                let mut cursor_x = origin.x;
+                let origin_y = origin.y;
 
-                let mut cursor_x = origin_x;
-
-                for ch in text.text.chars() {
+                for ch in text.chars() {
                     let advance = atlas.get_advance(ch, font_size);
                     if let Some(glyph) = atlas.get_glyph(ch, font_size) {
                         if glyph.width > 0 && glyph.height > 0 {
@@ -133,7 +124,7 @@ impl UiPass {
                                 pos: [gx, gy],
                                 size: [glyph.width as f32, glyph.height as f32],
                                 _pad0: [0.0; 2],
-                                color: text.color,
+                                color: *color,
                                 uv_rect: [glyph.u0, glyph.v0, glyph.u1, glyph.v1],
                                 tex_index: font_atlas_tex,
                                 use_texture: 1,

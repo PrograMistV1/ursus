@@ -1,10 +1,9 @@
 use crate::assets::gpu_server::GpuAssetServer;
-use crate::assets::{CpuAssetServer, MaterialHandle, MeshHandle};
-use crate::components::Transform;
-use crate::lighting::LightingUbo;
-use crate::math::frustum::transform_aabb;
+use crate::assets::{CpuAssetServer, GpuMesh, MaterialHandle, ShaderHandle};
+use crate::lighting::buffer::LightingUbo;
 use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
 use crate::render_graph::{pass, RenderGraph, ResourceDesc, ResourceExtent};
+use crate::render_world::{RenderInstance, RenderLighting};
 use crate::vulkan::passes::depth_prepass::{DepthPrepass, DepthPrepassDrawCall};
 use crate::vulkan::passes::fsr::{compute_easu_con, compute_rcas_con, FsrPass};
 use crate::vulkan::passes::geometry::GeometryPass;
@@ -16,6 +15,7 @@ use crate::vulkan::resources::gbuffer::GBuffer;
 use crate::vulkan::resources::shadow_map::SHADOW_MAP_SIZE;
 use crate::vulkan::{DrawCall, VulkanContext};
 use ash::vk;
+use glam::{Mat4, Vec2};
 use std::sync::Arc;
 
 const LDR_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
@@ -115,11 +115,8 @@ impl RenderPipeline for DefaultPipeline {
                     let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
                     let depth = pool.image(h_depth);
 
-                    let calls: Vec<DepthPrepassDrawCall> = data
-                        .prepass_calls
-                        .iter()
-                        .map(|dc| DepthPrepassDrawCall { gpu_mesh: &*dc.gpu_mesh_ptr, transform: &dc.transform })
-                        .collect();
+                    let calls: Vec<DepthPrepassDrawCall> =
+                        data.prepass_calls.iter().map(|dc| dc.as_depth_prepass_draw_call()).collect();
 
                     depth_prepass.record(&*data.device, cmd, &depth, data.view_proj, &calls);
                     Ok(())
@@ -173,7 +170,7 @@ impl RenderPipeline for DefaultPipeline {
                     let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
                     let hdr = pool.image(h_hdr);
                     lighting_pass.upload_lights(&data.lighting);
-                    lighting_pass.record(&*data.device, cmd, &hdr, &*data.camera);
+                    lighting_pass.record(&*data.device, cmd, &hdr, data.view, data.proj);
                     Ok(())
                 }
             })
@@ -236,7 +233,7 @@ impl RenderPipeline for DefaultPipeline {
             .read(h_fsr_rcas, vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
             .write(h_swapchain, vk::ImageLayout::TRANSFER_DST_OPTIMAL)
             .record({
-                move |cmd, pool, _ctx_ptr| {
+                move |cmd, pool, ctx_ptr| {
                     let src = pool.image(h_fsr_rcas);
                     let dst = pool.image(h_swapchain);
 
@@ -263,7 +260,7 @@ impl RenderPipeline for DefaultPipeline {
                         ]);
 
                     unsafe {
-                        let data = &*(_ctx_ptr as *const DefaultPipelineFrameData);
+                        let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
                         (*data.device).cmd_blit_image2(
                             cmd,
                             &vk::BlitImageInfo2::default()
@@ -287,10 +284,9 @@ impl RenderPipeline for DefaultPipeline {
             .after(blit_handle)
             .read_write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .record(move |cmd, pool, ctx_ptr| unsafe {
-                let data = &mut *(ctx_ptr as *mut DefaultPipelineFrameData);
+                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
                 let sc = pool.image(h_swapchain);
                 let gpu_assets = &*data.gpu_assets;
-                let world = &mut *data.world;
 
                 ui_pass.record(
                     &*data.device,
@@ -298,7 +294,8 @@ impl RenderPipeline for DefaultPipeline {
                     sc.view,
                     sc.extent,
                     gpu_assets.bindless.set,
-                    world,
+                    &data.ui_rects,
+                    &data.ui_texts,
                     gpu_assets.font_atlas.as_ref(),
                     gpu_assets.font_atlas_texture.map(|h| h.0).unwrap_or(0),
                 )?;
@@ -310,70 +307,58 @@ impl RenderPipeline for DefaultPipeline {
     }
 
     fn prepare_frame(&mut self, graph: &mut RenderGraph, input: FrameInput<'_>) -> anyhow::Result<()> {
-        use crate::math::frustum::extract_planes;
+        input.gpu_assets.upload_materials(input.cpu_assets);
 
-        let frustum = extract_planes(input.view_proj);
-        input.gpu_assets.upload_materials(&input.cpu_assets);
+        let build_owned = |instances: &[RenderInstance], gpu_assets: &GpuAssetServer, cpu_assets: &CpuAssetServer| {
+            instances
+                .iter()
+                .filter_map(|inst| {
+                    let gpu = gpu_assets.get_gpu_mesh(inst.mesh)?;
+                    let shader = inst
+                        .material
+                        .and_then(|m| cpu_assets.get_material(m))
+                        .map(|m| m.shader)
+                        .unwrap_or(cpu_assets.shaders.by_name("diffuse").unwrap());
+                    Some(OwnedDrawCall {
+                        gpu_mesh_ptr: gpu as *const _,
+                        model: inst.model,
+                        material: inst.material,
+                        shader,
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
 
-        let mut draw_calls: Vec<OwnedDrawCall> = Vec::new();
-        let mut prepass_calls: Vec<OwnedDrawCall> = Vec::new();
-
-        for (mesh, transform, mat) in
-            input.world.inner.query::<(&MeshHandle, &Transform, Option<&MaterialHandle>)>().iter()
-        {
-            let gpu = match input.gpu_assets.get_gpu_mesh(*mesh) {
-                Some(g) => g,
-                None => continue,
-            };
-            let shader = mat
-                .and_then(|m| input.cpu_assets.get_material(*m))
-                .map(|m| m.shader)
-                .unwrap_or(input.cpu_assets.shaders.by_name("diffuse").unwrap());
-
-            let model = transform.matrix();
-            if !transform_aabb(&gpu.aabb, model).intersects_frustum(&frustum) {
-                continue;
-            }
-
-            prepass_calls.push(OwnedDrawCall {
-                gpu_mesh_ptr: gpu as *const _,
-                transform: transform.clone(),
-                material: None,
-                shader,
-            });
-            draw_calls.push(OwnedDrawCall {
-                gpu_mesh_ptr: gpu as *const _,
-                transform: transform.clone(),
-                material: mat.copied(),
-                shader,
-            });
-        }
-
+        let mut draw_calls = build_owned(&input.render_world.instances, input.gpu_assets, input.cpu_assets);
         draw_calls.sort_by_key(|dc| dc.shader.0);
-
-        let shadow_calls: Vec<OwnedDrawCall> = draw_calls
+        let prepass_calls = draw_calls
             .iter()
             .map(|dc| OwnedDrawCall {
                 gpu_mesh_ptr: dc.gpu_mesh_ptr,
-                transform: dc.transform.clone(),
-                material: dc.material,
+                model: dc.model,
+                material: None,
                 shader: dc.shader,
             })
             .collect();
-
-        let mut lighting_frame = *input.lighting;
-        lighting_frame.light_space_matrix = input.light_view_proj.to_cols_array_2d();
+        let shadow_calls = build_owned(&input.render_world.shadow_instances, input.gpu_assets, input.cpu_assets);
 
         let frame_data = Box::new(DefaultPipelineFrameData {
             device: input.device,
-            world: input.world as *mut _,
             draw_calls,
             prepass_calls,
             shadow_calls,
-            camera: input.camera,
-            view_proj: input.view_proj,
-            light_view_proj: input.light_view_proj,
-            lighting: lighting_frame,
+            view: input.render_world.camera.view,
+            proj: input.render_world.camera.proj,
+            view_proj: input.render_world.camera.view_proj,
+            light_view_proj: input.render_world.light_view_proj,
+            lighting: build_lighting_ubo(&input.render_world.lighting, input.render_world.light_view_proj),
+            ui_rects: input.render_world.ui_rects.iter().map(|r| (r.pos, r.size, r.color)).collect(),
+            ui_texts: input
+                .render_world
+                .ui_texts
+                .iter()
+                .map(|t| (t.pos, t.text.clone(), t.font_size, t.color))
+                .collect(),
             gpu_assets: input.gpu_assets,
             exposure: input.exposure,
             fsr_sharpness: input.fsr_sharpness,
@@ -387,23 +372,37 @@ impl RenderPipeline for DefaultPipeline {
     }
 }
 
+fn build_lighting_ubo(lighting: &RenderLighting, light_view_proj: Mat4) -> LightingUbo {
+    LightingUbo {
+        directional: lighting.directional,
+        point_lights: lighting.point_lights,
+        point_light_count: lighting.point_light_count,
+        _pad: [0; 3],
+        light_space_matrix: light_view_proj.to_cols_array_2d(),
+    }
+}
+
 struct OwnedDrawCall {
-    gpu_mesh_ptr: *const crate::assets::GpuMesh,
-    transform: Transform,
+    gpu_mesh_ptr: *const GpuMesh,
+    model: Mat4,
     material: Option<MaterialHandle>,
-    shader: crate::assets::shader_registry::ShaderHandle,
+    shader: ShaderHandle,
 }
 unsafe impl Send for OwnedDrawCall {}
 
 impl OwnedDrawCall {
     fn as_shadow_draw_call(&self) -> ShadowDrawCall<'_> {
-        ShadowDrawCall { gpu_mesh: unsafe { &*self.gpu_mesh_ptr }, transform: &self.transform }
+        ShadowDrawCall { gpu_mesh: unsafe { &*self.gpu_mesh_ptr }, model: self.model }
+    }
+
+    fn as_depth_prepass_draw_call(&self) -> DepthPrepassDrawCall<'_> {
+        DepthPrepassDrawCall { gpu_mesh: unsafe { &*self.gpu_mesh_ptr }, model: self.model }
     }
 
     fn as_draw_call(&self) -> DrawCall<'_> {
         DrawCall {
             gpu_mesh: unsafe { &*self.gpu_mesh_ptr },
-            transform: &self.transform,
+            model: self.model,
             material: self.material,
             shader: self.shader,
         }
@@ -412,14 +411,16 @@ impl OwnedDrawCall {
 
 struct DefaultPipelineFrameData {
     device: *const ash::Device,
-    world: *mut crate::ecs::GameWorld,
     draw_calls: Vec<OwnedDrawCall>,
     prepass_calls: Vec<OwnedDrawCall>,
     shadow_calls: Vec<OwnedDrawCall>,
-    camera: *const crate::vulkan::Camera,
-    view_proj: glam::Mat4,
-    light_view_proj: glam::Mat4,
+    view: Mat4,
+    proj: Mat4,
+    view_proj: Mat4,
+    light_view_proj: Mat4,
     lighting: LightingUbo,
+    ui_rects: Vec<(Vec2, Vec2, [f32; 4])>,
+    ui_texts: Vec<(Vec2, String, f32, [f32; 4])>,
     gpu_assets: *const GpuAssetServer,
     exposure: f32,
     fsr_sharpness: f32,

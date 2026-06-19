@@ -1,21 +1,15 @@
 use crate::assets::cpu_server::CpuAssetServer;
 use crate::assets::gpu_server::GpuAssetServer;
-use crate::ecs::GameWorld;
-use crate::lighting::LightingUbo;
 use crate::render_graph::{RenderGraph, ResourceHandle};
-use crate::vulkan::{Camera, VulkanContext};
+use crate::render_world::RenderWorld;
+use crate::vulkan::VulkanContext;
 use ash::vk;
-use glam::Mat4;
 
 pub struct FrameInput<'a> {
     pub device: &'a ash::Device,
-    pub world: &'a mut GameWorld,
+    pub render_world: &'a RenderWorld,
     pub cpu_assets: &'a mut CpuAssetServer,
     pub gpu_assets: &'a mut GpuAssetServer,
-    pub camera: &'a Camera,
-    pub lighting: &'a LightingUbo,
-    pub view_proj: Mat4,
-    pub light_view_proj: Mat4,
     pub graphics_queue: vk::Queue,
     pub command_pool: vk::CommandPool,
     pub exposure: f32,
