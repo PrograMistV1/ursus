@@ -271,10 +271,8 @@ pub fn compute_tangents(positions: &[Vec3], normals: &[Vec3], uvs: &[Vec2], indi
         }
         let f = 1.0 / r;
 
-        let sdir =
-            Vec3::new(f * (dv2 * e1.x - dv1 * e2.x), f * (dv2 * e1.y - dv1 * e2.y), f * (dv2 * e1.z - dv1 * e2.z));
-        let tdir =
-            Vec3::new(f * (du1 * e2.x - du2 * e1.x), f * (du1 * e2.y - du2 * e1.y), f * (du1 * e2.z - du2 * e1.z));
+        let sdir = (e1 * dv2 - e2 * dv1) * f;
+        let tdir = (e2 * du1 - e1 * du2) * f;
 
         tan1[i0] += sdir;
         tan1[i1] += sdir;
