@@ -562,6 +562,8 @@ pub fn make_barrier(
         .dst_access_mask(dst_access)
         .old_layout(old_layout)
         .new_layout(new_layout)
+        .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+        .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
         .image(image)
         .subresource_range(vk::ImageSubresourceRange {
             aspect_mask: kind.aspect_mask(),

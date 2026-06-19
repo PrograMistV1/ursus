@@ -250,6 +250,8 @@ fn transition_image_layout(
         .dst_access_mask(dst_access)
         .old_layout(from)
         .new_layout(to)
+        .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+        .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
         .image(image)
         .subresource_range(vk::ImageSubresourceRange {
             aspect_mask: vk::ImageAspectFlags::COLOR,

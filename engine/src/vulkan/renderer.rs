@@ -174,19 +174,26 @@ impl<P: RenderPipeline> Renderer<P> {
 
         unsafe { device.end_command_buffer(cmd)? };
 
-        let wait_semaphores = [frame.image_available];
         let signal_semaphores = [frame.render_finished];
-        let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
 
         unsafe {
             puffin::profile_scope!("queue_submit");
-            device.queue_submit(
+            let wait_info = vk::SemaphoreSubmitInfo::default()
+                .semaphore(frame.image_available)
+                .stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT);
+
+            let signal_info = vk::SemaphoreSubmitInfo::default()
+                .semaphore(frame.render_finished)
+                .stage_mask(vk::PipelineStageFlags2::ALL_GRAPHICS);
+
+            let cmd_info = vk::CommandBufferSubmitInfo::default().command_buffer(cmd);
+
+            device.queue_submit2(
                 ctx.device.graphics_queue,
-                &[vk::SubmitInfo::default()
-                    .wait_semaphores(&wait_semaphores)
-                    .wait_dst_stage_mask(&wait_stages)
-                    .command_buffers(&[cmd])
-                    .signal_semaphores(&signal_semaphores)],
+                &[vk::SubmitInfo2::default()
+                    .wait_semaphore_infos(std::slice::from_ref(&wait_info))
+                    .command_buffer_infos(std::slice::from_ref(&cmd_info))
+                    .signal_semaphore_infos(std::slice::from_ref(&signal_info))],
                 frame.render_fence,
             )?;
             self.graph.mark_submitted();
