@@ -1,5 +1,6 @@
 use crate::assets::ShaderRegistry;
 use crate::render_graph::GpuImage;
+use crate::vulkan::core::sampler;
 use crate::vulkan::pipeline::builder::PipelineBuilder;
 use ash::vk;
 
@@ -34,17 +35,7 @@ pub struct FsrPass {
 
 impl FsrPass {
     pub fn new(device: &ash::Device, output_format: vk::Format, registry: &mut ShaderRegistry) -> anyhow::Result<Self> {
-        let sampler = unsafe {
-            device.create_sampler(
-                &vk::SamplerCreateInfo::default()
-                    .mag_filter(vk::Filter::LINEAR)
-                    .min_filter(vk::Filter::LINEAR)
-                    .mipmap_mode(vk::SamplerMipmapMode::NEAREST)
-                    .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                    .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE),
-                None,
-            )?
-        };
+        let sampler = sampler::create_linear_clamp_sampler(device)?;
 
         let pool_sizes =
             [vk::DescriptorPoolSize { ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER, descriptor_count: 2 }];

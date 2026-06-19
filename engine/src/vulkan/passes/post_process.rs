@@ -1,5 +1,6 @@
 use crate::assets::ShaderRegistry;
 use crate::render_graph::GpuImage;
+use crate::vulkan::core::sampler;
 use crate::vulkan::pipeline::builder::{cmd, PipelineBuilder};
 use ash::vk;
 
@@ -26,16 +27,7 @@ impl PostProcessPass {
         swapchain_format: vk::Format,
         registry: &mut ShaderRegistry,
     ) -> anyhow::Result<Self> {
-        let sampler = unsafe {
-            device.create_sampler(
-                &vk::SamplerCreateInfo::default()
-                    .mag_filter(vk::Filter::LINEAR)
-                    .min_filter(vk::Filter::LINEAR)
-                    .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                    .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE),
-                None,
-            )?
-        };
+        let sampler = sampler::create_linear_clamp_sampler(device)?;
 
         let binding = vk::DescriptorSetLayoutBinding::default()
             .binding(0)
