@@ -1,5 +1,5 @@
 use crate::assets::mesh::Vertex;
-use crate::assets::{GpuMesh, ShaderHandle, ShaderRegistry};
+use crate::assets::{GpuMesh, ShaderRegistry};
 use crate::ecs::components::Transform;
 use crate::render_graph::GpuImage;
 use crate::vulkan::pipeline::builder::{cmd, PipelineBuilder};
