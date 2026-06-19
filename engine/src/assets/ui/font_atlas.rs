@@ -22,22 +22,17 @@ pub struct FontAtlas {
 }
 
 impl FontAtlas {
-    /// Создаёт атлас из TTF данных.
-    /// `preload_chars` — символы которые растеризуем сразу.
-    /// `preload_sizes` — размеры шрифта для которых растеризуем.
     pub fn new(ttf_data: &[u8], preload_chars: &str, preload_sizes: &[u32]) -> anyhow::Result<Self> {
         let font = Font::from_bytes(ttf_data, FontSettings::default())
             .map_err(|e| anyhow::anyhow!("Ошибка загрузки шрифта: {}", e))?;
 
         let atlas_width = 1024u32;
         let atlas_height = 1024u32;
-        // R8 — один канал, потом при загрузке в Vulkan используем как alpha
         let mut pixels = vec![0u8; (atlas_width * atlas_height) as usize];
 
         let mut glyphs = HashMap::new();
         let mut advances = HashMap::new();
 
-        // Простой row-packer: идём слева направо, при переполнении — новая строка
         let padding = 1u32;
         let mut cursor_x = padding;
         let mut cursor_y = padding;
@@ -110,12 +105,10 @@ impl FontAtlas {
         self.advances.get(&(ch, size)).copied().unwrap_or(0.0)
     }
 
-    /// Вычисляет ширину строки в пикселях для заданного размера шрифта
     pub fn measure_text(&self, text: &str, font_size: u32) -> f32 {
         text.chars().map(|c| self.get_advance(c, font_size)).sum()
     }
 
-    /// Возвращает высоту строки для заданного размера (приближение через метрики шрифта)
     pub fn line_height(&self, font_size: u32) -> f32 {
         font_size as f32 * 1.2
     }

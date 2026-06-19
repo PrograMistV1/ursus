@@ -50,8 +50,6 @@ pub struct RenderUiText {
     pub color: [f32; 4],
 }
 
-/// Плоский снэпшот сцены для одного кадра рендера.
-/// Не содержит ссылок на GameWorld/hecs — годен для передачи в другой поток.
 pub struct RenderWorld {
     pub instances: Vec<RenderInstance>,
     pub shadow_instances: Vec<RenderInstance>,

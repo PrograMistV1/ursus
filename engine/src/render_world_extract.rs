@@ -38,7 +38,6 @@ pub fn extract_render_world(
         };
         let model = transform.matrix();
 
-        // shadow caster — без culling по камере, попадает всегда (теневой проход видит сцену иначе)
         shadow_instances.push(RenderInstance { mesh: *mesh, material: mat.copied(), model });
 
         if !transform_aabb(&gpu.aabb, model).intersects_frustum(&frustum) {
