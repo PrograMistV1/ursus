@@ -1,8 +1,9 @@
 use crate::assets::ShaderRegistry;
 use crate::render_graph::GpuImage;
 use crate::vulkan::core::sampler;
-use crate::vulkan::pipeline::builder::{cmd, PipelineBuilder};
+use crate::vulkan::pipeline::builder::{cmd, descriptor, PipelineBuilder};
 use ash::vk;
+use descriptor::alloc_single_set;
 
 #[repr(C)]
 struct PostProcessPC {
@@ -43,20 +44,7 @@ impl PostProcessPass {
         };
 
         let pool_size = vk::DescriptorPoolSize { ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER, descriptor_count: 1 };
-        let descriptor_pool = unsafe {
-            device.create_descriptor_pool(
-                &vk::DescriptorPoolCreateInfo::default().pool_sizes(std::slice::from_ref(&pool_size)).max_sets(1),
-                None,
-            )?
-        };
-
-        let descriptor_set = unsafe {
-            device.allocate_descriptor_sets(
-                &vk::DescriptorSetAllocateInfo::default()
-                    .descriptor_pool(descriptor_pool)
-                    .set_layouts(std::slice::from_ref(&descriptor_set_layout)),
-            )?[0]
-        };
+        let (descriptor_pool, descriptor_set) = alloc_single_set(device, descriptor_set_layout, &[pool_size])?;
 
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)

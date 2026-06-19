@@ -1,9 +1,11 @@
 use crate::assets::ShaderRegistry;
 use crate::lighting::buffer::LightBuffer;
 use crate::render_graph::GpuImage;
-use crate::vulkan::pipeline::builder::PipelineBuilder;
+use crate::vulkan::pipeline::builder::{cmd, descriptor, PipelineBuilder};
 use crate::vulkan::Camera;
 use ash::vk;
+use cmd::begin_rendering_discard;
+use descriptor::alloc_single_set;
 
 #[repr(C)]
 struct LightingPC {
@@ -81,20 +83,7 @@ impl LightingPass {
             vk::DescriptorPoolSize { ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER, descriptor_count: 4 },
             vk::DescriptorPoolSize { ty: vk::DescriptorType::UNIFORM_BUFFER, descriptor_count: 1 },
         ];
-        let descriptor_pool = unsafe {
-            device.create_descriptor_pool(
-                &vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(1),
-                None,
-            )?
-        };
-
-        let descriptor_set = unsafe {
-            device.allocate_descriptor_sets(
-                &vk::DescriptorSetAllocateInfo::default()
-                    .descriptor_pool(descriptor_pool)
-                    .set_layouts(std::slice::from_ref(&descriptor_set_layout)),
-            )?[0]
-        };
+        let (descriptor_pool, descriptor_set) = alloc_single_set(device, descriptor_set_layout, &pool_sizes)?;
 
         let buf_info = vk::DescriptorBufferInfo::default()
             .buffer(light_buffer.buffer)
@@ -145,35 +134,9 @@ impl LightingPass {
     pub fn record(&self, device: &ash::Device, cmd: vk::CommandBuffer, hdr: &impl GpuImage, camera: &Camera) {
         let extent = hdr.extent();
 
+        begin_rendering_discard(device, cmd, hdr.view(), extent);
+
         unsafe {
-            let color_attachment = vk::RenderingAttachmentInfo::default()
-                .image_view(hdr.view())
-                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .load_op(vk::AttachmentLoadOp::DONT_CARE)
-                .store_op(vk::AttachmentStoreOp::STORE);
-
-            device.cmd_begin_rendering(
-                cmd,
-                &vk::RenderingInfo::default()
-                    .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent })
-                    .layer_count(1)
-                    .color_attachments(std::slice::from_ref(&color_attachment)),
-            );
-
-            device.cmd_set_viewport(
-                cmd,
-                0,
-                &[vk::Viewport {
-                    x: 0.0,
-                    y: 0.0,
-                    width: extent.width as f32,
-                    height: extent.height as f32,
-                    min_depth: 0.0,
-                    max_depth: 1.0,
-                }],
-            );
-            device.cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent }]);
-
             device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
             device.cmd_bind_descriptor_sets(
                 cmd,

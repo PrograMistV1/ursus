@@ -364,3 +364,39 @@ pub mod cmd {
             .clear_value(vk::ClearValue { depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 } })
     }
 }
+
+pub mod descriptor {
+    use ash::vk;
+
+    pub fn alloc_sets(
+        device: &ash::Device,
+        layout: vk::DescriptorSetLayout,
+        pool_sizes: &[vk::DescriptorPoolSize],
+        count: u32,
+    ) -> anyhow::Result<(vk::DescriptorPool, Vec<vk::DescriptorSet>)> {
+        let pool = unsafe {
+            device.create_descriptor_pool(
+                &vk::DescriptorPoolCreateInfo::default().pool_sizes(pool_sizes).max_sets(count),
+                None,
+            )?
+        };
+
+        let layouts = vec![layout; count as usize];
+        let sets = unsafe {
+            device.allocate_descriptor_sets(
+                &vk::DescriptorSetAllocateInfo::default().descriptor_pool(pool).set_layouts(&layouts),
+            )?
+        };
+
+        Ok((pool, sets))
+    }
+
+    pub fn alloc_single_set(
+        device: &ash::Device,
+        layout: vk::DescriptorSetLayout,
+        pool_sizes: &[vk::DescriptorPoolSize],
+    ) -> anyhow::Result<(vk::DescriptorPool, vk::DescriptorSet)> {
+        let (pool, mut sets) = alloc_sets(device, layout, pool_sizes, 1)?;
+        Ok((pool, sets.remove(0)))
+    }
+}

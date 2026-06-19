@@ -1,8 +1,10 @@
 use crate::assets::ShaderRegistry;
 use crate::render_graph::GpuImage;
 use crate::vulkan::core::sampler;
-use crate::vulkan::pipeline::builder::PipelineBuilder;
+use crate::vulkan::pipeline::builder::{cmd, descriptor, PipelineBuilder};
 use ash::vk;
+use cmd::begin_rendering_discard;
+use descriptor::alloc_sets;
 
 #[repr(C)]
 pub struct EasuPC {
@@ -39,20 +41,8 @@ impl FsrPass {
 
         let pool_sizes =
             [vk::DescriptorPoolSize { ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER, descriptor_count: 2 }];
-        let descriptor_pool = unsafe {
-            device.create_descriptor_pool(
-                &vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(2),
-                None,
-            )?
-        };
-
         let dsl = create_sampled_image_dsl(device)?;
-
-        let sets = unsafe {
-            device.allocate_descriptor_sets(
-                &vk::DescriptorSetAllocateInfo::default().descriptor_pool(descriptor_pool).set_layouts(&[dsl, dsl]),
-            )?
-        };
+        let (descriptor_pool, sets) = alloc_sets(device, dsl, &pool_sizes, 2)?;
         let easu_descriptor_set = sets[0];
         let rcas_descriptor_set = sets[1];
 
@@ -121,35 +111,10 @@ impl FsrPass {
         pc_bytes: &[u8],
     ) {
         let extent = dst.extent();
+
+        begin_rendering_discard(device, cmd, dst.view(), extent);
+
         unsafe {
-            let color_attachment = vk::RenderingAttachmentInfo::default()
-                .image_view(dst.view())
-                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .load_op(vk::AttachmentLoadOp::DONT_CARE)
-                .store_op(vk::AttachmentStoreOp::STORE);
-
-            device.cmd_begin_rendering(
-                cmd,
-                &vk::RenderingInfo::default()
-                    .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent })
-                    .layer_count(1)
-                    .color_attachments(std::slice::from_ref(&color_attachment)),
-            );
-
-            device.cmd_set_viewport(
-                cmd,
-                0,
-                &[vk::Viewport {
-                    x: 0.0,
-                    y: 0.0,
-                    width: extent.width as f32,
-                    height: extent.height as f32,
-                    min_depth: 0.0,
-                    max_depth: 1.0,
-                }],
-            );
-            device.cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent }]);
-
             device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
             device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, layout, 0, &[set], &[]);
             device.cmd_push_constants(cmd, layout, vk::ShaderStageFlags::FRAGMENT, 0, pc_bytes);

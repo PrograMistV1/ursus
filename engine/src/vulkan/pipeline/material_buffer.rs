@@ -1,5 +1,6 @@
 use crate::assets::material::MaterialData;
 use crate::vulkan::core::memory::find_memory_type;
+use crate::vulkan::pipeline::builder::descriptor::alloc_single_set;
 use ash::vk;
 
 pub struct MaterialBuffer {
@@ -65,20 +66,7 @@ impl MaterialBuffer {
         };
 
         let pool_size = vk::DescriptorPoolSize { ty: vk::DescriptorType::STORAGE_BUFFER, descriptor_count: 1 };
-        let pool = unsafe {
-            device.create_descriptor_pool(
-                &vk::DescriptorPoolCreateInfo::default().pool_sizes(std::slice::from_ref(&pool_size)).max_sets(1),
-                None,
-            )?
-        };
-
-        let set = unsafe {
-            device.allocate_descriptor_sets(
-                &vk::DescriptorSetAllocateInfo::default()
-                    .descriptor_pool(pool)
-                    .set_layouts(std::slice::from_ref(&layout)),
-            )?[0]
-        };
+        let (pool, set) = alloc_single_set(device, layout, &[pool_size])?;
 
         let buf_info = vk::DescriptorBufferInfo::default().buffer(buffer).offset(0).range(size);
 
