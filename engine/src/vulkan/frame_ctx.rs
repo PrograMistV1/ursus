@@ -34,11 +34,6 @@ pub struct FrameCtx<'a> {
     pub cpu_assets: &'a CpuAssetServer,
     pub gpu_assets: &'a GpuAssetServer,
 
-    pub egui: *mut crate::egui_layer::EguiLayer,
-    pub egui_output: Option<egui::FullOutput>,
-
-    pub window: *const winit::window::Window,
-
     pub graphics_queue: vk::Queue,
     pub command_pool: vk::CommandPool,
 

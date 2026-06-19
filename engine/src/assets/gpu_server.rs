@@ -2,6 +2,7 @@ use crate::assets::cpu_server::CpuAssetServer;
 use crate::assets::material::MaterialDef;
 use crate::assets::mesh::{CpuMesh, GpuMesh};
 use crate::assets::pending::PendingUpload;
+use crate::assets::ui::FontAtlas;
 use crate::assets::TextureHandle;
 use crate::components::Transform;
 use crate::ecs::components::{MaterialHandle, MeshHandle};
@@ -24,6 +25,9 @@ pub struct GpuAssetServer {
 
     pub material_buffer: MaterialBuffer,
     pub bindless: BindlessSet,
+
+    pub font_atlas: Option<FontAtlas>,
+    pub font_atlas_texture: Option<TextureHandle>,
 
     upload_queue: Arc<Mutex<Vec<PendingUpload>>>,
     mesh_path_cache: Arc<Mutex<HashMap<PathBuf, Vec<(MeshHandle, Option<MaterialHandle>, Transform)>>>>,
@@ -55,6 +59,8 @@ impl GpuAssetServer {
             image_index_cache: HashMap::new(),
             material_buffer,
             bindless,
+            font_atlas: None,
+            font_atlas_texture: None,
             upload_queue,
             mesh_path_cache,
             device,
@@ -194,6 +200,19 @@ impl GpuAssetServer {
                 Err(e)
             }
         }
+    }
+
+    pub fn upload_font_atlas(&mut self, atlas: FontAtlas) -> anyhow::Result<()> {
+        let handle = self.upload_texture_raw(
+            &atlas.pixels,
+            atlas.atlas_width,
+            atlas.atlas_height,
+            vk::Format::R8G8B8A8_UNORM,
+            "font_atlas",
+        )?;
+        self.font_atlas_texture = Some(handle);
+        self.font_atlas = Some(atlas);
+        Ok(())
     }
 
     pub fn get_gpu_mesh(&self, handle: MeshHandle) -> Option<&GpuMesh> {

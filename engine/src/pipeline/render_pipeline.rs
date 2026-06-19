@@ -1,7 +1,6 @@
 use crate::assets::cpu_server::CpuAssetServer;
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::ecs::GameWorld;
-use crate::egui_layer::EguiLayer;
 use crate::lighting::LightingUbo;
 use crate::render_graph::{RenderGraph, ResourceHandle};
 use crate::vulkan::{Camera, VulkanContext};
@@ -17,9 +16,6 @@ pub struct FrameInput<'a> {
     pub lighting: &'a LightingUbo,
     pub view_proj: Mat4,
     pub light_view_proj: Mat4,
-    pub egui: &'a mut EguiLayer,
-    pub egui_output: egui::FullOutput,
-    pub window: &'a winit::window::Window,
     pub graphics_queue: vk::Queue,
     pub command_pool: vk::CommandPool,
     pub exposure: f32,

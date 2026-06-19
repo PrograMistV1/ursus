@@ -1,15 +1,14 @@
 use crate::assets::cpu_server::CpuAssetServer;
 use crate::assets::gpu_server::GpuAssetServer;
-use crate::assets::CpuMesh;
-use crate::debug_ui::{self, DebugUiState};
+use crate::assets::{ui, CpuMesh};
 use crate::ecs::GameWorld;
-use crate::egui_layer::EguiLayer;
 use crate::lighting::LightingUbo;
 use crate::pipeline::{DefaultPipeline, LoadingPipeline, RenderPipeline};
 use crate::vulkan::{build_dyn_renderer, DynRenderer};
 use crate::vulkan::{Camera, VulkanContext};
 use std::sync::{Arc, Mutex};
 
+use crate::assets::ui::FontAtlas;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -52,6 +51,13 @@ impl EngineContext {
             upload_queue,
             Arc::clone(&cpu_assets.mesh_path_cache),
         )?;
+
+        let atlas = FontAtlas::new(
+            include_bytes!("../../assets/fonts/RobotoMono.ttf"),
+            ui::DEFAULT_CHARSET,
+            ui::DEFAULT_FONT_SIZES,
+        )?;
+        gpu_assets.upload_font_atlas(atlas)?;
 
         let tri = cpu_assets.register_mesh(CpuMesh::triangle());
         let cube = cpu_assets.register_mesh(CpuMesh::cube());
@@ -97,13 +103,7 @@ impl EngineContext {
         Ok(())
     }
 
-    pub fn render_frame(
-        &mut self,
-        window: &Window,
-        egui: &mut EguiLayer,
-        egui_output: egui::FullOutput,
-        clear_color: [f32; 4],
-    ) -> anyhow::Result<bool> {
+    pub fn render_frame(&mut self, clear_color: [f32; 4]) -> anyhow::Result<bool> {
         self.renderer.draw_frame(
             &self.vk,
             &mut self.world,
@@ -111,9 +111,6 @@ impl EngineContext {
             &mut self.gpu_assets,
             &self.camera,
             &self.lighting,
-            egui,
-            egui_output,
-            window,
             clear_color,
         )
     }
@@ -147,22 +144,18 @@ impl Engine {
 
 struct LoadingState {
     window: Window,
-    egui: EguiLayer,
     ctx: EngineContext,
 }
 
 struct RunningState {
     window: Window,
-    egui: EguiLayer,
     ctx: EngineContext,
-    debug: DebugUiState,
     last: std::time::Instant,
     fps_timer: std::time::Instant,
     fps_frames: u32,
     fps_current: f32,
     tick_accumulator: f32,
     paced_frame_time: f64,
-    cpu_history: debug_ui::CpuFrameHistory,
 }
 
 enum EngineState {
@@ -197,24 +190,14 @@ impl ApplicationHandler for EngineHandler {
 
         self.app.on_load(&mut ctx);
 
-        let swapchain = ctx.vk.swapchain.as_ref().unwrap();
-        let egui = EguiLayer::new(
-            &window,
-            &ctx.vk.instance.handle,
-            ctx.vk.device.physical,
-            ctx.vk.device.handle.clone(),
-            swapchain.format,
-        )
-        .expect("Failed to create EguiLayer");
-
         if ctx.is_loading() {
             ctx.set_pipeline::<LoadingPipeline>().expect("Failed to switch to LoadingPipeline");
 
             log::info!("Входим в Loading state");
-            self.state = Some(EngineState::Loading(LoadingState { window, egui, ctx }));
+            self.state = Some(EngineState::Loading(LoadingState { window, ctx }));
         } else {
             self.app.on_start(&mut ctx);
-            self.state = Some(EngineState::Running(make_running_state(window, egui, ctx)));
+            self.state = Some(EngineState::Running(make_running_state(window, ctx)));
         }
     }
 
@@ -236,7 +219,7 @@ impl ApplicationHandler for EngineHandler {
                         }
                         ls.ctx.set_pipeline::<DefaultPipeline>().expect("Failed to switch to DefaultPipeline");
                         self.app.on_start(&mut ls.ctx);
-                        let running = make_running_state(ls.window, ls.egui, ls.ctx);
+                        let running = make_running_state(ls.window, ls.ctx);
                         self.state = Some(EngineState::Running(running));
                     }
                 }
@@ -282,14 +265,7 @@ fn handle_loading_event(state: &mut LoadingState, event: &WindowEvent, event_loo
         WindowEvent::RedrawRequested => {
             state.ctx.poll_assets();
 
-            let progress = state.ctx.cpu_assets.load_progress.clone();
-
-            let raw = state.egui.begin_frame(&state.window);
-            let egui_output = state.egui.ctx.run(raw, |ctx| {
-                draw_loading_ui(ctx, &progress);
-            });
-
-            if let Err(e) = state.ctx.render_frame(&state.window, &mut state.egui, egui_output, [0.0; 4]) {
+            if let Err(e) = state.ctx.render_frame([0.0; 4]) {
                 log::error!("Loading render error: {e}");
             }
 
@@ -300,25 +276,9 @@ fn handle_loading_event(state: &mut LoadingState, event: &WindowEvent, event_loo
     }
 }
 
-fn draw_loading_ui(ctx: &egui::Context, progress: &crate::assets::LoadProgress) {
-    egui::Area::new("loading".into()).anchor(egui::Align2::CENTER_BOTTOM, [0.0, -60.0]).show(ctx, |ui| {
-        ui.set_min_width(400.0);
-        ui.vertical_centered(|ui| {
-            ui.label(egui::RichText::new("Loading...").size(18.0).color(egui::Color32::WHITE));
-            ui.add_space(8.0);
-            ui.add(egui::ProgressBar::new(progress.fraction()).desired_width(400.0).show_percentage());
-            ui.add_space(4.0);
-            ui.label(egui::RichText::new(&progress.current).size(11.0).color(egui::Color32::GRAY));
-        });
-    });
-}
+fn draw_loading_ui(progress: &crate::assets::LoadProgress) {}
 
 fn handle_running_event(state: &mut RunningState, event: &WindowEvent, app: &mut dyn App) {
-    let consumed = state.egui.handle_window_event(&state.window, event);
-    if consumed {
-        return;
-    }
-
     match event {
         WindowEvent::Resized(size) => {
             if size.width == 0 || size.height == 0 {
@@ -356,38 +316,16 @@ fn handle_running_event(state: &mut RunningState, event: &WindowEvent, app: &mut
                 }
             }
 
-            let egui_output = {
-                puffin::profile_scope!("egui_build");
-                let raw = state.egui.begin_frame(&state.window);
-                state.egui.ctx.run(raw, |ctx| {
-                    debug_ui::draw(
-                        ctx,
-                        &mut state.debug,
-                        state.fps_current,
-                        state.ctx.world.entity_count(),
-                        &state.cpu_history,
-                        state.ctx.renderer.last_frame_times(),
-                    );
-                })
-            };
-            puffin::set_scopes_on(state.debug.show_profiler);
-            state.ctx.renderer.set_exposure(state.debug.exposure);
-
             app.on_render(&mut state.ctx);
 
             let needs_recreate = {
                 puffin::profile_scope!("render_frame");
-                state
-                    .ctx
-                    .render_frame(&state.window, &mut state.egui, egui_output, [0.0, 0.0, 0.0, 1.0])
-                    .expect("render failed")
+                state.ctx.render_frame([0.0, 0.0, 0.0, 1.0]).expect("render failed")
             };
 
             let frame_ms = frame_start.elapsed().as_secs_f32() * 1000.0;
-            state.cpu_history.push(frame_ms);
 
-            if needs_recreate || state.debug.swapchain_dirty {
-                state.debug.swapchain_dirty = false;
+            if needs_recreate {
                 let size = state.window.inner_size();
                 if let Err(e) = handle_resize(state, size.width, size.height) {
                     log::error!("Swapchain recreate failed: {e}");
@@ -410,19 +348,16 @@ fn handle_running_event(state: &mut RunningState, event: &WindowEvent, app: &mut
     }
 }
 
-fn make_running_state(window: Window, egui: EguiLayer, ctx: EngineContext) -> RunningState {
+fn make_running_state(window: Window, ctx: EngineContext) -> RunningState {
     RunningState {
         window,
-        egui,
         ctx,
-        debug: DebugUiState::default(),
         last: std::time::Instant::now(),
         fps_timer: std::time::Instant::now(),
         fps_frames: 0,
         fps_current: 0.0,
         tick_accumulator: 0.0,
         paced_frame_time: 1.0 / 120.0,
-        cpu_history: debug_ui::CpuFrameHistory::new(120),
     }
 }
 
@@ -441,7 +376,7 @@ pub fn create_temp_pool(vk: &VulkanContext) -> anyhow::Result<ash::vk::CommandPo
 
 fn handle_resize(state: &mut RunningState, width: u32, height: u32) -> anyhow::Result<()> {
     unsafe { state.ctx.vk.device.handle.device_wait_idle()? };
-    state.ctx.vk.recreate_swapchain(width, height, state.debug.vsync)?;
+    state.ctx.vk.recreate_swapchain(width, height, false)?;
     state.ctx.renderer.resize_output(width, height)?;
     Ok(())
 }

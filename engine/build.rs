@@ -20,6 +20,8 @@ fn compile_shaders() {
         ("shaders/fsr_rcas.frag", "fsr_rcas.frag.spv"),
         ("shaders/loading_pipeline.frag", "loading_pipeline.frag.spv"),
         ("shaders/depth_prepass.vert", "depth_prepass.vert.spv"),
+        ("shaders/ui.vert", "ui.vert.spv"),
+        ("shaders/ui.frag", "ui.frag.spv"),
     ];
 
     for (src, dst) in &shaders {

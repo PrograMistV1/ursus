@@ -19,11 +19,6 @@ struct LoadingFrameData {
     progress: f32,
     width: f32,
     height: f32,
-    egui: *mut crate::egui_layer::EguiLayer,
-    egui_output: Option<egui::FullOutput>,
-    window: *const winit::window::Window,
-    graphics_queue: vk::Queue,
-    command_pool: vk::CommandPool,
 }
 unsafe impl Send for LoadingFrameData {}
 
@@ -192,17 +187,6 @@ impl RenderPipeline for LoadingPipeline {
                 );
                 (*data.device).cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent }]);
 
-                let egui_output = data.egui_output.take().expect("egui_output должен быть Some в loading_ui pass");
-
-                (*data.egui).end_frame_and_draw(
-                    &*data.window,
-                    data.graphics_queue,
-                    data.command_pool,
-                    cmd,
-                    extent,
-                    egui_output,
-                )?;
-
                 (*data.device).cmd_end_rendering(cmd);
                 Ok(())
             })
@@ -220,11 +204,6 @@ impl RenderPipeline for LoadingPipeline {
             progress: input.cpu_assets.load_progress.fraction(),
             width: w as f32,
             height: h as f32,
-            egui: input.egui,
-            egui_output: Some(input.egui_output),
-            window: input.window,
-            graphics_queue: input.graphics_queue,
-            command_pool: input.command_pool,
         }));
 
         Ok(())

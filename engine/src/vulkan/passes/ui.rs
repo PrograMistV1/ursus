@@ -9,11 +9,6 @@ impl UiPass {
         cmd: vk::CommandBuffer,
         swapchain_view: vk::ImageView,
         extent: vk::Extent2D,
-        window: &winit::window::Window,
-        egui: &mut crate::egui_layer::EguiLayer,
-        egui_output: egui::FullOutput,
-        graphics_queue: vk::Queue,
-        command_pool: vk::CommandPool,
     ) -> anyhow::Result<()> {
         unsafe {
             let color_attachment = vk::RenderingAttachmentInfo::default()
@@ -44,8 +39,6 @@ impl UiPass {
             );
             device.cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent }]);
         }
-
-        egui.end_frame_and_draw(window, graphics_queue, command_pool, cmd, extent, egui_output)?;
 
         unsafe {
             device.cmd_end_rendering(cmd);

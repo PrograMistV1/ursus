@@ -1,7 +1,6 @@
 use crate::assets::cpu_server::CpuAssetServer;
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::ecs::GameWorld;
-use crate::egui_layer::EguiLayer;
 use crate::lighting::LightingUbo;
 use crate::pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use crate::pipeline::FrameInput;
@@ -56,9 +55,6 @@ pub trait DynRenderer: Send {
         gpu_assets: &mut GpuAssetServer,
         camera: &Camera,
         lighting: &LightingUbo,
-        egui: &mut EguiLayer,
-        egui_output: egui::FullOutput,
-        window: &winit::window::Window,
         clear_color: [f32; 4],
     ) -> anyhow::Result<bool>;
 
@@ -98,9 +94,6 @@ impl<P: RenderPipeline> Renderer<P> {
         gpu_assets: &mut GpuAssetServer,
         camera: &Camera,
         lighting: &LightingUbo,
-        egui: &mut EguiLayer,
-        egui_output: egui::FullOutput,
-        window: &winit::window::Window,
         clear_color: [f32; 4],
     ) -> anyhow::Result<bool> {
         puffin::profile_function!();
@@ -160,9 +153,6 @@ impl<P: RenderPipeline> Renderer<P> {
             lighting,
             view_proj,
             light_view_proj,
-            egui,
-            egui_output,
-            window,
             graphics_queue: ctx.device.graphics_queue,
             command_pool: self.commands.pool,
             exposure: self.exposure,
@@ -244,12 +234,9 @@ impl<P: RenderPipeline> DynRenderer for Renderer<P> {
         gpu_assets: &mut GpuAssetServer,
         camera: &Camera,
         lighting: &LightingUbo,
-        egui: &mut EguiLayer,
-        egui_output: egui::FullOutput,
-        window: &winit::window::Window,
         clear_color: [f32; 4],
     ) -> anyhow::Result<bool> {
-        self.draw_frame(ctx, world, cpu_assets, gpu_assets, camera, lighting, egui, egui_output, window, clear_color)
+        self.draw_frame(ctx, world, cpu_assets, gpu_assets, camera, lighting, clear_color)
     }
 
     fn resize_output(&mut self, w: u32, h: u32) -> anyhow::Result<()> {

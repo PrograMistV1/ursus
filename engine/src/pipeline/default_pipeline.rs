@@ -1,6 +1,7 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::{CpuAssetServer, MaterialHandle, MeshHandle};
 use crate::components::Transform;
+use crate::ecs::world::GameWorld;
 use crate::lighting::LightingUbo;
 use crate::math::frustum::transform_aabb;
 use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
@@ -21,8 +22,15 @@ use std::sync::Arc;
 
 const LDR_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 
-#[derive(Default)]
-pub struct DefaultPipeline;
+pub struct DefaultPipeline {
+    ui_pass: Option<crate::vulkan::passes::ui::UiPass>,
+}
+
+impl Default for DefaultPipeline {
+    fn default() -> Self {
+        Self { ui_pass: None }
+    }
+}
 
 impl RenderPipeline for DefaultPipeline {
     fn build(
@@ -288,18 +296,7 @@ impl RenderPipeline for DefaultPipeline {
                 move |cmd, pool, ctx_ptr| unsafe {
                     let data = &mut *(ctx_ptr as *mut DefaultPipelineFrameData);
                     let sc = pool.image(h_swapchain);
-                    let egui_output = data.egui_output.take().expect("egui_output должен быть Some в ui pass");
-                    UiPass.record(
-                        &*data.device,
-                        cmd,
-                        sc.view,
-                        sc.extent,
-                        &*data.window,
-                        &mut *data.egui,
-                        egui_output,
-                        data.graphics_queue,
-                        data.command_pool,
-                    )?;
+                    UiPass.record(&*data.device, cmd, sc.view, sc.extent)?;
                     Ok(())
                 }
             })
@@ -372,12 +369,7 @@ impl RenderPipeline for DefaultPipeline {
             view_proj: input.view_proj,
             light_view_proj: input.light_view_proj,
             lighting: lighting_frame,
-            gpu_assets: input.gpu_assets, // было assets: input.assets
-            egui: input.egui,
-            egui_output: Some(input.egui_output),
-            window: input.window,
-            graphics_queue: input.graphics_queue,
-            command_pool: input.command_pool,
+            gpu_assets: input.gpu_assets,
             exposure: input.exposure,
             fsr_sharpness: input.fsr_sharpness,
             clear_color: input.clear_color,
@@ -392,8 +384,8 @@ impl RenderPipeline for DefaultPipeline {
 
 struct OwnedDrawCall {
     gpu_mesh_ptr: *const crate::assets::GpuMesh,
-    transform: crate::ecs::components::Transform,
-    material: Option<crate::ecs::components::MaterialHandle>,
+    transform: Transform,
+    material: Option<MaterialHandle>,
     shader: crate::assets::shader_registry::ShaderHandle,
 }
 unsafe impl Send for OwnedDrawCall {}
@@ -423,11 +415,8 @@ struct DefaultPipelineFrameData {
     light_view_proj: glam::Mat4,
     lighting: LightingUbo,
     gpu_assets: *const GpuAssetServer,
-    egui: *mut crate::egui_layer::EguiLayer,
-    egui_output: Option<egui::FullOutput>,
-    window: *const winit::window::Window,
-    graphics_queue: vk::Queue,
-    command_pool: vk::CommandPool,
+    world: *const GameWorld,
+    ui_pass: *mut UiPass,
     exposure: f32,
     fsr_sharpness: f32,
     clear_color: [f32; 4],
