@@ -49,4 +49,10 @@ pub fn register_builtin(reg: &mut ShaderRegistry) {
         include_bytes!(concat!(env!("OUT_DIR"), "/post_process.vert.spv")).to_vec(),
         include_bytes!(concat!(env!("OUT_DIR"), "/fsr_rcas.frag.spv")).to_vec(),
     ));
+
+    reg.register(ShaderDef::from_bytes(
+        "loading",
+        include_bytes!(concat!(env!("OUT_DIR"), "/post_process.vert.spv")).to_vec(),
+        include_bytes!(concat!(env!("OUT_DIR"), "/loading_pipeline.frag.spv")).to_vec(),
+    ));
 }
