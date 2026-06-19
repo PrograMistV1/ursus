@@ -1,5 +1,6 @@
+use engine::components::{UiLayout, UiText};
 use engine::{App, AsyncMeshHandle, Engine, EngineContext};
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 
 struct MyApp {
     sponza: Option<AsyncMeshHandle>,
@@ -15,6 +16,12 @@ impl MyApp {
 impl App for MyApp {
     fn on_load(&mut self, ctx: &mut EngineContext) {
         self.sponza = Some(ctx.cpu_assets.load_mesh_async("assets/sponza/glTF/Sponza.gltf"));
+        let entity = ctx
+            .world
+            .spawn()
+            .insert(UiLayout::top_left(Vec2::new(16.0, 16.0)))
+            .insert(UiText::new("FPS: 60").with_size(18.0).with_color([1.0; 4]))
+            .build();
     }
 
     fn on_start(&mut self, ctx: &mut EngineContext) {

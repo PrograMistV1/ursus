@@ -20,13 +20,11 @@ use std::sync::Arc;
 
 const LDR_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 
-pub struct DefaultPipeline {
-    ui_pass: Option<UiPass>,
-}
+pub struct DefaultPipeline;
 
 impl Default for DefaultPipeline {
     fn default() -> Self {
-        Self { ui_pass: None }
+        Self
     }
 }
 
@@ -282,16 +280,29 @@ impl RenderPipeline for DefaultPipeline {
             })
             .build(graph);
 
+        let ui_pass =
+            UiPass::new(&ctx.device.handle, swapchain.format, gpu_assets.bindless.layout, &mut cpu_assets.shaders)?;
+
         pass("ui")
             .after(blit_handle)
             .read_write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .record({
-                move |cmd, pool, ctx_ptr| unsafe {
-                    let data = &mut *(ctx_ptr as *mut DefaultPipelineFrameData);
-                    let sc = pool.image(h_swapchain);
-                    UiPass.record(&*data.device, cmd, sc.view, sc.extent)?;
-                    Ok(())
-                }
+            .record(move |cmd, pool, ctx_ptr| unsafe {
+                let data = &mut *(ctx_ptr as *mut DefaultPipelineFrameData);
+                let sc = pool.image(h_swapchain);
+                let gpu_assets = &*data.gpu_assets;
+                let world = &mut *data.world;
+
+                ui_pass.record(
+                    &*data.device,
+                    cmd,
+                    sc.view,
+                    sc.extent,
+                    gpu_assets.bindless.set,
+                    world,
+                    gpu_assets.font_atlas.as_ref(),
+                    gpu_assets.font_atlas_texture.map(|h| h.0).unwrap_or(0),
+                )?;
+                Ok(())
             })
             .build(graph);
 
@@ -355,6 +366,7 @@ impl RenderPipeline for DefaultPipeline {
 
         let frame_data = Box::new(DefaultPipelineFrameData {
             device: input.device,
+            world: input.world as *mut _,
             draw_calls,
             prepass_calls,
             shadow_calls,
@@ -400,6 +412,7 @@ impl OwnedDrawCall {
 
 struct DefaultPipelineFrameData {
     device: *const ash::Device,
+    world: *mut crate::ecs::GameWorld,
     draw_calls: Vec<OwnedDrawCall>,
     prepass_calls: Vec<OwnedDrawCall>,
     shadow_calls: Vec<OwnedDrawCall>,
