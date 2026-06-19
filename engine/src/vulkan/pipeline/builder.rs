@@ -108,6 +108,11 @@ impl<'a> PipelineBuilder<'a> {
         self
     }
 
+    pub fn depth_compare(mut self, op: vk::CompareOp) -> Self {
+        self.depth_compare = op;
+        self
+    }
+
     pub fn depth_bias(mut self, constant_factor: f32, slope_factor: f32) -> Self {
         self.depth_bias = Some(DepthBias { constant_factor, slope_factor });
         self
