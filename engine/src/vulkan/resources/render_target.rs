@@ -1,4 +1,4 @@
-use crate::vulkan::core::memory::{destroy_image_resources, find_memory_type};
+use crate::vulkan::core::memory::{alloc_image, destroy_image_resources, ImageDesc};
 use ash::vk;
 
 pub struct RenderTarget {
@@ -19,53 +19,23 @@ impl RenderTarget {
         height: u32,
     ) -> anyhow::Result<Self> {
         let format = vk::Format::R16G16B16A16_SFLOAT;
-        let extent = vk::Extent2D { width, height };
-
-        let image_info = vk::ImageCreateInfo::default()
-            .image_type(vk::ImageType::TYPE_2D)
-            .format(format)
-            .extent(vk::Extent3D { width, height, depth: 1 })
-            .mip_levels(1)
-            .array_layers(1)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .tiling(vk::ImageTiling::OPTIMAL)
-            .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .initial_layout(vk::ImageLayout::UNDEFINED);
-
-        let image = unsafe { device.create_image(&image_info, None)? };
-        let req = unsafe { device.get_image_memory_requirements(image) };
-
-        let mem_type =
-            find_memory_type(instance, physical_device, req.memory_type_bits, vk::MemoryPropertyFlags::DEVICE_LOCAL)?;
-
-        let memory = unsafe {
-            device.allocate_memory(
-                &vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(mem_type),
-                None,
-            )?
-        };
-        unsafe { device.bind_image_memory(image, memory, 0)? };
-
-        let view = unsafe {
-            device.create_image_view(
-                &vk::ImageViewCreateInfo::default()
-                    .image(image)
-                    .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(format)
-                    .subresource_range(vk::ImageSubresourceRange {
-                        aspect_mask: vk::ImageAspectFlags::COLOR,
-                        base_mip_level: 0,
-                        level_count: 1,
-                        base_array_layer: 0,
-                        layer_count: 1,
-                    }),
-                None,
-            )?
-        };
+        let desc = ImageDesc::color(
+            format,
+            width,
+            height,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+        );
+        let img = alloc_image(device, physical_device, instance, &desc)?;
 
         log::debug!("RenderTarget: {}x{} {:?}", width, height, format);
-        Ok(Self { image, view, memory, format, extent, device: device.clone() })
+        Ok(Self {
+            image: img.image,
+            view: img.view,
+            memory: img.memory,
+            format,
+            extent: vk::Extent2D { width, height },
+            device: device.clone(),
+        })
     }
 }
 

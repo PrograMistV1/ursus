@@ -100,55 +100,22 @@ impl TransientImage {
         width: u32,
         height: u32,
     ) -> anyhow::Result<Self> {
-        let image_info = vk::ImageCreateInfo::default()
-            .image_type(vk::ImageType::TYPE_2D)
-            .format(desc.format)
-            .extent(vk::Extent3D { width, height, depth: 1 })
-            .mip_levels(1)
-            .array_layers(1)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .tiling(vk::ImageTiling::OPTIMAL)
-            .usage(desc.usage)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .initial_layout(vk::ImageLayout::UNDEFINED);
-
-        let image = unsafe { device.create_image(&image_info, None)? };
-        let req = unsafe { device.get_image_memory_requirements(image) };
-
-        let mem_type =
-            find_memory_type(instance, physical_device, req.memory_type_bits, vk::MemoryPropertyFlags::DEVICE_LOCAL)?;
-
-        let memory = unsafe {
-            device.allocate_memory(
-                &vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(mem_type),
-                None,
-            )?
+        let img_desc = crate::vulkan::core::memory::ImageDesc {
+            format: desc.format,
+            width,
+            height,
+            usage: desc.usage,
+            aspect_mask: desc.kind.aspect_mask(),
+            mip_levels: 1,
         };
-        unsafe { device.bind_image_memory(image, memory, 0)? };
-
-        let view = unsafe {
-            device.create_image_view(
-                &vk::ImageViewCreateInfo::default()
-                    .image(image)
-                    .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(desc.format)
-                    .subresource_range(vk::ImageSubresourceRange {
-                        aspect_mask: desc.kind.aspect_mask(),
-                        base_mip_level: 0,
-                        level_count: 1,
-                        base_array_layer: 0,
-                        layer_count: 1,
-                    }),
-                None,
-            )?
-        };
+        let img = crate::vulkan::core::memory::alloc_image(device, physical_device, instance, &img_desc)?;
 
         log::debug!("TransientImage '{}': {}x{} {:?}", desc.name, width, height, desc.format);
 
         Ok(Self {
-            image,
-            view,
-            memory,
+            image: img.image,
+            view: img.view,
+            memory: img.memory,
             format: desc.format,
             extent: vk::Extent2D { width, height },
             kind: desc.kind,

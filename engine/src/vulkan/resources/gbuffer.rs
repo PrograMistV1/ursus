@@ -1,4 +1,4 @@
-use crate::vulkan::core::memory::{destroy_image_resources, find_memory_type};
+use crate::vulkan::core::memory::{alloc_image, destroy_image_resources, ImageDesc};
 use ash::vk;
 
 pub struct GBuffer {
@@ -26,21 +26,29 @@ impl GBuffer {
         height: u32,
     ) -> anyhow::Result<Self> {
         let extent = vk::Extent2D { width, height };
+        let usage = vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED;
 
-        let (albedo, albedo_view, albedo_memory) =
-            create_attachment(device, instance, physical_device, Self::ALBEDO_FORMAT, width, height)?;
-
-        let (normal, normal_view, normal_memory) =
-            create_attachment(device, instance, physical_device, Self::NORMAL_FORMAT, width, height)?;
+        let albedo = alloc_image(
+            device,
+            physical_device,
+            instance,
+            &ImageDesc::color(Self::ALBEDO_FORMAT, width, height, usage),
+        )?;
+        let normal = alloc_image(
+            device,
+            physical_device,
+            instance,
+            &ImageDesc::color(Self::NORMAL_FORMAT, width, height, usage),
+        )?;
 
         log::debug!("GBuffer: {}x{}", width, height);
         Ok(Self {
-            albedo,
-            albedo_view,
-            albedo_memory,
-            normal,
-            normal_view,
-            normal_memory,
+            albedo: albedo.image,
+            albedo_view: albedo.view,
+            albedo_memory: albedo.memory,
+            normal: normal.image,
+            normal_view: normal.view,
+            normal_memory: normal.memory,
             extent,
             device: device.clone(),
         })
@@ -58,58 +66,4 @@ impl Drop for GBuffer {
             destroy_image_resources(&self.device, self.normal, self.normal_view, self.normal_memory);
         }
     }
-}
-
-fn create_attachment(
-    device: &ash::Device,
-    instance: &ash::Instance,
-    physical_device: vk::PhysicalDevice,
-    format: vk::Format,
-    width: u32,
-    height: u32,
-) -> anyhow::Result<(vk::Image, vk::ImageView, vk::DeviceMemory)> {
-    let image_info = vk::ImageCreateInfo::default()
-        .image_type(vk::ImageType::TYPE_2D)
-        .format(format)
-        .extent(vk::Extent3D { width, height, depth: 1 })
-        .mip_levels(1)
-        .array_layers(1)
-        .samples(vk::SampleCountFlags::TYPE_1)
-        .tiling(vk::ImageTiling::OPTIMAL)
-        .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED)
-        .sharing_mode(vk::SharingMode::EXCLUSIVE)
-        .initial_layout(vk::ImageLayout::UNDEFINED);
-
-    let image = unsafe { device.create_image(&image_info, None)? };
-    let req = unsafe { device.get_image_memory_requirements(image) };
-
-    let mem_type =
-        find_memory_type(instance, physical_device, req.memory_type_bits, vk::MemoryPropertyFlags::DEVICE_LOCAL)?;
-
-    let memory = unsafe {
-        device.allocate_memory(
-            &vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(mem_type),
-            None,
-        )?
-    };
-    unsafe { device.bind_image_memory(image, memory, 0)? };
-
-    let view = unsafe {
-        device.create_image_view(
-            &vk::ImageViewCreateInfo::default()
-                .image(image)
-                .view_type(vk::ImageViewType::TYPE_2D)
-                .format(format)
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                }),
-            None,
-        )?
-    };
-
-    Ok((image, view, memory))
 }
