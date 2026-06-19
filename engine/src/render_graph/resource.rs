@@ -1,5 +1,5 @@
 use crate::vulkan::core::debug::set_object_name;
-use crate::vulkan::core::memory::{destroy_image_resources, find_memory_type};
+use crate::vulkan::core::memory::destroy_image_resources;
 use ash::ext::debug_utils;
 use ash::vk;
 use std::collections::HashMap;
