@@ -1,5 +1,5 @@
 use crate::assets::mesh::Vertex;
-use crate::assets::GpuMesh;
+use crate::assets::{GpuMesh, ShaderHandle, ShaderRegistry};
 use crate::ecs::components::Transform;
 use crate::render_graph::GpuImage;
 use crate::vulkan::pipeline::builder::{cmd, PipelineBuilder};
@@ -23,7 +23,7 @@ pub struct DepthPrepass {
 }
 
 impl DepthPrepass {
-    pub fn new(device: &ash::Device) -> anyhow::Result<Self> {
+    pub fn new(device: &ash::Device, registry: &mut ShaderRegistry) -> anyhow::Result<Self> {
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX)
             .offset(0)
@@ -37,13 +37,13 @@ impl DepthPrepass {
             .format(vk::Format::R32G32B32_SFLOAT)
             .offset(0)];
 
-        let (pipeline, layout) = PipelineBuilder::depth_only(
-            include_bytes!(concat!(env!("OUT_DIR"), "/depth_prepass.vert.spv")),
-            std::slice::from_ref(&binding),
-            &attributes,
-        )
-        .push_constants(std::slice::from_ref(&push_range))
-        .build(device)?;
+        let handle = registry.by_name("depth_prepass").expect("шейдер 'depth_prepass' не зарегистрирован");
+        let (vert_spv, _) = registry.load_spv(handle)?;
+        let vert_spv = vert_spv.to_vec();
+
+        let (pipeline, layout) = PipelineBuilder::depth_only(&vert_spv, std::slice::from_ref(&binding), &attributes)
+            .push_constants(std::slice::from_ref(&push_range))
+            .build(device)?;
 
         log::debug!("DepthPrepass создан");
         Ok(Self { pipeline, layout, device: device.clone() })

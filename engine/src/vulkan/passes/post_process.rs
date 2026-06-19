@@ -1,3 +1,4 @@
+use crate::assets::ShaderRegistry;
 use crate::render_graph::GpuImage;
 use crate::vulkan::pipeline::builder::{cmd, PipelineBuilder};
 use ash::vk;
@@ -20,7 +21,11 @@ pub struct PostProcessPass {
 }
 
 impl PostProcessPass {
-    pub fn new(device: &ash::Device, swapchain_format: vk::Format) -> anyhow::Result<Self> {
+    pub fn new(
+        device: &ash::Device,
+        swapchain_format: vk::Format,
+        registry: &mut ShaderRegistry,
+    ) -> anyhow::Result<Self> {
         let sampler = unsafe {
             device.create_sampler(
                 &vk::SamplerCreateInfo::default()
@@ -66,15 +71,16 @@ impl PostProcessPass {
             .offset(0)
             .size(size_of::<PostProcessPC>() as u32);
 
+        let handle = registry.by_name("post_process").expect("шейдер 'post_process' не зарегистрирован");
+        let (vert_spv, frag_spv) = registry.load_spv(handle)?;
+        let vert_spv = vert_spv.to_vec();
+        let frag_spv = frag_spv.expect("'post_process' должен иметь frag").to_vec();
+
         let color_formats = [swapchain_format];
-        let (pipeline, layout) = PipelineBuilder::fullscreen(
-            include_bytes!(concat!(env!("OUT_DIR"), "/post_process.vert.spv")),
-            include_bytes!(concat!(env!("OUT_DIR"), "/post_process.frag.spv")),
-            &color_formats,
-        )
-        .set_layouts(std::slice::from_ref(&descriptor_set_layout))
-        .push_constants(std::slice::from_ref(&push_range))
-        .build(device)?;
+        let (pipeline, layout) = PipelineBuilder::fullscreen(&vert_spv, &frag_spv, &color_formats)
+            .set_layouts(std::slice::from_ref(&descriptor_set_layout))
+            .push_constants(std::slice::from_ref(&push_range))
+            .build(device)?;
 
         log::debug!("PostProcessPass создан");
         Ok(Self {

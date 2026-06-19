@@ -1,5 +1,7 @@
+use crate::assets::ShaderRegistry;
 use crate::lighting::buffer::LightBuffer;
 use crate::render_graph::GpuImage;
+use crate::vulkan::pipeline::builder::PipelineBuilder;
 use crate::vulkan::Camera;
 use ash::vk;
 
@@ -29,6 +31,7 @@ impl LightingPass {
         physical_device: vk::PhysicalDevice,
         instance: &ash::Instance,
         hdr_format: vk::Format,
+        registry: &mut ShaderRegistry,
     ) -> anyhow::Result<Self> {
         let light_buffer = LightBuffer::new(device, physical_device, instance)?;
 
@@ -111,25 +114,15 @@ impl LightingPass {
             .offset(0)
             .size(size_of::<LightingPC>() as u32);
 
-        let layout = unsafe {
-            device.create_pipeline_layout(
-                &vk::PipelineLayoutCreateInfo::default()
-                    .set_layouts(std::slice::from_ref(&descriptor_set_layout))
-                    .push_constant_ranges(std::slice::from_ref(&push_range)),
-                None,
-            )?
-        };
+        let handle = registry.by_name("lighting").expect("шейдер 'lighting' не зарегистрирован");
+        let (vert_spv, frag_spv) = registry.load_spv(handle)?;
+        let vert_spv = vert_spv.to_vec();
+        let frag_spv = frag_spv.expect("'lighting' должен иметь frag").to_vec();
 
-        let vert = crate::vulkan::pipeline::shader::ShaderModule::from_bytes(
-            device,
-            include_bytes!(concat!(env!("OUT_DIR"), "/post_process.vert.spv")),
-        )?;
-        let frag = crate::vulkan::pipeline::shader::ShaderModule::from_bytes(
-            device,
-            include_bytes!(concat!(env!("OUT_DIR"), "/lighting.frag.spv")),
-        )?;
-
-        let pipeline = build_fullscreen_pipeline(device, &vert, &frag, layout, hdr_format)?;
+        let (pipeline, layout) = PipelineBuilder::fullscreen(&vert_spv, &frag_spv, std::slice::from_ref(&hdr_format))
+            .set_layouts(std::slice::from_ref(&descriptor_set_layout))
+            .push_constants(std::slice::from_ref(&push_range))
+            .build(device)?;
 
         log::debug!("LightingPass создан");
         Ok(Self {
@@ -230,63 +223,4 @@ fn make_image_binding(binding: u32) -> vk::DescriptorSetLayoutBinding<'static> {
         .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
         .descriptor_count(1)
         .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-}
-
-fn build_fullscreen_pipeline(
-    device: &ash::Device,
-    vert: &crate::vulkan::pipeline::shader::ShaderModule,
-    frag: &crate::vulkan::pipeline::shader::ShaderModule,
-    layout: vk::PipelineLayout,
-    color_format: vk::Format,
-) -> anyhow::Result<vk::Pipeline> {
-    let entry = c"main";
-    let stages = [
-        vk::PipelineShaderStageCreateInfo::default()
-            .stage(vk::ShaderStageFlags::VERTEX)
-            .module(vert.handle)
-            .name(entry),
-        vk::PipelineShaderStageCreateInfo::default()
-            .stage(vk::ShaderStageFlags::FRAGMENT)
-            .module(frag.handle)
-            .name(entry),
-    ];
-    let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
-    let input_assembly =
-        vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
-    let viewport_state = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
-    let rasterizer = vk::PipelineRasterizationStateCreateInfo::default()
-        .polygon_mode(vk::PolygonMode::FILL)
-        .cull_mode(vk::CullModeFlags::NONE)
-        .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
-        .line_width(1.0);
-    let multisampling =
-        vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
-    let blend_attachment =
-        vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA);
-    let color_blending =
-        vk::PipelineColorBlendStateCreateInfo::default().attachments(std::slice::from_ref(&blend_attachment));
-    let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-    let dynamic_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-    let depth_stencil =
-        vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(false).depth_write_enable(false);
-    let mut rendering_info =
-        vk::PipelineRenderingCreateInfo::default().color_attachment_formats(std::slice::from_ref(&color_format));
-    let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
-        .stages(&stages)
-        .vertex_input_state(&vertex_input)
-        .input_assembly_state(&input_assembly)
-        .viewport_state(&viewport_state)
-        .rasterization_state(&rasterizer)
-        .multisample_state(&multisampling)
-        .color_blend_state(&color_blending)
-        .dynamic_state(&dynamic_state)
-        .depth_stencil_state(&depth_stencil)
-        .layout(layout)
-        .push_next(&mut rendering_info);
-    let pipeline = unsafe {
-        device
-            .create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&pipeline_info), None)
-            .map_err(|(_, e)| e)?[0]
-    };
-    Ok(pipeline)
 }

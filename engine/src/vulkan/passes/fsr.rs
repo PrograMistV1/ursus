@@ -1,4 +1,6 @@
+use crate::assets::ShaderRegistry;
 use crate::render_graph::GpuImage;
+use crate::vulkan::pipeline::builder::PipelineBuilder;
 use ash::vk;
 
 #[repr(C)]
@@ -31,7 +33,7 @@ pub struct FsrPass {
 }
 
 impl FsrPass {
-    pub fn new(device: &ash::Device, output_format: vk::Format) -> anyhow::Result<Self> {
+    pub fn new(device: &ash::Device, output_format: vk::Format, registry: &mut ShaderRegistry) -> anyhow::Result<Self> {
         let sampler = unsafe {
             device.create_sampler(
                 &vk::SamplerCreateInfo::default()
@@ -67,43 +69,15 @@ impl FsrPass {
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .offset(0)
             .size(size_of::<EasuPC>() as u32);
-
-        let easu_layout = unsafe {
-            device.create_pipeline_layout(
-                &vk::PipelineLayoutCreateInfo::default()
-                    .set_layouts(std::slice::from_ref(&dsl))
-                    .push_constant_ranges(std::slice::from_ref(&easu_push)),
-                None,
-            )?
-        };
-
         let rcas_push = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .offset(0)
             .size(size_of::<RcasPC>() as u32);
 
-        let rcas_layout = unsafe {
-            device.create_pipeline_layout(
-                &vk::PipelineLayoutCreateInfo::default()
-                    .set_layouts(std::slice::from_ref(&dsl))
-                    .push_constant_ranges(std::slice::from_ref(&rcas_push)),
-                None,
-            )?
-        };
-
-        let easu_pipeline = build_fullscreen_pipeline(
-            device,
-            include_bytes!(concat!(env!("OUT_DIR"), "/fsr_easu.frag.spv")),
-            easu_layout,
-            output_format,
-        )?;
-
-        let rcas_pipeline = build_fullscreen_pipeline(
-            device,
-            include_bytes!(concat!(env!("OUT_DIR"), "/fsr_rcas.frag.spv")),
-            rcas_layout,
-            output_format,
-        )?;
+        let (easu_pipeline, easu_layout) =
+            build_fsr_stage_pipeline(device, registry, "fsr_easu", dsl, easu_push, output_format)?;
+        let (rcas_pipeline, rcas_layout) =
+            build_fsr_stage_pipeline(device, registry, "fsr_rcas", dsl, rcas_push, output_format)?;
 
         log::debug!("FsrPass создан");
 
@@ -194,6 +168,25 @@ impl FsrPass {
     }
 }
 
+fn build_fsr_stage_pipeline(
+    device: &ash::Device,
+    registry: &mut ShaderRegistry,
+    shader_name: &str,
+    dsl: vk::DescriptorSetLayout,
+    push_range: vk::PushConstantRange,
+    output_format: vk::Format,
+) -> anyhow::Result<(vk::Pipeline, vk::PipelineLayout)> {
+    let handle = registry.by_name(shader_name).unwrap_or_else(|| panic!("шейдер '{shader_name}' не зарегистрирован"));
+    let (vert, frag) = registry.load_spv(handle)?;
+    let vert = vert.to_vec();
+    let frag = frag.expect("FSR-шейдер должен иметь frag").to_vec();
+
+    PipelineBuilder::fullscreen(&vert, &frag, std::slice::from_ref(&output_format))
+        .set_layouts(std::slice::from_ref(&dsl))
+        .push_constants(std::slice::from_ref(&push_range))
+        .build(device)
+}
+
 impl Drop for FsrPass {
     fn drop(&mut self) {
         unsafe {
@@ -221,74 +214,6 @@ fn create_sampled_image_dsl(device: &ash::Device) -> anyhow::Result<vk::Descript
             None,
         )?
     })
-}
-
-fn build_fullscreen_pipeline(
-    device: &ash::Device,
-    frag_spv: &[u8],
-    layout: vk::PipelineLayout,
-    color_format: vk::Format,
-) -> anyhow::Result<vk::Pipeline> {
-    let vert = crate::vulkan::pipeline::shader::ShaderModule::from_bytes(
-        device,
-        include_bytes!(concat!(env!("OUT_DIR"), "/post_process.vert.spv")),
-    )?;
-    let frag = crate::vulkan::pipeline::shader::ShaderModule::from_bytes(device, frag_spv)?;
-
-    let entry = c"main";
-    let stages = [
-        vk::PipelineShaderStageCreateInfo::default()
-            .stage(vk::ShaderStageFlags::VERTEX)
-            .module(vert.handle)
-            .name(entry),
-        vk::PipelineShaderStageCreateInfo::default()
-            .stage(vk::ShaderStageFlags::FRAGMENT)
-            .module(frag.handle)
-            .name(entry),
-    ];
-
-    let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
-    let input_assembly =
-        vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
-    let viewport_state = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
-    let rasterizer = vk::PipelineRasterizationStateCreateInfo::default()
-        .polygon_mode(vk::PolygonMode::FILL)
-        .cull_mode(vk::CullModeFlags::NONE)
-        .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
-        .line_width(1.0);
-    let multisampling =
-        vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
-    let blend_attachment =
-        vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA);
-    let color_blending =
-        vk::PipelineColorBlendStateCreateInfo::default().attachments(std::slice::from_ref(&blend_attachment));
-    let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-    let dynamic_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-    let depth_stencil =
-        vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(false).depth_write_enable(false);
-    let mut rendering_info =
-        vk::PipelineRenderingCreateInfo::default().color_attachment_formats(std::slice::from_ref(&color_format));
-
-    let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
-        .stages(&stages)
-        .vertex_input_state(&vertex_input)
-        .input_assembly_state(&input_assembly)
-        .viewport_state(&viewport_state)
-        .rasterization_state(&rasterizer)
-        .multisample_state(&multisampling)
-        .color_blend_state(&color_blending)
-        .dynamic_state(&dynamic_state)
-        .depth_stencil_state(&depth_stencil)
-        .layout(layout)
-        .push_next(&mut rendering_info);
-
-    let pipeline = unsafe {
-        device
-            .create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&pipeline_info), None)
-            .map_err(|(_, e)| e)?[0]
-    };
-
-    Ok(pipeline)
 }
 
 pub fn compute_easu_con(input_viewport: (f32, f32), input_size: (f32, f32), output_size: (f32, f32)) -> EasuPC {

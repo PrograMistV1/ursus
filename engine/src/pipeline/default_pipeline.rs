@@ -80,8 +80,8 @@ impl RenderPipeline for DefaultPipeline {
             final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
         });
 
-        let shadow_pass = ShadowPass::new(&ctx.device.handle)?;
-        let depth_prepass = DepthPrepass::new(&ctx.device.handle)?;
+        let shadow_pass = ShadowPass::new(&ctx.device.handle, &mut cpu_assets.shaders)?;
+        let depth_prepass = DepthPrepass::new(&ctx.device.handle, &mut cpu_assets.shaders)?;
 
         let mut geometry_pass = GeometryPass::new(
             &ctx.device.handle,
@@ -96,9 +96,10 @@ impl RenderPipeline for DefaultPipeline {
             ctx.device.physical,
             &ctx.instance.handle,
             vk::Format::R16G16B16A16_SFLOAT,
+            &mut cpu_assets.shaders,
         )?;
 
-        let post_pass = PostProcessPass::new(&ctx.device.handle, LDR_FORMAT)?;
+        let post_pass = PostProcessPass::new(&ctx.device.handle, LDR_FORMAT, &mut cpu_assets.shaders)?;
 
         pass("shadow")
             .write(h_shadow_map, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
@@ -201,7 +202,7 @@ impl RenderPipeline for DefaultPipeline {
             })
             .build(graph);
 
-        let fsr_pass = Arc::new(FsrPass::new(&ctx.device.handle, LDR_FORMAT)?);
+        let fsr_pass = Arc::new(FsrPass::new(&ctx.device.handle, LDR_FORMAT, &mut cpu_assets.shaders)?);
         let fsr_easu_set = fsr_pass.easu_descriptor_set;
         let fsr_rcas_set = fsr_pass.rcas_descriptor_set;
         let fsr_sampler = fsr_pass.sampler;
