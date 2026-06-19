@@ -41,7 +41,7 @@ impl GeometryPass {
         cpu_assets: &mut CpuAssetServer,
     ) -> anyhow::Result<Self> {
         let mut pass = Self { pipelines: HashMap::new(), bindless_layout, material_layout, color_formats };
-        let default = cpu_assets.shaders.diffuse();
+        let default = cpu_assets.shaders.by_name("diffuse").unwrap();
         pass.get_or_create_pipeline(device, default, &mut cpu_assets.shaders)?;
         Ok(pass)
     }
@@ -57,7 +57,7 @@ impl GeometryPass {
         }
         let (vert_spv, frag_spv) = registry.load_spv(shader)?;
         let vert_spv = vert_spv.to_vec();
-        let frag_spv = frag_spv.to_vec();
+        let frag_spv = frag_spv.unwrap().to_vec();
         let set_layouts = [self.bindless_layout, self.material_layout];
         let pipeline = Pipeline::new(
             device,

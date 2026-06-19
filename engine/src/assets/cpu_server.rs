@@ -1,3 +1,4 @@
+use crate::assets::builtin_shaders;
 use crate::assets::loader_job::{BackgroundLoader, LoaderMessage, MeshSource};
 use crate::assets::material::MaterialDef;
 use crate::assets::mesh::CpuMesh;
@@ -51,12 +52,15 @@ pub struct CpuAssetServer {
 
 impl CpuAssetServer {
     pub fn new(upload_queue: Arc<Mutex<Vec<PendingUpload>>>) -> Self {
+        let mut shaders = ShaderRegistry::empty();
+        builtin_shaders::register_builtin(&mut shaders);
+
         Self {
             cpu_meshes: Vec::new(),
             cpu_materials: Vec::new(),
             material_name_cache: HashMap::new(),
             mesh_path_cache: Arc::new(Mutex::new(HashMap::new())),
-            shaders: ShaderRegistry::new(),
+            shaders,
             load_progress: LoadProgress::default(),
             upload_queue,
             loader: BackgroundLoader::new(),

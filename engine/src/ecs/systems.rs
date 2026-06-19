@@ -12,7 +12,7 @@ pub struct DrawCall {
 
 pub fn collect_draw_calls(world: &mut GameWorld, cpu_assets: &CpuAssetServer) -> Vec<DrawCall> {
     puffin::profile_function!();
-    let default_shader = cpu_assets.shaders.diffuse();
+    let default_shader = cpu_assets.shaders.by_name("unlit").unwrap();
 
     let mut calls = Vec::new();
 

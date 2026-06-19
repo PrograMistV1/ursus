@@ -32,7 +32,7 @@ pub enum ShaderSource {
 pub struct ShaderDef {
     pub name: String,
     pub vert: ShaderSource,
-    pub frag: ShaderSource,
+    pub frag: Option<ShaderSource>,
     pub slots: Vec<TextureSlot>,
 }
 
@@ -41,13 +41,26 @@ impl ShaderDef {
         Self {
             name: name.into(),
             vert: ShaderSource::File(vert.into()),
-            frag: ShaderSource::File(frag.into()),
+            frag: Some(ShaderSource::File(frag.into())),
             slots: Vec::new(),
         }
     }
 
+    pub fn from_files_vert_only(name: impl Into<String>, vert: impl Into<PathBuf>) -> Self {
+        Self { name: name.into(), vert: ShaderSource::File(vert.into()), frag: None, slots: Vec::new() }
+    }
+
     pub fn from_bytes(name: impl Into<String>, vert: Vec<u8>, frag: Vec<u8>) -> Self {
-        Self { name: name.into(), vert: ShaderSource::Bytes(vert), frag: ShaderSource::Bytes(frag), slots: Vec::new() }
+        Self {
+            name: name.into(),
+            vert: ShaderSource::Bytes(vert),
+            frag: Some(ShaderSource::Bytes(frag)),
+            slots: Vec::new(),
+        }
+    }
+
+    pub fn from_bytes_vert_only(name: impl Into<String>, vert: Vec<u8>) -> Self {
+        Self { name: name.into(), vert: ShaderSource::Bytes(vert), frag: None, slots: Vec::new() }
     }
 
     pub fn with_slot(mut self, slot: TextureSlot) -> Self {
@@ -61,48 +74,19 @@ pub struct ShaderHandle(pub u32);
 
 struct CompiledShader {
     vert_spv: Vec<u8>,
-    frag_spv: Vec<u8>,
+    frag_spv: Option<Vec<u8>>,
 }
 
 pub struct ShaderRegistry {
     shaders: Vec<ShaderDef>,
     by_name: HashMap<String, ShaderHandle>,
     compiled: HashMap<ShaderHandle, CompiledShader>,
+    version: HashMap<ShaderHandle, u32>,
 }
 
 impl ShaderRegistry {
-    pub fn new() -> Self {
-        let mut reg = Self { shaders: Vec::new(), by_name: HashMap::new(), compiled: HashMap::new() };
-
-        reg.register(ShaderDef::from_bytes(
-            "unlit",
-            include_bytes!(concat!(env!("OUT_DIR"), "/mesh.vert.spv")).to_vec(),
-            include_bytes!(concat!(env!("OUT_DIR"), "/mesh.frag.spv")).to_vec(),
-        ));
-
-        reg.register(
-            ShaderDef::from_bytes(
-                "diffuse",
-                include_bytes!(concat!(env!("OUT_DIR"), "/mesh.vert.spv")).to_vec(),
-                include_bytes!(concat!(env!("OUT_DIR"), "/mesh.frag.spv")).to_vec(),
-            )
-            .with_slot(TextureSlot::Diffuse),
-        );
-
-        reg.register(
-            ShaderDef::from_bytes(
-                "pbr",
-                include_bytes!(concat!(env!("OUT_DIR"), "/mesh.vert.spv")).to_vec(),
-                include_bytes!(concat!(env!("OUT_DIR"), "/mesh.frag.spv")).to_vec(),
-            )
-            .with_slot(TextureSlot::Diffuse)
-            .with_slot(TextureSlot::Normal)
-            .with_slot(TextureSlot::MetallicRoughness)
-            .with_slot(TextureSlot::Emissive)
-            .with_slot(TextureSlot::Occlusion),
-        );
-
-        reg
+    pub fn empty() -> Self {
+        Self { shaders: Vec::new(), by_name: HashMap::new(), compiled: HashMap::new(), version: HashMap::new() }
     }
 
     pub fn register(&mut self, def: ShaderDef) -> ShaderHandle {
@@ -112,7 +96,7 @@ impl ShaderRegistry {
         handle
     }
 
-    pub fn load_spv(&mut self, handle: ShaderHandle) -> anyhow::Result<(&[u8], &[u8])> {
+    pub fn load_spv(&mut self, handle: ShaderHandle) -> anyhow::Result<(&[u8], Option<&[u8]>)> {
         if !self.compiled.contains_key(&handle) {
             let def = self
                 .shaders
@@ -121,7 +105,11 @@ impl ShaderRegistry {
 
             let vert_spv = load_source(&def.vert)
                 .map_err(|e| anyhow::anyhow!("Ошибка загрузки vert шейдера '{}': {}", def.name, e))?;
-            let frag_spv = load_source(&def.frag)
+            let frag_spv = def
+                .frag
+                .as_ref()
+                .map(|src| load_source(src))
+                .transpose()
                 .map_err(|e| anyhow::anyhow!("Ошибка загрузки frag шейдера '{}': {}", def.name, e))?;
 
             self.compiled.insert(handle, CompiledShader { vert_spv, frag_spv });
@@ -129,11 +117,22 @@ impl ShaderRegistry {
         }
 
         let compiled = &self.compiled[&handle];
-        Ok((&compiled.vert_spv, &compiled.frag_spv))
+        Ok((&compiled.vert_spv, compiled.frag_spv.as_deref()))
     }
 
     pub fn unload(&mut self, handle: ShaderHandle) {
         self.compiled.remove(&handle);
+    }
+
+    pub fn reload(&mut self, handle: ShaderHandle) -> anyhow::Result<()> {
+        self.unload(handle);
+        self.load_spv(handle)?;
+        *self.version.entry(handle).or_insert(0) += 1;
+        Ok(())
+    }
+
+    pub fn version(&self, handle: ShaderHandle) -> u32 {
+        self.version.get(&handle).copied().unwrap_or(0)
     }
 
     pub fn get(&self, handle: ShaderHandle) -> Option<&ShaderDef> {
@@ -143,21 +142,11 @@ impl ShaderRegistry {
     pub fn by_name(&self, name: &str) -> Option<ShaderHandle> {
         self.by_name.get(name).copied()
     }
-
-    pub fn diffuse(&self) -> ShaderHandle {
-        ShaderHandle(1)
-    }
-    pub fn pbr(&self) -> ShaderHandle {
-        ShaderHandle(2)
-    }
-    pub fn unlit(&self) -> ShaderHandle {
-        ShaderHandle(0)
-    }
 }
 
 impl Default for ShaderRegistry {
     fn default() -> Self {
-        Self::new()
+        Self::empty()
     }
 }
 

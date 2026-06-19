@@ -323,7 +323,7 @@ impl RenderPipeline for DefaultPipeline {
             let shader = mat
                 .and_then(|m| input.cpu_assets.get_material(*m))
                 .map(|m| m.shader)
-                .unwrap_or(input.cpu_assets.shaders.diffuse());
+                .unwrap_or(input.cpu_assets.shaders.by_name("diffuse").unwrap());
 
             let model = transform.matrix();
             if !transform_aabb(&gpu.aabb, model).intersects_frustum(&frustum) {

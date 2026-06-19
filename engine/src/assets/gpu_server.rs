@@ -106,7 +106,7 @@ impl GpuAssetServer {
 
                         let mat_handle = if let Some(mat) = pending_mesh.material {
                             let tex_handles = self.upload_pending_textures(&mat.textures)?;
-                            let mut mat_def = MaterialDef::new(&mat.name, cpu.shaders.diffuse())
+                            let mut mat_def = MaterialDef::new(&mat.name, cpu.shaders.by_name("diffuse").unwrap())
                                 .with_color(mat.base_color[0], mat.base_color[1], mat.base_color[2], mat.base_color[3])
                                 .with_metallic(mat.metallic)
                                 .with_roughness(mat.roughness);
