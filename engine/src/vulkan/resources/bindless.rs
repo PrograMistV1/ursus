@@ -1,3 +1,4 @@
+use crate::vulkan::core::sampler;
 use crate::vulkan::GpuTexture;
 use ash::vk;
 
@@ -21,21 +22,9 @@ impl BindlessSet {
         command_pool: vk::CommandPool,
         queue: vk::Queue,
     ) -> anyhow::Result<Self> {
-        let sampler = unsafe {
-            device.create_sampler(
-                &vk::SamplerCreateInfo::default()
-                    .mag_filter(vk::Filter::LINEAR)
-                    .min_filter(vk::Filter::LINEAR)
-                    .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
-                    .address_mode_u(vk::SamplerAddressMode::REPEAT)
-                    .address_mode_v(vk::SamplerAddressMode::REPEAT)
-                    .address_mode_w(vk::SamplerAddressMode::REPEAT)
-                    .anisotropy_enable(true)
-                    .max_anisotropy(Self::max_anisotropy(device, physical_device, instance))
-                    .max_lod(vk::LOD_CLAMP_NONE),
-                None,
-            )?
-        };
+        let max_aniso =
+            unsafe { instance.get_physical_device_properties(physical_device).limits.max_sampler_anisotropy.min(16.0) };
+        let sampler = sampler::create_linear_repeat_aniso_sampler(device, max_aniso)?;
 
         let binding_flags = [
             vk::DescriptorBindingFlags::empty(),
@@ -138,11 +127,6 @@ impl BindlessSet {
 
         self.next_slot += 1;
         slot
-    }
-
-    fn max_anisotropy(_device: &ash::Device, physical_device: vk::PhysicalDevice, instance: &ash::Instance) -> f32 {
-        let props = unsafe { instance.get_physical_device_properties(physical_device) };
-        props.limits.max_sampler_anisotropy.min(16.0)
     }
 }
 
