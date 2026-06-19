@@ -1,7 +1,7 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::CpuAssetServer;
 use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
-use crate::render_graph::{pass, ExternalImageDesc, RenderGraph, ResourceKind};
+use crate::render_graph::{pass, RenderGraph};
 use crate::vulkan::pipeline::builder::PipelineBuilder;
 use crate::vulkan::VulkanContext;
 use ash::vk;
@@ -72,13 +72,7 @@ impl RenderPipeline for LoadingPipeline {
         let swapchain = ctx.swapchain.as_ref().unwrap();
         let device = &ctx.device.handle;
 
-        let h_swapchain = graph.pool.register_external(ExternalImageDesc {
-            name: "swapchain".into(),
-            format: swapchain.format,
-            kind: ResourceKind::Color,
-            initial_layout: vk::ImageLayout::UNDEFINED,
-            final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
-        });
+        let h_swapchain = graph.pool.register_swapchain_external(swapchain.format);
 
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)

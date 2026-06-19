@@ -1,5 +1,5 @@
 use crate::vulkan::core::debug::set_object_name;
-use crate::vulkan::core::memory::find_memory_type;
+use crate::vulkan::core::memory::{destroy_image_resources, find_memory_type};
 use ash::ext::debug_utils;
 use ash::vk;
 use std::collections::HashMap;
@@ -17,14 +17,14 @@ pub enum ResourceExtent {
 
 impl ResourceExtent {
     pub fn resolve(&self, internal: (u32, u32), output: (u32, u32)) -> (u32, u32) {
+        let scale = |(w, h): (u32, u32), s: f32| {
+            (((w as f32 * s).round() as u32).max(1), ((h as f32 * s).round() as u32).max(1))
+        };
+
         match *self {
             Self::Absolute(w, h) => (w, h),
-            Self::ScaleInternal(s) => {
-                (((internal.0 as f32 * s).round() as u32).max(1), ((internal.1 as f32 * s).round() as u32).max(1))
-            }
-            Self::ScaleOutput(s) => {
-                (((output.0 as f32 * s).round() as u32).max(1), ((output.1 as f32 * s).round() as u32).max(1))
-            }
+            Self::ScaleInternal(s) => scale(internal, s),
+            Self::ScaleOutput(s) => scale(output, s),
         }
     }
 }
@@ -160,12 +160,7 @@ impl TransientImage {
 
 impl Drop for TransientImage {
     fn drop(&mut self) {
-        unsafe {
-            self.device.destroy_image_view(self.view, None);
-            self.device.destroy_image(self.image, None);
-            self.device.free_memory(self.memory, None);
-        }
-        log::debug!("TransientImage '{}' уничтожен", self.name);
+        unsafe { destroy_image_resources(&self.device, self.image, self.view, self.memory) }
     }
 }
 
@@ -235,6 +230,16 @@ impl ResourcePool {
             extent: vk::Extent2D::default(),
         }));
         handle
+    }
+
+    pub fn register_swapchain_external(&mut self, format: vk::Format) -> ResourceHandle {
+        self.register_external(ExternalImageDesc {
+            name: "swapchain".into(),
+            format,
+            kind: ResourceKind::Color,
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+        })
     }
 
     pub fn update_external(
@@ -542,7 +547,7 @@ impl Default for LayoutTracker {
     }
 }
 
-fn make_barrier(
+pub fn make_barrier(
     image: vk::Image,
     kind: ResourceKind,
     old_layout: vk::ImageLayout,

@@ -1,4 +1,4 @@
-use crate::vulkan::core::memory::find_memory_type;
+use crate::vulkan::core::memory::{destroy_image_resources, find_memory_type};
 use ash::vk;
 
 pub struct GBuffer {
@@ -54,13 +54,8 @@ impl GBuffer {
 impl Drop for GBuffer {
     fn drop(&mut self) {
         unsafe {
-            self.device.destroy_image_view(self.albedo_view, None);
-            self.device.destroy_image(self.albedo, None);
-            self.device.free_memory(self.albedo_memory, None);
-
-            self.device.destroy_image_view(self.normal_view, None);
-            self.device.destroy_image(self.normal, None);
-            self.device.free_memory(self.normal_memory, None);
+            destroy_image_resources(&self.device, self.albedo, self.albedo_view, self.albedo_memory);
+            destroy_image_resources(&self.device, self.normal, self.normal_view, self.normal_memory);
         }
     }
 }

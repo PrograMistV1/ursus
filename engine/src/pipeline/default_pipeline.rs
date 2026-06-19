@@ -4,8 +4,7 @@ use crate::components::Transform;
 use crate::lighting::LightingUbo;
 use crate::math::frustum::transform_aabb;
 use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
-use crate::render_graph::resource::ExternalImageDesc;
-use crate::render_graph::{pass, RenderGraph, ResourceDesc, ResourceExtent, ResourceKind};
+use crate::render_graph::{pass, RenderGraph, ResourceDesc, ResourceExtent};
 use crate::vulkan::passes::depth_prepass::{DepthPrepass, DepthPrepassDrawCall};
 use crate::vulkan::passes::fsr::{compute_easu_con, compute_rcas_con, FsrPass};
 use crate::vulkan::passes::geometry::GeometryPass;
@@ -72,13 +71,7 @@ impl RenderPipeline for DefaultPipeline {
             ResourceDesc::color("fsr_rcas", LDR_FORMAT, ResourceExtent::ScaleOutput(1.0))
                 .with_usage(vk::ImageUsageFlags::TRANSFER_SRC),
         );
-        let h_swapchain = graph.pool.register_external(ExternalImageDesc {
-            name: "swapchain".into(),
-            format: swapchain.format,
-            kind: ResourceKind::Color,
-            initial_layout: vk::ImageLayout::UNDEFINED,
-            final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
-        });
+        let h_swapchain = graph.pool.register_swapchain_external(swapchain.format);
 
         let shadow_pass = ShadowPass::new(&ctx.device.handle, &mut cpu_assets.shaders)?;
         let depth_prepass = DepthPrepass::new(&ctx.device.handle, &mut cpu_assets.shaders)?;

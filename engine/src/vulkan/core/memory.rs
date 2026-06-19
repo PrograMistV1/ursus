@@ -37,3 +37,14 @@ pub fn alloc_buffer(
     unsafe { device.bind_buffer_memory(buf, mem, 0)? };
     Ok((buf, mem))
 }
+
+pub unsafe fn destroy_image_resources(
+    device: &ash::Device,
+    image: vk::Image,
+    view: vk::ImageView,
+    memory: vk::DeviceMemory,
+) {
+    device.destroy_image_view(view, None);
+    device.destroy_image(image, None);
+    device.free_memory(memory, None);
+}

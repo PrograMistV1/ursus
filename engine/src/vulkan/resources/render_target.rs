@@ -1,4 +1,4 @@
-use crate::vulkan::core::memory::find_memory_type;
+use crate::vulkan::core::memory::{destroy_image_resources, find_memory_type};
 use ash::vk;
 
 pub struct RenderTarget {
@@ -71,10 +71,6 @@ impl RenderTarget {
 
 impl Drop for RenderTarget {
     fn drop(&mut self) {
-        unsafe {
-            self.device.destroy_image_view(self.view, None);
-            self.device.destroy_image(self.image, None);
-            self.device.free_memory(self.memory, None);
-        }
+        unsafe { destroy_image_resources(&self.device, self.image, self.view, self.memory) }
     }
 }
