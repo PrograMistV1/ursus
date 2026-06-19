@@ -1,7 +1,6 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::{CpuAssetServer, MaterialHandle, MeshHandle};
 use crate::components::Transform;
-use crate::ecs::world::GameWorld;
 use crate::lighting::LightingUbo;
 use crate::math::frustum::transform_aabb;
 use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
@@ -23,7 +22,7 @@ use std::sync::Arc;
 const LDR_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 
 pub struct DefaultPipeline {
-    ui_pass: Option<crate::vulkan::passes::ui::UiPass>,
+    ui_pass: Option<UiPass>,
 }
 
 impl Default for DefaultPipeline {
@@ -415,8 +414,6 @@ struct DefaultPipelineFrameData {
     light_view_proj: glam::Mat4,
     lighting: LightingUbo,
     gpu_assets: *const GpuAssetServer,
-    world: *const GameWorld,
-    ui_pass: *mut UiPass,
     exposure: f32,
     fsr_sharpness: f32,
     clear_color: [f32; 4],
