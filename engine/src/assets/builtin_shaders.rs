@@ -13,7 +13,8 @@ pub fn register_builtin(reg: &mut ShaderRegistry) {
             include_bytes!(concat!(env!("OUT_DIR"), "/mesh.vert.spv")).to_vec(),
             include_bytes!(concat!(env!("OUT_DIR"), "/mesh.frag.spv")).to_vec(),
         )
-        .with_slot(TextureSlot::Diffuse),
+        .with_slot(TextureSlot::Diffuse)
+        .with_slot(TextureSlot::Normal),
     );
 
     reg.register(ShaderDef::from_bytes_vert_only(
