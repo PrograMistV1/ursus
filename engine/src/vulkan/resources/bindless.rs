@@ -128,6 +128,26 @@ impl BindlessSet {
         self.next_slot += 1;
         slot
     }
+
+    pub fn register_view_at(&mut self, slot: u32, view: vk::ImageView) {
+        assert!(slot < MAX_TEXTURES, "bindless texture array переполнен");
+
+        let image_info =
+            vk::DescriptorImageInfo::default().image_view(view).image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+
+        let write = vk::WriteDescriptorSet::default()
+            .dst_set(self.set)
+            .dst_binding(1)
+            .dst_array_element(slot)
+            .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+            .image_info(std::slice::from_ref(&image_info));
+
+        unsafe { self.device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
+
+        if slot >= self.next_slot {
+            self.next_slot = slot + 1;
+        }
+    }
 }
 
 impl Drop for BindlessSet {

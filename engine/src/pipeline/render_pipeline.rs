@@ -1,4 +1,3 @@
-use crate::assets::cpu_server::CpuAssetServer;
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::render_graph::{RenderGraph, ResourceHandle};
 use crate::render_world::RenderWorld;
@@ -8,7 +7,6 @@ use ash::vk;
 pub struct FrameInput<'a> {
     pub device: &'a ash::Device,
     pub render_world: &'a RenderWorld,
-    pub cpu_assets: &'a mut CpuAssetServer,
     pub gpu_assets: &'a mut GpuAssetServer,
     pub graphics_queue: vk::Queue,
     pub command_pool: vk::CommandPool,
@@ -22,7 +20,6 @@ pub struct FrameInput<'a> {
 pub trait RenderPipeline: Send + 'static {
     fn build(
         ctx: &VulkanContext,
-        cpu_assets: &mut CpuAssetServer,
         gpu_assets: &mut GpuAssetServer,
         graph: &mut RenderGraph,
     ) -> anyhow::Result<PipelineHandles>
@@ -33,12 +30,7 @@ pub trait RenderPipeline: Send + 'static {
     fn on_resize(&mut self, _graph: &mut RenderGraph, _width: u32, _height: u32) -> anyhow::Result<()> {
         Ok(())
     }
-    fn on_resize_internal(
-        &mut self,
-        _graph: &mut RenderGraph,
-        _new_width: u32,
-        _new_height: u32,
-    ) -> anyhow::Result<()> {
+    fn on_resize_internal(&mut self, _graph: &mut RenderGraph, _w: u32, _h: u32) -> anyhow::Result<()> {
         Ok(())
     }
 }

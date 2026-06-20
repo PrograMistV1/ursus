@@ -1,6 +1,6 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::shader_registry::ShaderHandle;
-use crate::assets::{CpuAssetServer, GpuMesh};
+use crate::assets::{GpuMesh, ShaderRegistry};
 use crate::ecs::components::MaterialHandle;
 use crate::render_graph::GpuImage;
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
@@ -38,11 +38,11 @@ impl GeometryPass {
         color_formats: [vk::Format; 2],
         bindless_layout: vk::DescriptorSetLayout,
         material_layout: vk::DescriptorSetLayout,
-        cpu_assets: &mut CpuAssetServer,
+        registry: &mut ShaderRegistry,
     ) -> anyhow::Result<Self> {
         let mut pass = Self { pipelines: HashMap::new(), bindless_layout, material_layout, color_formats };
-        let default = cpu_assets.shaders.by_name("diffuse").unwrap();
-        pass.get_or_create_pipeline(device, default, &mut cpu_assets.shaders)?;
+        let default = registry.by_name("diffuse").unwrap();
+        pass.get_or_create_pipeline(device, default, registry)?;
         Ok(pass)
     }
 
@@ -50,7 +50,7 @@ impl GeometryPass {
         &mut self,
         device: &ash::Device,
         shader: ShaderHandle,
-        registry: &mut crate::assets::shader_registry::ShaderRegistry,
+        registry: &mut ShaderRegistry,
     ) -> anyhow::Result<&Pipeline> {
         if self.pipelines.contains_key(&shader) {
             return Ok(&self.pipelines[&shader]);

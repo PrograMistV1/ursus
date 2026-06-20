@@ -1,5 +1,4 @@
 use crate::assets::gpu_server::GpuAssetServer;
-use crate::assets::CpuAssetServer;
 use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
 use crate::render_graph::{pass, RenderGraph};
 use crate::vulkan::pipeline::builder::PipelineBuilder;
@@ -62,8 +61,7 @@ impl Drop for LoadingPipeline {
 impl RenderPipeline for LoadingPipeline {
     fn build(
         ctx: &VulkanContext,
-        cpu_assets: &mut CpuAssetServer,
-        _gpu_assets: &mut GpuAssetServer,
+        gpu_assets: &mut GpuAssetServer,
         graph: &mut RenderGraph,
     ) -> anyhow::Result<PipelineHandles>
     where
@@ -79,8 +77,8 @@ impl RenderPipeline for LoadingPipeline {
             .offset(0)
             .size(size_of::<LoadingPC>() as u32);
 
-        let handle = cpu_assets.shaders.by_name("loading").expect("шейдер 'loading' не зарегистрирован");
-        let (vert_spv, frag_spv) = cpu_assets.shaders.load_spv(handle)?;
+        let handle = gpu_assets.shaders.by_name("loading").expect("шейдер 'loading' не зарегистрирован");
+        let (vert_spv, frag_spv) = gpu_assets.shaders.load_spv(handle)?;
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.expect("'loading' должен иметь frag").to_vec();
 
@@ -188,7 +186,7 @@ impl RenderPipeline for LoadingPipeline {
         graph.set_frame_data(Box::new(LoadingFrameData {
             device: input.device,
             time: self.start_time.elapsed().as_secs_f32(),
-            progress: input.cpu_assets.load_progress.fraction(),
+            progress: 0.0,
             width: w as f32,
             height: h as f32,
         }));

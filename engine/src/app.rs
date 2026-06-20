@@ -13,7 +13,7 @@ use crate::assets::cpu_server::CpuAssetServer;
 use crate::assets::upload::GpuUploadRequest;
 use crate::ecs::GameWorld;
 use crate::extract::{default_extract_schedule, ExtractSchedule};
-use crate::render_thread::command::{PipelineKind, RenderCommand};
+use crate::render_thread::command::RenderCommand;
 use crate::render_thread::{render_thread_main, WindowHandles};
 use crate::render_world::{ExtractedRenderSettings, RenderWorld};
 use crate::triple_buffer::TripleBuffer;
@@ -47,8 +47,7 @@ impl EngineContext {
         triple_buf: Arc<TripleBuffer<RenderWorld>>,
         output_size: (f32, f32),
     ) -> anyhow::Result<Self> {
-        let upload_queue = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let cpu_assets = CpuAssetServer::new(Arc::clone(&upload_queue));
+        let cpu_assets = CpuAssetServer::new();
 
         Ok(Self {
             world: GameWorld::new(),
@@ -87,13 +86,11 @@ impl EngineContext {
         self.cpu_assets.is_loading()
     }
 
-    /// Extract + publish кадра в тройной буфер.
-    /// Вызывается автоматически из event loop.
     pub(crate) fn publish_frame(&self, clear_color: [f32; 4]) {
         let write = self.triple_buf.write_slot();
         write.clear();
         write.insert(ExtractedRenderSettings { clear_color, output_size: self.output_size });
-        self.extract_schedule.run(&self.world, write);
+        self.extract_schedule.run(&self.world, write); // убрали gpu_assets-аргумент
         self.triple_buf.publish();
     }
 }

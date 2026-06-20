@@ -60,8 +60,6 @@ fn render_loop(
     let mut vk = VulkanContext::from_handles(handles.display, handles.window, cfg!(debug_assertions))?;
 
     let temp_pool = crate::app::create_temp_pool(&vk)?;
-    let upload_queue = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let mesh_path_cache = Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
 
     let mut gpu_assets = GpuAssetServer::new(
         vk.device.handle.clone(),
@@ -69,8 +67,6 @@ fn render_loop(
         vk.instance.handle.clone(),
         temp_pool,
         vk.device.graphics_queue,
-        Arc::clone(&upload_queue),
-        Arc::clone(&mesh_path_cache),
     )?;
 
     // Начинаем с LoadingPipeline — главный поток ещё загружает ассеты.
@@ -166,7 +162,7 @@ fn render_loop(
         // upload_materials каждый кадр — материалы могут меняться
         gpu_assets.upload_materials_from_render_world(render_world);
 
-        let needs_recreate = renderer.draw_frame(&vk, render_world, &gpu_assets, clear_color)?;
+        let needs_recreate = renderer.draw_frame(&vk, render_world, &mut gpu_assets, clear_color)?;
 
         if needs_recreate {
             let sw = vk.swapchain.as_ref().unwrap();
@@ -217,8 +213,6 @@ fn flush_uploads_gpu(
                     gpu.register_material_gpu(handle, base_color, metallic, roughness, emissive, texture_slots, name);
                 }
                 GpuUploadRequest::FontAtlas { pixels, width, height } => {
-                    use crate::assets::ui::FontAtlas;
-                    // FontAtlas нужен для рендера текста — создаём заглушку с уже готовыми пикселями
                     if let Err(e) = gpu.upload_font_atlas_raw(pixels, width, height) {
                         log::error!("GPU upload font atlas failed: {e}");
                     }

@@ -21,6 +21,7 @@ pub use resources::texture::GpuTexture;
 
 use ash::ext::debug_utils;
 use ash::vk;
+use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use std::sync::Arc;
 
 pub struct VulkanContext {
@@ -33,12 +34,7 @@ pub struct VulkanContext {
 }
 
 impl VulkanContext {
-    pub fn new(window: &winit::window::Window, validation: bool) -> anyhow::Result<Self> {
-        use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-
-        let display = window.display_handle()?.as_raw();
-        let whandle = window.window_handle()?.as_raw();
-
+    pub fn from_handles(display: RawDisplayHandle, window: RawWindowHandle, validation: bool) -> anyhow::Result<Self> {
         let instance = Arc::new(Instance::new(display, validation)?);
 
         let debug = if validation {
@@ -47,11 +43,13 @@ impl VulkanContext {
             None
         };
 
-        let surface = unsafe { ash_window::create_surface(&instance.entry, &instance.handle, display, whandle, None)? };
+        let surface = unsafe { ash_window::create_surface(&instance.entry, &instance.handle, display, window, None)? };
 
         let device = Arc::new(Device::new(&instance, surface)?);
-        let size = window.inner_size();
-        let swapchain = Swapchain::new(&instance, &device, surface, size.width, size.height, false)?;
+
+        // Размер окна неизвестен без winit::Window — берём дефолт,
+        // первый Resize от главного потока пересоздаст swapchain под реальный размер.
+        let swapchain = Swapchain::new(&instance, &device, surface, 1280, 720, false)?;
 
         let debug_utils = if validation {
             Some(Arc::new(debug_utils::Device::new(&instance.handle, &device.handle)))
@@ -60,6 +58,17 @@ impl VulkanContext {
         };
 
         Ok(Self { swapchain: Some(swapchain), debug_utils, device, surface, _debug: debug, instance })
+    }
+
+    pub fn new(window: &winit::window::Window, validation: bool) -> anyhow::Result<Self> {
+        use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+        let display = window.display_handle()?.as_raw();
+        let whandle = window.window_handle()?.as_raw();
+        let size = window.inner_size();
+
+        let mut ctx = Self::from_handles(display, whandle, validation)?;
+        ctx.recreate_swapchain(size.width, size.height, false)?;
+        Ok(ctx)
     }
 
     pub fn recreate_swapchain(&mut self, width: u32, height: u32, vsync: bool) -> anyhow::Result<()> {

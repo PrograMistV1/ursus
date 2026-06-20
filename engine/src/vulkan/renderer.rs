@@ -1,4 +1,3 @@
-use crate::assets::cpu_server::CpuAssetServer;
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use crate::pipeline::FrameInput;
@@ -18,7 +17,6 @@ pub trait DynRenderer: Send {
         &mut self,
         ctx: &VulkanContext,
         render_world: &RenderWorld,
-        cpu_assets: &mut CpuAssetServer,
         gpu_assets: &mut GpuAssetServer,
         clear_color: [f32; 4],
     ) -> anyhow::Result<bool>;
@@ -55,7 +53,6 @@ impl<P: RenderPipeline> Renderer<P> {
         &mut self,
         ctx: &VulkanContext,
         render_world: &RenderWorld,
-        cpu_assets: &mut CpuAssetServer,
         gpu_assets: &mut GpuAssetServer,
         clear_color: [f32; 4],
     ) -> anyhow::Result<bool> {
@@ -104,7 +101,6 @@ impl<P: RenderPipeline> Renderer<P> {
         let input = FrameInput {
             device,
             render_world,
-            cpu_assets,
             gpu_assets,
             graphics_queue: ctx.device.graphics_queue,
             command_pool: self.commands.pool,
@@ -189,11 +185,10 @@ impl<P: RenderPipeline> DynRenderer for Renderer<P> {
         &mut self,
         ctx: &VulkanContext,
         render_world: &RenderWorld,
-        cpu_assets: &mut CpuAssetServer,
         gpu_assets: &mut GpuAssetServer,
         clear_color: [f32; 4],
     ) -> anyhow::Result<bool> {
-        self.draw_frame(ctx, render_world, cpu_assets, gpu_assets, clear_color)
+        self.draw_frame(ctx, render_world, gpu_assets, clear_color)
     }
 
     fn resize_output(&mut self, w: u32, h: u32) -> anyhow::Result<()> {
@@ -225,7 +220,6 @@ impl<P: RenderPipeline> DynRenderer for Renderer<P> {
 
 pub fn build_dyn_renderer<P: RenderPipeline + Default + 'static>(
     ctx: &VulkanContext,
-    cpu_assets: &mut CpuAssetServer,
     gpu_assets: &mut GpuAssetServer,
     prev_exposure: f32,
     prev_fsr_sharpness: f32,
@@ -247,7 +241,7 @@ pub fn build_dyn_renderer<P: RenderPipeline + Default + 'static>(
         ctx.debug_utils.clone(),
     );
 
-    let handles = P::build(ctx, cpu_assets, gpu_assets, &mut graph)?;
+    let handles = P::build(ctx, gpu_assets, &mut graph)?;
     graph.allocate()?;
     graph.compile()?;
 

@@ -1,9 +1,9 @@
 use crate::assets::gpu_server::GpuAssetServer;
-use crate::assets::{CpuAssetServer, GpuMesh, MaterialHandle, ShaderHandle};
+use crate::assets::{GpuMesh, MaterialHandle, ShaderHandle};
 use crate::lighting::buffer::LightingUbo;
 use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
 use crate::render_graph::{pass, RenderGraph, ResourceDesc, ResourceExtent};
-use crate::render_world::{RenderInstance, RenderLighting};
+use crate::render_world::{ExtractedInstance, ExtractedLights, RenderWorld};
 use crate::vulkan::passes::depth_prepass::{DepthPrepass, DepthPrepassDrawCall};
 use crate::vulkan::passes::fsr::{compute_easu_con, compute_rcas_con, FsrPass};
 use crate::vulkan::passes::geometry::GeometryPass;
@@ -31,7 +31,6 @@ impl Default for DefaultPipeline {
 impl RenderPipeline for DefaultPipeline {
     fn build(
         ctx: &VulkanContext,
-        cpu_assets: &mut CpuAssetServer,
         gpu_assets: &mut GpuAssetServer,
         graph: &mut RenderGraph,
     ) -> anyhow::Result<PipelineHandles> {
@@ -71,15 +70,15 @@ impl RenderPipeline for DefaultPipeline {
         );
         let h_swapchain = graph.pool.register_swapchain_external(swapchain.format);
 
-        let shadow_pass = ShadowPass::new(&ctx.device.handle, &mut cpu_assets.shaders)?;
-        let depth_prepass = DepthPrepass::new(&ctx.device.handle, &mut cpu_assets.shaders)?;
+        let shadow_pass = ShadowPass::new(&ctx.device.handle, &mut gpu_assets.shaders)?;
+        let depth_prepass = DepthPrepass::new(&ctx.device.handle, &mut gpu_assets.shaders)?;
 
         let mut geometry_pass = GeometryPass::new(
             &ctx.device.handle,
             GBuffer::color_formats(),
             gpu_assets.bindless.layout,
             gpu_assets.material_buffer.layout,
-            cpu_assets,
+            &mut gpu_assets.shaders,
         )?;
 
         let lighting_pass = LightingPass::new(
@@ -87,40 +86,30 @@ impl RenderPipeline for DefaultPipeline {
             ctx.device.physical,
             &ctx.instance.handle,
             vk::Format::R16G16B16A16_SFLOAT,
-            &mut cpu_assets.shaders,
+            &mut gpu_assets.shaders,
         )?;
-
-        let post_pass = PostProcessPass::new(&ctx.device.handle, LDR_FORMAT, &mut cpu_assets.shaders)?;
+        let post_pass = PostProcessPass::new(&ctx.device.handle, LDR_FORMAT, &mut gpu_assets.shaders)?;
 
         pass("shadow")
             .write(h_shadow_map, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .record({
-                move |cmd, pool, ctx_ptr| unsafe {
-                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
-                    let sm = pool.image(h_shadow_map);
-
-                    let calls: Vec<ShadowDrawCall> =
-                        data.shadow_calls.iter().map(|dc| dc.as_shadow_draw_call()).collect();
-
-                    shadow_pass.record(&*data.device, cmd, &sm, data.light_view_proj, &calls);
-                    Ok(())
-                }
+            .record(move |cmd, pool, ctx_ptr| unsafe {
+                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+                let sm = pool.image(h_shadow_map);
+                let calls: Vec<ShadowDrawCall> = data.shadow_calls.iter().map(|dc| dc.as_shadow_draw_call()).collect();
+                shadow_pass.record(&*data.device, cmd, &sm, data.light_view_proj, &calls);
+                Ok(())
             })
             .build(graph);
 
         pass("depth_prepass")
             .write(h_depth, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .record({
-                move |cmd, pool, ctx_ptr| unsafe {
-                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
-                    let depth = pool.image(h_depth);
-
-                    let calls: Vec<DepthPrepassDrawCall> =
-                        data.prepass_calls.iter().map(|dc| dc.as_depth_prepass_draw_call()).collect();
-
-                    depth_prepass.record(&*data.device, cmd, &depth, data.view_proj, &calls);
-                    Ok(())
-                }
+            .record(move |cmd, pool, ctx_ptr| unsafe {
+                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+                let depth = pool.image(h_depth);
+                let calls: Vec<DepthPrepassDrawCall> =
+                    data.prepass_calls.iter().map(|dc| dc.as_depth_prepass_draw_call()).collect();
+                depth_prepass.record(&*data.device, cmd, &depth, data.view_proj, &calls);
+                Ok(())
             })
             .build(graph);
 
@@ -129,29 +118,25 @@ impl RenderPipeline for DefaultPipeline {
             .write(h_gbuffer_albedo, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .write(h_gbuffer_normal, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .read_write(h_depth, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .record({
-                move |cmd, pool, ctx_ptr| unsafe {
-                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
-                    let albedo = pool.image(h_gbuffer_albedo);
-                    let normal = pool.image(h_gbuffer_normal);
-                    let depth = pool.image(h_depth);
-
-                    let draw_calls: Vec<DrawCall> = data.draw_calls.iter().map(|dc| dc.as_draw_call()).collect();
-
-                    geometry_pass.record(
-                        &*data.device,
-                        cmd,
-                        &albedo,
-                        &normal,
-                        &depth,
-                        data.clear_color,
-                        data.view_proj,
-                        &draw_calls,
-                        &*data.gpu_assets,
-                        debug_utils.as_deref(),
-                    );
-                    Ok(())
-                }
+            .record(move |cmd, pool, ctx_ptr| unsafe {
+                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+                let albedo = pool.image(h_gbuffer_albedo);
+                let normal = pool.image(h_gbuffer_normal);
+                let depth = pool.image(h_depth);
+                let draw_calls: Vec<DrawCall> = data.draw_calls.iter().map(|dc| dc.as_draw_call()).collect();
+                geometry_pass.record(
+                    &*data.device,
+                    cmd,
+                    &albedo,
+                    &normal,
+                    &depth,
+                    data.clear_color,
+                    data.view_proj,
+                    &draw_calls,
+                    &*data.gpu_assets,
+                    debug_utils.as_deref(),
+                );
+                Ok(())
             })
             .build(graph);
 
@@ -165,14 +150,12 @@ impl RenderPipeline for DefaultPipeline {
             .bind_sampled(h_gbuffer_normal, lighting_pass.descriptor_set, 1, lighting_pass.sampler)
             .bind_sampled(h_depth, lighting_pass.descriptor_set, 2, lighting_pass.sampler)
             .bind_sampled(h_shadow_map, lighting_pass.descriptor_set, 4, lighting_pass.shadow_sampler)
-            .record({
-                move |cmd, pool, ctx_ptr| unsafe {
-                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
-                    let hdr = pool.image(h_hdr);
-                    lighting_pass.upload_lights(&data.lighting);
-                    lighting_pass.record(&*data.device, cmd, &hdr, data.view, data.proj);
-                    Ok(())
-                }
+            .record(move |cmd, pool, ctx_ptr| unsafe {
+                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+                let hdr = pool.image(h_hdr);
+                lighting_pass.upload_lights(&data.lighting);
+                lighting_pass.record(&*data.device, cmd, &hdr, data.view, data.proj);
+                Ok(())
             })
             .build(graph);
 
@@ -180,37 +163,31 @@ impl RenderPipeline for DefaultPipeline {
             .read(h_hdr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .write(h_ldr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .bind_sampled(h_hdr, post_pass.descriptor_set, 0, post_pass.sampler)
-            .record({
-                move |cmd, pool, ctx_ptr| unsafe {
-                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
-                    let ldr = pool.image(h_ldr);
-                    post_pass.record_to_target(&*data.device, cmd, &ldr, data.exposure);
-                    Ok(())
-                }
+            .record(move |cmd, pool, ctx_ptr| unsafe {
+                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+                let ldr = pool.image(h_ldr);
+                post_pass.record_to_target(&*data.device, cmd, &ldr, data.exposure);
+                Ok(())
             })
             .build(graph);
 
-        let fsr_pass = Arc::new(FsrPass::new(&ctx.device.handle, LDR_FORMAT, &mut cpu_assets.shaders)?);
-        let fsr_easu_set = fsr_pass.easu_descriptor_set;
-        let fsr_rcas_set = fsr_pass.rcas_descriptor_set;
-        let fsr_sampler = fsr_pass.sampler;
-        let fsr_pass_easu = Arc::clone(&fsr_pass);
-        let fsr_pass_rcas = Arc::clone(&fsr_pass);
+        let fsr_pass = Arc::new(FsrPass::new(&ctx.device.handle, LDR_FORMAT, &mut gpu_assets.shaders)?);
+        let (fsr_easu_set, fsr_rcas_set, fsr_sampler) =
+            (fsr_pass.easu_descriptor_set, fsr_pass.rcas_descriptor_set, fsr_pass.sampler);
+        let (fsr_pass_easu, fsr_pass_rcas) = (Arc::clone(&fsr_pass), Arc::clone(&fsr_pass));
 
         pass("fsr_easu")
             .read(h_ldr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .write(h_fsr_easu, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .bind_sampled(h_ldr, fsr_easu_set, 0, fsr_sampler)
-            .record({
-                move |cmd, pool, ctx_ptr| unsafe {
-                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
-                    let dst = pool.image(h_fsr_easu);
-                    let (iw, ih) = data.internal_resolution;
-                    let (ow, oh) = data.output_resolution;
-                    let pc = compute_easu_con((iw as f32, ih as f32), (iw as f32, ih as f32), (ow as f32, oh as f32));
-                    fsr_pass_easu.record_easu(&*data.device, cmd, &dst, &pc);
-                    Ok(())
-                }
+            .record(move |cmd, pool, ctx_ptr| unsafe {
+                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+                let dst = pool.image(h_fsr_easu);
+                let (iw, ih) = data.internal_resolution;
+                let (ow, oh) = data.output_resolution;
+                let pc = compute_easu_con((iw as f32, ih as f32), (iw as f32, ih as f32), (ow as f32, oh as f32));
+                fsr_pass_easu.record_easu(&*data.device, cmd, &dst, &pc);
+                Ok(())
             })
             .build(graph);
 
@@ -218,67 +195,61 @@ impl RenderPipeline for DefaultPipeline {
             .read(h_fsr_easu, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .write(h_fsr_rcas, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .bind_sampled(h_fsr_easu, fsr_rcas_set, 0, fsr_sampler)
-            .record({
-                move |cmd, pool, ctx_ptr| unsafe {
-                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
-                    let dst = pool.image(h_fsr_rcas);
-                    let pc = compute_rcas_con(data.fsr_sharpness);
-                    fsr_pass_rcas.record_rcas(&*data.device, cmd, &dst, &pc);
-                    Ok(())
-                }
+            .record(move |cmd, pool, ctx_ptr| unsafe {
+                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+                let dst = pool.image(h_fsr_rcas);
+                let pc = compute_rcas_con(data.fsr_sharpness);
+                fsr_pass_rcas.record_rcas(&*data.device, cmd, &dst, &pc);
+                Ok(())
             })
             .build(graph);
 
         let blit_handle = pass("blit_to_swapchain")
             .read(h_fsr_rcas, vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
             .write(h_swapchain, vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .record({
-                move |cmd, pool, ctx_ptr| {
-                    let src = pool.image(h_fsr_rcas);
-                    let dst = pool.image(h_swapchain);
-
-                    let blit = vk::ImageBlit2::default()
-                        .src_subresource(vk::ImageSubresourceLayers {
-                            aspect_mask: vk::ImageAspectFlags::COLOR,
-                            mip_level: 0,
-                            base_array_layer: 0,
-                            layer_count: 1,
-                        })
-                        .src_offsets([
-                            vk::Offset3D::default(),
-                            vk::Offset3D { x: src.extent.width as i32, y: src.extent.height as i32, z: 1 },
-                        ])
-                        .dst_subresource(vk::ImageSubresourceLayers {
-                            aspect_mask: vk::ImageAspectFlags::COLOR,
-                            mip_level: 0,
-                            base_array_layer: 0,
-                            layer_count: 1,
-                        })
-                        .dst_offsets([
-                            vk::Offset3D::default(),
-                            vk::Offset3D { x: dst.extent.width as i32, y: dst.extent.height as i32, z: 1 },
-                        ]);
-
-                    unsafe {
-                        let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
-                        (*data.device).cmd_blit_image2(
-                            cmd,
-                            &vk::BlitImageInfo2::default()
-                                .src_image(src.image)
-                                .src_image_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-                                .dst_image(dst.image)
-                                .dst_image_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                                .regions(std::slice::from_ref(&blit))
-                                .filter(vk::Filter::LINEAR),
-                        );
-                    }
-                    Ok(())
+            .record(move |cmd, pool, ctx_ptr| {
+                let src = pool.image(h_fsr_rcas);
+                let dst = pool.image(h_swapchain);
+                let blit = vk::ImageBlit2::default()
+                    .src_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    })
+                    .src_offsets([
+                        vk::Offset3D::default(),
+                        vk::Offset3D { x: src.extent.width as i32, y: src.extent.height as i32, z: 1 },
+                    ])
+                    .dst_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    })
+                    .dst_offsets([
+                        vk::Offset3D::default(),
+                        vk::Offset3D { x: dst.extent.width as i32, y: dst.extent.height as i32, z: 1 },
+                    ]);
+                unsafe {
+                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+                    (*data.device).cmd_blit_image2(
+                        cmd,
+                        &vk::BlitImageInfo2::default()
+                            .src_image(src.image)
+                            .src_image_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+                            .dst_image(dst.image)
+                            .dst_image_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                            .regions(std::slice::from_ref(&blit))
+                            .filter(vk::Filter::LINEAR),
+                    );
                 }
+                Ok(())
             })
             .build(graph);
 
         let ui_pass =
-            UiPass::new(&ctx.device.handle, swapchain.format, gpu_assets.bindless.layout, &mut cpu_assets.shaders)?;
+            UiPass::new(&ctx.device.handle, swapchain.format, gpu_assets.bindless.layout, &mut gpu_assets.shaders)?;
 
         pass("ui")
             .after(blit_handle)
@@ -287,7 +258,6 @@ impl RenderPipeline for DefaultPipeline {
                 let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
                 let sc = pool.image(h_swapchain);
                 let gpu_assets = &*data.gpu_assets;
-
                 ui_pass.record(
                     &*data.device,
                     cmd,
@@ -307,18 +277,15 @@ impl RenderPipeline for DefaultPipeline {
     }
 
     fn prepare_frame(&mut self, graph: &mut RenderGraph, input: FrameInput<'_>) -> anyhow::Result<()> {
-        input.gpu_assets.upload_materials(input.cpu_assets);
+        let rw: &RenderWorld = input.render_world;
+        let default_shader = input.gpu_assets.shaders.by_name("diffuse").unwrap();
 
-        let build_owned = |instances: &[RenderInstance], gpu_assets: &GpuAssetServer, cpu_assets: &CpuAssetServer| {
+        let to_owned = |instances: &[ExtractedInstance]| -> Vec<OwnedDrawCall> {
             instances
                 .iter()
                 .filter_map(|inst| {
-                    let gpu = gpu_assets.get_gpu_mesh(inst.mesh)?;
-                    let shader = inst
-                        .material
-                        .and_then(|m| cpu_assets.get_material(m))
-                        .map(|m| m.shader)
-                        .unwrap_or(cpu_assets.shaders.by_name("diffuse").unwrap());
+                    let gpu = input.gpu_assets.get_gpu_mesh(inst.mesh)?;
+                    let shader = default_shader; // материал -> шейдер сейчас не маршрутизируется отдельно; диффуз для всех
                     Some(OwnedDrawCall {
                         gpu_mesh_ptr: gpu as *const _,
                         model: inst.model,
@@ -326,10 +293,24 @@ impl RenderPipeline for DefaultPipeline {
                         shader,
                     })
                 })
-                .collect::<Vec<_>>()
+                .collect()
         };
 
-        let mut draw_calls = build_owned(&input.render_world.instances, input.gpu_assets, input.cpu_assets);
+        let meshes = rw.get::<crate::render_world::ExtractedMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
+        let shadow_meshes =
+            rw.get::<crate::render_world::ExtractedShadowMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
+        let camera = rw.get::<crate::render_world::ExtractedCamera>().cloned().unwrap_or_default();
+        let lights = rw.get::<ExtractedLights>().cloned().unwrap_or_default();
+        let ui_rects = rw
+            .get::<crate::render_world::ExtractedUiRects>()
+            .map(|r| r.rects.iter().map(|r| (r.pos, r.size, r.color)).collect())
+            .unwrap_or_default();
+        let ui_texts = rw
+            .get::<crate::render_world::ExtractedUiTexts>()
+            .map(|t| t.texts.iter().map(|t| (t.pos, t.text.clone(), t.font_size, t.color)).collect())
+            .unwrap_or_default();
+
+        let mut draw_calls = to_owned(meshes);
         draw_calls.sort_by_key(|dc| dc.shader.0);
         let prepass_calls = draw_calls
             .iter()
@@ -340,25 +321,26 @@ impl RenderPipeline for DefaultPipeline {
                 shader: dc.shader,
             })
             .collect();
-        let shadow_calls = build_owned(&input.render_world.shadow_instances, input.gpu_assets, input.cpu_assets);
+        let shadow_calls = to_owned(shadow_meshes);
 
         let frame_data = Box::new(DefaultPipelineFrameData {
             device: input.device,
             draw_calls,
             prepass_calls,
             shadow_calls,
-            view: input.render_world.camera.view,
-            proj: input.render_world.camera.proj,
-            view_proj: input.render_world.camera.view_proj,
-            light_view_proj: input.render_world.light_view_proj,
-            lighting: build_lighting_ubo(&input.render_world.lighting, input.render_world.light_view_proj),
-            ui_rects: input.render_world.ui_rects.iter().map(|r| (r.pos, r.size, r.color)).collect(),
-            ui_texts: input
-                .render_world
-                .ui_texts
-                .iter()
-                .map(|t| (t.pos, t.text.clone(), t.font_size, t.color))
-                .collect(),
+            view: camera.view,
+            proj: camera.proj,
+            view_proj: camera.view_proj,
+            light_view_proj: lights.light_view_proj,
+            lighting: LightingUbo {
+                directional: lights.directional,
+                point_lights: lights.point_lights,
+                point_light_count: lights.point_light_count,
+                _pad: [0; 3],
+                light_space_matrix: lights.light_view_proj.to_cols_array_2d(),
+            },
+            ui_rects,
+            ui_texts,
             gpu_assets: input.gpu_assets,
             exposure: input.exposure,
             fsr_sharpness: input.fsr_sharpness,
@@ -369,16 +351,6 @@ impl RenderPipeline for DefaultPipeline {
 
         graph.set_frame_data(frame_data);
         Ok(())
-    }
-}
-
-fn build_lighting_ubo(lighting: &RenderLighting, light_view_proj: Mat4) -> LightingUbo {
-    LightingUbo {
-        directional: lighting.directional,
-        point_lights: lighting.point_lights,
-        point_light_count: lighting.point_light_count,
-        _pad: [0; 3],
-        light_space_matrix: light_view_proj.to_cols_array_2d(),
     }
 }
 
@@ -394,11 +366,9 @@ impl OwnedDrawCall {
     fn as_shadow_draw_call(&self) -> ShadowDrawCall<'_> {
         ShadowDrawCall { gpu_mesh: unsafe { &*self.gpu_mesh_ptr }, model: self.model }
     }
-
     fn as_depth_prepass_draw_call(&self) -> DepthPrepassDrawCall<'_> {
         DepthPrepassDrawCall { gpu_mesh: unsafe { &*self.gpu_mesh_ptr }, model: self.model }
     }
-
     fn as_draw_call(&self) -> DrawCall<'_> {
         DrawCall {
             gpu_mesh: unsafe { &*self.gpu_mesh_ptr },
@@ -428,5 +398,4 @@ struct DefaultPipelineFrameData {
     internal_resolution: (u32, u32),
     output_resolution: (u32, u32),
 }
-
 unsafe impl Send for DefaultPipelineFrameData {}

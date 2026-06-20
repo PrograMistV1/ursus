@@ -1,15 +1,18 @@
 use crate::assets::builtin_shaders;
 use crate::assets::loader_job::{BackgroundLoader, LoaderMessage, MeshSource};
 use crate::assets::material::MaterialDef;
-use crate::assets::mesh::CpuMesh;
-use crate::assets::pending::{PendingMaterial, PendingMesh, PendingTexture, PendingUpload};
+use crate::assets::mesh::{Aabb, CpuMesh};
 use crate::assets::shader_registry::{ShaderRegistry, TextureSlot};
+use crate::assets::upload::GpuUploadRequest;
 use crate::components::Transform;
 use crate::ecs::components::{MaterialHandle, MeshHandle};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TextureHandle(pub u32);
 
 #[derive(Debug, Clone, Default)]
 pub struct LoadProgress {
@@ -17,9 +20,6 @@ pub struct LoadProgress {
     pub completed: usize,
     pub current: String,
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TextureHandle(pub u32);
 
 impl LoadProgress {
     pub fn fraction(&self) -> f32 {
@@ -39,19 +39,20 @@ pub struct CpuAssetServer {
     pub cpu_materials: Vec<MaterialDef>,
     pub material_name_cache: HashMap<String, MaterialHandle>,
 
-    pub mesh_path_cache: Arc<Mutex<HashMap<PathBuf, Vec<(MeshHandle, Option<MaterialHandle>, Transform)>>>>,
+    pub mesh_path_cache: Arc<Mutex<HashMap<PathBuf, Vec<(MeshHandle, Option<MaterialHandle>, Transform, Aabb)>>>>,
 
     pub shaders: ShaderRegistry,
     pub load_progress: LoadProgress,
 
-    pub upload_queue: Arc<Mutex<Vec<PendingUpload>>>,
+    pending_uploads: Vec<GpuUploadRequest>,
+    next_texture_handle: u32, // 0 зарезервирован под white-fallback в BindlessSet
 
     loader: BackgroundLoader,
     pending_paths: HashMap<PathBuf, ()>,
 }
 
 impl CpuAssetServer {
-    pub fn new(upload_queue: Arc<Mutex<Vec<PendingUpload>>>) -> Self {
+    pub fn new() -> Self {
         let mut shaders = ShaderRegistry::empty();
         builtin_shaders::register_builtin(&mut shaders);
 
@@ -62,10 +63,17 @@ impl CpuAssetServer {
             mesh_path_cache: Arc::new(Mutex::new(HashMap::new())),
             shaders,
             load_progress: LoadProgress::default(),
-            upload_queue,
+            pending_uploads: Vec::new(),
+            next_texture_handle: 1,
             loader: BackgroundLoader::new(),
             pending_paths: HashMap::new(),
         }
+    }
+
+    fn alloc_texture_handle(&mut self) -> TextureHandle {
+        let h = TextureHandle(self.next_texture_handle);
+        self.next_texture_handle += 1;
+        h
     }
 
     pub fn register_mesh(&mut self, mesh: CpuMesh) -> MeshHandle {
@@ -86,21 +94,16 @@ impl CpuAssetServer {
     pub fn get_material(&self, handle: MaterialHandle) -> Option<&MaterialDef> {
         self.cpu_materials.get(handle.0 as usize)
     }
-
     pub fn get_cpu_mesh(&self, handle: MeshHandle) -> Option<&CpuMesh> {
         self.cpu_meshes.get(handle.0 as usize)
     }
-
     pub fn is_loading(&self) -> bool {
         !self.load_progress.is_done()
     }
 
     pub fn load_mesh_async(&mut self, path: impl AsRef<Path>) -> AsyncMeshHandle {
         let path = path.as_ref().to_path_buf();
-        if self.pending_paths.contains_key(&path) {
-            return AsyncMeshHandle(path);
-        }
-        if self.mesh_path_cache.lock().unwrap().contains_key(&path) {
+        if self.pending_paths.contains_key(&path) || self.mesh_path_cache.lock().unwrap().contains_key(&path) {
             return AsyncMeshHandle(path);
         }
         log::info!("load_mesh_async: {:?}", path);
@@ -128,26 +131,15 @@ impl CpuAssetServer {
         match msg {
             LoaderMessage::MeshReady { path, source } => {
                 self.load_progress.current = path.to_string_lossy().to_string();
-                let pending = self.build_pending_mesh(source);
-                self.upload_queue.lock().unwrap().push(PendingUpload::Mesh { path: path.clone(), meshes: pending });
+                let instances = self.build_instances_and_queue_uploads(source);
+                self.mesh_path_cache.lock().unwrap().insert(path.clone(), instances);
                 self.pending_paths.remove(&path);
                 self.load_progress.completed += 1;
             }
-
-            LoaderMessage::TextureReady { path, source } => {
-                self.load_progress.current = path.to_string_lossy().to_string();
-                self.upload_queue.lock().unwrap().push(PendingUpload::Texture {
-                    path: path.clone(),
-                    pixels: source.pixels,
-                    width: source.width,
-                    height: source.height,
-                    format: ash::vk::Format::R8G8B8A8_SRGB,
-                    name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
-                });
-                self.pending_paths.remove(&path);
-                self.load_progress.completed += 1;
+            LoaderMessage::TextureReady { .. } => {
+                // отдельная загрузка текстур сейчас не используется — текстуры
+                // приходят только как часть glTF-материала.
             }
-
             LoaderMessage::Error { path, error } => {
                 log::error!("Ошибка загрузки {:?}: {}", path, error);
                 self.pending_paths.remove(&path);
@@ -156,52 +148,101 @@ impl CpuAssetServer {
         }
     }
 
-    fn build_pending_mesh(&self, source: MeshSource) -> Vec<PendingMesh> {
-        source
-            .primitives
-            .into_iter()
-            .map(|prim| {
-                let material = prim.material.map(|m| {
-                    let textures = prim
-                        .textures
-                        .into_iter()
-                        .map(|(slot, pixels, width, height, name, image_index)| {
-                            let format = match slot {
-                                TextureSlot::Normal | TextureSlot::MetallicRoughness | TextureSlot::Occlusion => {
-                                    ash::vk::Format::R8G8B8A8_UNORM
-                                }
-                                TextureSlot::Diffuse | TextureSlot::Emissive => ash::vk::Format::R8G8B8A8_SRGB,
-                            };
-                            PendingTexture { slot, pixels, width, height, format, name, image_index }
-                        })
-                        .collect();
+    /// Строит инстансы (CPU-данные сразу доступны) и складывает GPU-запросы
+    /// в очередь, которая будет отправлена в рендер-поток через канал.
+    fn build_instances_and_queue_uploads(
+        &mut self,
+        source: MeshSource,
+    ) -> Vec<(MeshHandle, Option<MaterialHandle>, Transform, Aabb)> {
+        let mut instances = Vec::new();
+        let mut image_index_cache: HashMap<usize, TextureHandle> = HashMap::new();
 
-                    PendingMaterial {
-                        name: m.name,
-                        shader_name: "diffuse".to_string(),
-                        base_color: m.base_color,
-                        metallic: m.metallic,
-                        roughness: m.roughness,
-                        textures,
-                    }
+        for prim in source.primitives {
+            let aabb = Aabb::from_vertices(&prim.mesh.vertices);
+            let name = prim.mesh.name.clone();
+            let vertices = prim.mesh.vertices.clone();
+            let indices = prim.mesh.indices.clone();
+            let mesh_handle = self.register_mesh(prim.mesh);
+
+            self.pending_uploads.push(GpuUploadRequest::Mesh { handle: mesh_handle, vertices, indices, name });
+
+            let material_handle = prim.material.map(|m| {
+                let mut texture_slots = Vec::new();
+                for (slot, pixels, width, height, tex_name, image_index) in prim.textures {
+                    let tex_handle = *image_index_cache.entry(image_index).or_insert_with(|| {
+                        let h = self.alloc_texture_handle();
+                        let format = match slot {
+                            TextureSlot::Normal | TextureSlot::MetallicRoughness | TextureSlot::Occlusion => {
+                                ash::vk::Format::R8G8B8A8_UNORM
+                            }
+                            TextureSlot::Diffuse | TextureSlot::Emissive => ash::vk::Format::R8G8B8A8_SRGB,
+                        };
+                        self.pending_uploads.push(GpuUploadRequest::Texture {
+                            handle: h,
+                            pixels: pixels.clone(),
+                            width,
+                            height,
+                            format,
+                            name: tex_name.clone(),
+                        });
+                        h
+                    });
+                    texture_slots.push((slot, tex_handle));
+                }
+
+                let mut mat_def = MaterialDef::new(&m.name, self.shaders.by_name("diffuse").unwrap())
+                    .with_color(m.base_color[0], m.base_color[1], m.base_color[2], m.base_color[3])
+                    .with_metallic(m.metallic)
+                    .with_roughness(m.roughness);
+                for &(slot, tex) in &texture_slots {
+                    mat_def.set_texture(slot, tex);
+                }
+                let handle = self.register_material(mat_def);
+
+                self.pending_uploads.push(GpuUploadRequest::Material {
+                    handle,
+                    base_color: m.base_color,
+                    metallic: m.metallic,
+                    roughness: m.roughness,
+                    emissive: [m.emissive[0], m.emissive[1], m.emissive[2], 0.0],
+                    texture_slots,
+                    name: m.name,
                 });
 
-                let transform = Transform {
-                    position: glam::Vec3::from(prim.node_translation),
-                    rotation: glam::Quat::from_array(prim.node_rotation),
-                    scale: glam::Vec3::from(prim.node_scale),
-                };
+                handle
+            });
 
-                PendingMesh { cpu_mesh: prim.mesh, transform, material }
-            })
-            .collect()
+            let transform = Transform {
+                position: glam::Vec3::from(prim.node_translation),
+                rotation: glam::Quat::from_array(prim.node_rotation),
+                scale: glam::Vec3::from(prim.node_scale),
+            };
+
+            instances.push((mesh_handle, material_handle, transform, aabb));
+        }
+
+        instances
+    }
+
+    /// Вызывается каждый кадр из главного потока — сливает накопленные
+    /// GPU-запросы в канал к рендер-потоку.
+    pub fn flush_uploads_cpu(&mut self, tx: &Sender<GpuUploadRequest>) {
+        for req in self.pending_uploads.drain(..) {
+            let _ = tx.send(req);
+        }
     }
 
     pub fn get_mesh_instances(
         &self,
         handle: &AsyncMeshHandle,
-    ) -> Option<Vec<(MeshHandle, Option<MaterialHandle>, Transform)>> {
+    ) -> Option<Vec<(MeshHandle, Option<MaterialHandle>, Transform, Aabb)>> {
         self.mesh_path_cache.lock().unwrap().get(&handle.0).cloned()
+    }
+}
+
+impl Default for CpuAssetServer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
