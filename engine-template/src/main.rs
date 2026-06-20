@@ -1,21 +1,24 @@
 use engine::components::{ActiveCamera, CameraComponent, DirectionalLightComponent, UiLayout, UiText};
+use engine::pipeline::DefaultPipeline;
 use engine::{App, AsyncMeshHandle, Engine, EngineContext};
 use glam::{Vec2, Vec3};
 
 struct MyApp {
     sponza: Option<AsyncMeshHandle>,
+    spawned: bool,
     frame: u64,
 }
 
 impl MyApp {
     fn new() -> Self {
-        Self { sponza: None, frame: 0 }
+        Self { sponza: None, spawned: false, frame: 0 }
     }
 }
 
 impl App for MyApp {
-    fn on_load(&mut self, ctx: &mut EngineContext) {
+    fn on_start(&mut self, ctx: &mut EngineContext) {
         self.sponza = Some(ctx.cpu_assets.load_mesh_async("assets/sponza/glTF/Sponza.gltf"));
+
         ctx.world
             .spawn()
             .insert(UiLayout::top_left(Vec2::new(16.0, 16.0)))
@@ -25,35 +28,41 @@ impl App for MyApp {
         ctx.world.spawn().insert(DirectionalLightComponent::default()).build();
     }
 
-    fn on_start(&mut self, ctx: &mut EngineContext) {
-        if let Some(handle) = &self.sponza {
-            for (mesh, mat, transform, _) in ctx.cpu_assets.get_mesh_instances(handle).unwrap() {
-                let mut builder = ctx.world.spawn();
-                builder = builder.insert(mesh);
-                builder = builder.insert(transform.clone());
-                if let Some(m) = mat {
-                    builder = builder.insert(m);
-                }
-                builder.build();
-            }
-            log::info!("Sponza заспавнена");
-        }
-
-        for (cam, _) in ctx.world.inner.query_mut::<(&mut CameraComponent, &ActiveCamera)>() {
-            cam.eye = Vec3::new(8.0, 4.0, 0.0);
-            cam.target = Vec3::new(0.0, 4.0, 0.0);
-            cam.z_near = 0.01;
-            cam.z_far = 50.0;
-        }
-    }
-
     fn on_update(&mut self, ctx: &mut EngineContext, _dt: f32) {
         self.frame += 1;
-        let t = self.frame as f32 * 0.003;
 
+        if !self.spawned && !ctx.cpu_assets.is_loading() {
+            if let Some(handle) = &self.sponza {
+                for (mesh, mat, transform, _) in ctx.cpu_assets.get_mesh_instances(handle).unwrap() {
+                    let mut builder = ctx.world.spawn();
+                    builder = builder.insert(mesh);
+                    builder = builder.insert(transform.clone());
+                    if let Some(m) = mat {
+                        builder = builder.insert(m);
+                    }
+                    builder.build();
+                }
+                log::info!("Sponza заспавнена");
+            }
+
+            for (cam, _) in ctx.world.inner.query_mut::<(&mut CameraComponent, &ActiveCamera)>() {
+                cam.eye = Vec3::new(8.0, 4.0, 0.0);
+                cam.target = Vec3::new(0.0, 4.0, 0.0);
+                cam.z_near = 0.01;
+                cam.z_far = 50.0;
+            }
+
+            ctx.set_pipeline::<DefaultPipeline>();
+            self.spawned = true;
+            log::info!("Загрузка завершена - переключились на DefaultPipeline");
+        }
+
+        let t = self.frame as f32 * 0.003;
         for (cam, _) in ctx.world.inner.query_mut::<(&mut CameraComponent, &ActiveCamera)>() {
-            cam.eye = Vec3::new(t.sin() * 9.0, 2.0, t.cos() * 4.0);
-            cam.target = Vec3::new(0.0, 2.0, 0.0);
+            if self.spawned {
+                cam.eye = Vec3::new(t.sin() * 9.0, 2.0, t.cos() * 4.0);
+                cam.target = Vec3::new(0.0, 2.0, 0.0);
+            }
         }
     }
 

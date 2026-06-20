@@ -7,13 +7,11 @@ use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::upload::GpuUploadRequest;
-use crate::pipeline::{DefaultPipeline, LoadingPipeline};
 use crate::render_world::{ExtractedRenderSettings, RenderWorld};
 use crate::triple_buffer::TripleBuffer;
-use crate::vulkan::renderer::{build_dyn_renderer, DynRenderer};
 use crate::vulkan::VulkanContext;
 
-use self::command::RenderCommand;
+use self::command::{PipelineFactory, RenderCommand};
 
 pub struct WindowHandles {
     pub display: RawDisplayHandle,
@@ -22,25 +20,22 @@ pub struct WindowHandles {
 
 unsafe impl Send for WindowHandles {}
 
-enum ActivePipeline {
-    Loading,
-    Default,
-}
-
 pub fn render_thread_main(
     handles: WindowHandles,
+    initial_pipeline: PipelineFactory,
     triple_buf: Arc<TripleBuffer<RenderWorld>>,
     cmd_rx: Receiver<RenderCommand>,
     upload_rx: Receiver<GpuUploadRequest>,
     ready_tx: std::sync::mpsc::SyncSender<()>,
 ) {
-    if let Err(e) = render_loop(handles, triple_buf, cmd_rx, upload_rx, ready_tx) {
+    if let Err(e) = render_loop(handles, initial_pipeline, triple_buf, cmd_rx, upload_rx, ready_tx) {
         log::error!("Render thread завершился с ошибкой: {e}");
     }
 }
 
 fn render_loop(
     handles: WindowHandles,
+    initial_pipeline: PipelineFactory,
     triple_buf: Arc<TripleBuffer<RenderWorld>>,
     cmd_rx: Receiver<RenderCommand>,
     upload_rx: Receiver<GpuUploadRequest>,
@@ -58,8 +53,7 @@ fn render_loop(
         vk.device.graphics_queue,
     )?;
 
-    let mut renderer: Box<dyn DynRenderer> = build_dyn_renderer::<LoadingPipeline>(&vk, &mut gpu_assets, 0.5, 0.2)?;
-    let mut active_pipeline = ActivePipeline::Loading;
+    let mut renderer = initial_pipeline.build(&vk, &mut gpu_assets, 0.5, 0.2)?;
 
     let mut render_idx: usize = 2;
     let mut initialized = false;
@@ -90,30 +84,13 @@ fn render_loop(
                     }
                     RenderCommand::SetExposure(v) => renderer.set_exposure(v),
                     RenderCommand::SetFsrSharpness(v) => renderer.set_fsr_sharpness(v),
-                    RenderCommand::SetPipeline(kind) => match kind {
-                        command::PipelineKind::Loading => {
-                            if !matches!(active_pipeline, ActivePipeline::Loading) {
-                                unsafe { vk.device.handle.device_wait_idle().ok() };
-                                let prev_exp = renderer.exposure();
-                                let prev_fsr = renderer.fsr_sharpness();
-                                renderer =
-                                    build_dyn_renderer::<LoadingPipeline>(&vk, &mut gpu_assets, prev_exp, prev_fsr)?;
-                                active_pipeline = ActivePipeline::Loading;
-                                log::info!("Render thread: switched to LoadingPipeline");
-                            }
-                        }
-                        command::PipelineKind::Default => {
-                            if !matches!(active_pipeline, ActivePipeline::Default) {
-                                unsafe { vk.device.handle.device_wait_idle().ok() };
-                                let prev_exp = renderer.exposure();
-                                let prev_fsr = renderer.fsr_sharpness();
-                                renderer =
-                                    build_dyn_renderer::<DefaultPipeline>(&vk, &mut gpu_assets, prev_exp, prev_fsr)?;
-                                active_pipeline = ActivePipeline::Default;
-                                log::info!("Render thread: switched to DefaultPipeline");
-                            }
-                        }
-                    },
+                    RenderCommand::SetPipeline(factory) => {
+                        unsafe { vk.device.handle.device_wait_idle().ok() };
+                        let prev_exp = renderer.exposure();
+                        let prev_fsr = renderer.fsr_sharpness();
+                        renderer = factory.build(&vk, &mut gpu_assets, prev_exp, prev_fsr)?;
+                        log::info!("Render thread: pipeline switched");
+                    }
                 },
                 Err(std::sync::mpsc::TryRecvError::Empty) => break,
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {

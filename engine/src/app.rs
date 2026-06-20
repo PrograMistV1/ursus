@@ -13,14 +13,22 @@ use crate::assets::cpu_server::CpuAssetServer;
 use crate::assets::upload::GpuUploadRequest;
 use crate::ecs::GameWorld;
 use crate::extract::{default_extract_schedule, ExtractSchedule};
-use crate::render_thread::command::{PipelineKind, RenderCommand};
+use crate::pipeline::render_pipeline::RenderPipeline;
+use crate::pipeline::LoadingPipeline;
+use crate::render_thread::command::{PipelineFactory, RenderCommand};
 use crate::render_thread::{render_thread_main, WindowHandles};
 use crate::render_world::{ExtractedRenderSettings, RenderWorld};
 use crate::triple_buffer::TripleBuffer;
 use crate::vulkan::VulkanContext;
 
 pub trait App {
-    fn on_load(&mut self, _ctx: &mut EngineContext) {}
+    fn initial_pipeline() -> PipelineFactory
+    where
+        Self: Sized,
+    {
+        PipelineFactory::of::<LoadingPipeline>()
+    }
+
     fn on_start(&mut self, ctx: &mut EngineContext);
     fn on_update(&mut self, ctx: &mut EngineContext, dt: f32);
     fn on_render(&mut self, ctx: &mut EngineContext);
@@ -36,7 +44,6 @@ pub struct EngineContext {
     upload_tx: Sender<GpuUploadRequest>,
     triple_buf: Arc<TripleBuffer<RenderWorld>>,
     pub(crate) output_size: (f32, f32),
-    was_loading: bool,
 }
 
 impl EngineContext {
@@ -56,7 +63,6 @@ impl EngineContext {
             upload_tx,
             triple_buf,
             output_size,
-            was_loading: false,
         })
     }
 
@@ -64,22 +70,16 @@ impl EngineContext {
         let _ = self.cmd_tx.send(cmd);
     }
 
+    pub fn set_pipeline<P>(&self)
+    where
+        P: RenderPipeline + Default + 'static,
+    {
+        self.send_render_cmd(RenderCommand::SetPipeline(PipelineFactory::of::<P>()));
+    }
+
     pub fn poll_assets(&mut self) {
         self.cpu_assets.poll_loader();
         self.cpu_assets.flush_uploads_cpu(&self.upload_tx);
-
-        let is_loading = self.cpu_assets.is_loading();
-        if self.was_loading && !is_loading {
-            let _ = self.cmd_tx.send(RenderCommand::SetPipeline(PipelineKind::Default));
-            log::info!("Загрузка завершена — переключаем на DefaultPipeline");
-        } else if !self.was_loading && is_loading {
-            let _ = self.cmd_tx.send(RenderCommand::SetPipeline(PipelineKind::Loading));
-        }
-        self.was_loading = is_loading;
-    }
-
-    pub fn is_loading(&self) -> bool {
-        self.cpu_assets.is_loading()
     }
 
     pub(crate) fn publish_frame(&self, clear_color: [f32; 4]) {
@@ -94,13 +94,15 @@ impl EngineContext {
 pub struct Engine;
 
 impl Engine {
-    pub fn run(app: impl App + 'static) -> anyhow::Result<()> {
+    pub fn run<A: App + 'static>(app: A) -> anyhow::Result<()> {
         env_logger::builder().filter_level(log::LevelFilter::Info).parse_default_env().init();
+
+        let initial_pipeline = A::initial_pipeline();
 
         let event_loop = EventLoop::new()?;
         event_loop.set_control_flow(ControlFlow::Poll);
 
-        let mut handler = EngineHandler { app: Box::new(app), state: None };
+        let mut handler = EngineHandler { app: Box::new(app), initial_pipeline: Some(initial_pipeline), state: None };
         event_loop.run_app(&mut handler)?;
         Ok(())
     }
@@ -126,7 +128,6 @@ struct RunningState {
 
 enum EngineState {
     Waiting(WaitingState),
-    Loading(RunningState),
     Running(RunningState),
 }
 
@@ -134,6 +135,7 @@ const TICK_RATE: f32 = 1.0 / 60.0;
 
 struct EngineHandler {
     app: Box<dyn App>,
+    initial_pipeline: Option<PipelineFactory>,
     state: Option<EngineState>,
 }
 
@@ -166,20 +168,21 @@ impl ApplicationHandler for EngineHandler {
         let triple_buf = Arc::new(TripleBuffer::<RenderWorld>::new());
         let triple_buf_render = Arc::clone(&triple_buf);
 
+        let mut ctx =
+            EngineContext::new(cmd_tx, upload_tx, triple_buf, output_size).expect("Failed to create EngineContext");
+
+        self.app.on_start(&mut ctx);
+        ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);
+
+        let initial_pipeline = self.initial_pipeline.take().expect("initial_pipeline уже использован");
+
         let handles = WindowHandles { display, window: whandle };
         let render_thread = std::thread::Builder::new()
             .name("render".into())
             .spawn(move || {
-                render_thread_main(handles, triple_buf_render, cmd_rx, upload_rx, ready_tx);
+                render_thread_main(handles, initial_pipeline, triple_buf_render, cmd_rx, upload_rx, ready_tx);
             })
             .expect("Failed to spawn render thread");
-
-        let mut ctx =
-            EngineContext::new(cmd_tx, upload_tx, triple_buf, output_size).expect("Failed to create EngineContext");
-
-        self.app.on_load(&mut ctx);
-
-        ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);
 
         self.state = Some(EngineState::Waiting(WaitingState { window, ctx, ready_rx, render_thread }));
     }
@@ -195,7 +198,8 @@ impl ApplicationHandler for EngineHandler {
                 Ok(()) => {
                     waiting.window.set_visible(true);
                     let WaitingState { window, ctx, render_thread, .. } = waiting;
-                    self.state = Some(EngineState::Loading(RunningState {
+
+                    self.state = Some(EngineState::Running(RunningState {
                         window,
                         ctx,
                         render_thread,
@@ -215,31 +219,6 @@ impl ApplicationHandler for EngineHandler {
                     return;
                 }
             }
-        }
-
-        if let Some(EngineState::Loading(_)) = &self.state {
-            if let WindowEvent::RedrawRequested = event {
-                let state = match self.state.as_mut().unwrap() {
-                    EngineState::Loading(s) => s,
-                    _ => unreachable!(),
-                };
-
-                state.ctx.poll_assets();
-                state.ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);
-
-                if !state.ctx.is_loading() {
-                    if let Some(EngineState::Loading(mut s)) = self.state.take() {
-                        self.app.on_start(&mut s.ctx);
-                        log::info!("Загрузка завершена, entering main loop");
-                        self.state = Some(EngineState::Running(s));
-                    }
-                }
-            }
-
-            if let WindowEvent::CloseRequested = event {
-                event_loop.exit();
-            }
-            return;
         }
 
         let Some(EngineState::Running(state)) = self.state.as_mut() else {
@@ -308,7 +287,6 @@ impl ApplicationHandler for EngineHandler {
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         match &self.state {
             Some(EngineState::Waiting(s)) => s.window.request_redraw(),
-            Some(EngineState::Loading(s)) => s.window.request_redraw(),
             Some(EngineState::Running(s)) => s.window.request_redraw(),
             None => {}
         }
