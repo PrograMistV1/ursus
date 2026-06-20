@@ -129,11 +129,9 @@ pub fn extract_ui(world: &GameWorld, rw: &mut RenderWorld) {
     }
 
     for (layout, text) in world.inner.query::<(&UiLayout, &UiText)>().iter() {
-        let approx_width = text.text.chars().count() as f32 * text.font_size * 0.5;
         let line_height = text.font_size * 1.2;
-
         let pos = Vec2::new(
-            layout.anchor.x * screen_w + layout.offset.x - layout.pivot.x * approx_width,
+            layout.anchor.x * screen_w + layout.offset.x,
             layout.anchor.y * screen_h + layout.offset.y - layout.pivot.y * line_height,
         );
         ui_texts.texts.push(ExtractedUiText {

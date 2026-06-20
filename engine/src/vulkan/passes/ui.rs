@@ -106,18 +106,21 @@ impl UiPass {
 
         if let Some(atlas) = font_atlas {
             for (origin, text, font_size, color) in texts {
-                let font_size = *font_size as u32;
-                let line_height = atlas.line_height(font_size);
+                let font_size_u32 = *font_size as u32;
+
+                let ascent = font_size * 0.8;
 
                 let mut cursor_x = origin.x;
-                let origin_y = origin.y;
 
                 for ch in text.chars() {
-                    let advance = atlas.get_advance(ch, font_size);
-                    if let Some(glyph) = atlas.get_glyph(ch, font_size) {
+                    let advance = atlas.get_advance(ch, font_size_u32);
+
+                    if let Some(glyph) = atlas.get_glyph(ch, font_size_u32) {
                         if glyph.width > 0 && glyph.height > 0 {
                             let gx = cursor_x + glyph.offset_x as f32;
-                            let gy = origin_y + line_height - glyph.height as f32 - glyph.offset_y as f32;
+
+                            let baseline_y = origin.y + ascent;
+                            let gy = baseline_y - (glyph.offset_y as f32 + glyph.height as f32);
 
                             let pc = UiPC {
                                 screen_size,

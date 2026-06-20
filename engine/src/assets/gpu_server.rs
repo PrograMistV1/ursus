@@ -2,7 +2,7 @@ use crate::assets::cpu_server::TextureHandle;
 use crate::assets::material::MaterialData;
 use crate::assets::mesh::{CpuMesh, GpuMesh};
 use crate::assets::shader_registry::TextureSlot;
-use crate::assets::ui::FontAtlas;
+use crate::assets::ui::{FontAtlas, DEFAULT_CHARSET, DEFAULT_FONT_SIZES};
 use crate::assets::upload::GpuUploadRequest;
 use crate::assets::{builtin_shaders, ShaderRegistry};
 use crate::ecs::components::{MaterialHandle, MeshHandle};
@@ -11,6 +11,8 @@ use crate::vulkan::{BindlessSet, GpuTexture, MaterialBuffer};
 use ash::vk;
 use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, TryRecvError};
+
+const DEFAULT_FONT_BYTES: &[u8] = include_bytes!("../../../assets/fonts/RobotoMono.ttf");
 
 enum GpuMeshState {
     Ready(GpuMesh),
@@ -45,21 +47,45 @@ impl GpuAssetServer {
         command_pool: vk::CommandPool,
         queue: vk::Queue,
     ) -> anyhow::Result<Self> {
-        let bindless = BindlessSet::new(&device, physical_device, &instance, command_pool, queue)?;
+        let mut bindless = BindlessSet::new(&device, physical_device, &instance, command_pool, queue)?;
         let material_buffer = MaterialBuffer::new(&device, physical_device, &instance)?;
 
         let mut shaders = ShaderRegistry::empty();
         builtin_shaders::register_builtin(&mut shaders);
 
+        let font_atlas = FontAtlas::new(DEFAULT_FONT_BYTES, DEFAULT_CHARSET, DEFAULT_FONT_SIZES)
+            .map_err(|e| anyhow::anyhow!("Не удалось создать FontAtlas: {}", e))?;
+
+        let font_atlas_tex = GpuTexture::upload(
+            &device,
+            physical_device,
+            &instance,
+            command_pool,
+            queue,
+            &font_atlas.pixels,
+            font_atlas.atlas_width,
+            font_atlas.atlas_height,
+            vk::Format::R8G8B8A8_UNORM,
+            "font_atlas",
+        )?;
+
+        let font_atlas_slot = bindless.register_view(font_atlas_tex.view);
+        let font_atlas_handle = TextureHandle(font_atlas_slot);
+
+        let mut gpu_textures = HashMap::new();
+        gpu_textures.insert(font_atlas_handle, font_atlas_tex);
+
+        log::info!("FontAtlas загружен: слот {}", font_atlas_slot);
+
         Ok(Self {
             gpu_meshes: HashMap::new(),
-            gpu_textures: HashMap::new(),
+            gpu_textures,
             materials: Vec::new(),
             shaders,
             material_buffer,
             bindless,
-            font_atlas: None,
-            font_atlas_texture: None,
+            font_atlas: Some(font_atlas),
+            font_atlas_texture: Some(font_atlas_handle),
             device,
             physical_device,
             instance,
@@ -190,9 +216,6 @@ impl GpuAssetServer {
     }
 
     pub fn upload_font_atlas_raw(&mut self, pixels: Vec<u8>, width: u32, height: u32) -> anyhow::Result<()> {
-        // TODO: хэндл шрифтового атласа должен выделяться на CPU-стороне так же,
-        // как текстуры материалов, и приходить как GpuUploadRequest::FontAtlas{handle,...}.
-        // Сейчас оставлено как заглушка под единственный font atlas без явного handle.
         let tex = GpuTexture::upload(
             &self.device,
             self.physical_device,
