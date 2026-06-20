@@ -12,6 +12,6 @@ pub mod upload;
 
 pub use crate::ecs::components::{MaterialHandle, MeshHandle};
 pub use cpu_server::{AsyncMeshHandle, CpuAssetServer, LoadProgress, TextureHandle};
-pub use material::{MaterialData, MaterialDef};
+pub use material::MaterialData;
 pub use mesh::{CpuMesh, GpuMesh, Vertex};
 pub use shader_registry::{ShaderDef, ShaderHandle, ShaderRegistry, TextureSlot};

@@ -15,11 +15,6 @@ use crate::vulkan::VulkanContext;
 
 use self::command::RenderCommand;
 
-/// Хэндлы окна для передачи в рендер-поток.
-///
-/// # Safety
-/// `Window` в главном потоке живёт дольше рендер-потока —
-/// гарантировано порядком drop в `Engine::run` (join перед drop window).
 pub struct WindowHandles {
     pub display: RawDisplayHandle,
     pub window: RawWindowHandle,
@@ -27,16 +22,11 @@ pub struct WindowHandles {
 
 unsafe impl Send for WindowHandles {}
 
-/// Какой пайплайн сейчас активен.
 enum ActivePipeline {
     Loading,
     Default,
 }
 
-/// Точка входа рендер-потока.
-///
-/// Создаёт `VulkanContext`, `GpuAssetServer` и `Renderer` внутри потока.
-/// После инициализации отправляет сигнал в главный поток через `ready_tx`.
 pub fn render_thread_main(
     handles: WindowHandles,
     triple_buf: Arc<TripleBuffer<RenderWorld>>,
@@ -56,7 +46,6 @@ fn render_loop(
     upload_rx: Receiver<GpuUploadRequest>,
     ready_tx: std::sync::mpsc::SyncSender<()>,
 ) -> anyhow::Result<()> {
-    // ── Инициализация ─────────────────────────────────────────────────────────
     let mut vk = VulkanContext::from_handles(handles.display, handles.window, cfg!(debug_assertions))?;
 
     let temp_pool = crate::app::create_temp_pool(&vk)?;
@@ -69,25 +58,22 @@ fn render_loop(
         vk.device.graphics_queue,
     )?;
 
-    // Начинаем с LoadingPipeline — главный поток ещё загружает ассеты.
     let mut renderer: Box<dyn DynRenderer> = build_dyn_renderer::<LoadingPipeline>(&vk, &mut gpu_assets, 0.5, 0.2)?;
     let mut active_pipeline = ActivePipeline::Loading;
 
-    let mut render_idx: usize = 2; // начальный render-слот тройного буфера
-    let mut initialized = false; // получили ли хоть один кадр
+    let mut render_idx: usize = 2;
+    let mut initialized = false;
 
-    // Сигнализируем главному потоку что Vulkan готов — окно можно показывать.
     let _ = ready_tx.send(());
 
-    // ── Основной цикл ─────────────────────────────────────────────────────────
     loop {
-        // 1. Обработать команды управления
         loop {
             match cmd_rx.try_recv() {
                 Ok(cmd) => match cmd {
                     RenderCommand::Shutdown => {
                         log::info!("Render thread: получен Shutdown");
                         unsafe { vk.device.handle.device_wait_idle().ok() };
+                        unsafe { vk.device.handle.destroy_command_pool(temp_pool, None) };
                         return Ok(());
                     }
                     RenderCommand::Resize { width, height } => {
@@ -137,29 +123,24 @@ fn render_loop(
             }
         }
 
-        // 2. GPU upload новых ассетов
-        flush_uploads_gpu(&upload_rx, &mut gpu_assets, &vk)?;
+        flush_uploads_gpu(&upload_rx, &mut gpu_assets)?;
 
-        // 3. Попытаться забрать новый кадр
         let got_new = triple_buf.consume(&mut render_idx);
         if got_new {
             initialized = true;
         }
 
-        // 4. Пропустить кадр если ещё ни одного не было
         if !initialized {
             std::thread::yield_now();
             continue;
         }
 
-        // 5. Рендер
         let render_world = triple_buf.render_slot(render_idx);
 
         let settings = render_world.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
 
         let clear_color = settings.clear_color;
 
-        // upload_materials каждый кадр — материалы могут меняться
         gpu_assets.upload_materials_from_render_world(render_world);
 
         let needs_recreate = renderer.draw_frame(&vk, render_world, &mut gpu_assets, clear_color)?;
@@ -174,12 +155,7 @@ fn render_loop(
     }
 }
 
-/// GPU upload: читаем из канала и создаём GPU ресурсы.
-fn flush_uploads_gpu(
-    rx: &Receiver<GpuUploadRequest>,
-    gpu: &mut GpuAssetServer,
-    vk: &VulkanContext,
-) -> anyhow::Result<()> {
+fn flush_uploads_gpu(rx: &Receiver<GpuUploadRequest>, gpu: &mut GpuAssetServer) -> anyhow::Result<()> {
     loop {
         match rx.try_recv() {
             Ok(req) => match req {
@@ -191,13 +167,8 @@ fn flush_uploads_gpu(
                     }
                 }
                 GpuUploadRequest::Texture { handle, pixels, width, height, format, name } => {
-                    match gpu.upload_texture_raw(&pixels, width, height, format, &name) {
-                        Ok(tex_handle) => {
-                            // handle уже зарезервирован в CpuAssetServer —
-                            // проверяем что они совпадают
-                            debug_assert_eq!(tex_handle, handle);
-                        }
-                        Err(e) => log::error!("GPU upload texture failed: {e}"),
+                    if let Err(e) = gpu.upload_texture_at(handle, &pixels, width, height, format, &name) {
+                        log::error!("GPU upload texture failed: {e}");
                     }
                 }
                 GpuUploadRequest::Material {
@@ -209,7 +180,6 @@ fn flush_uploads_gpu(
                     texture_slots,
                     name,
                 } => {
-                    // Материал регистрируется локально в gpu_assets
                     gpu.register_material_gpu(handle, base_color, metallic, roughness, emissive, texture_slots, name);
                 }
                 GpuUploadRequest::FontAtlas { pixels, width, height } => {

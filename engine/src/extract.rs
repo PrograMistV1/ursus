@@ -60,9 +60,6 @@ pub fn extract_camera(world: &GameWorld, rw: &mut RenderWorld) {
     rw.insert(ExtractedCamera { eye: camera.eye, view, proj, view_proj: proj * view });
 }
 
-/// Aabb теперь читается из ECS-компонента, без обращения к GpuAssetServer.
-/// Frustum culling (используя aabb) выполняется позже, в render_thread,
-/// где доступен реальный GpuMesh — extract только переносит данные.
 pub fn extract_meshes(world: &GameWorld, rw: &mut RenderWorld) {
     let mut meshes = ExtractedMeshes::default();
     let mut shadow_meshes = ExtractedShadowMeshes::default();
@@ -131,9 +128,6 @@ pub fn extract_ui(world: &GameWorld, rw: &mut RenderWorld) {
         ui_rects.rects.push(ExtractedUiRect { pos, size: rect.size, color: rect.color });
     }
 
-    // Измерение текста (ширина/высота строки) теперь без font_atlas на этом этапе —
-    // координаты по pivot для текста считаются приблизительно (без точного измерения),
-    // т.к. font_atlas живёт в GpuAssetServer на рендер-потоке и здесь недоступен.
     for (layout, text) in world.inner.query::<(&UiLayout, &UiText)>().iter() {
         let approx_width = text.text.chars().count() as f32 * text.font_size * 0.5;
         let line_height = text.font_size * 1.2;

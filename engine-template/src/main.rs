@@ -27,7 +27,7 @@ impl App for MyApp {
 
     fn on_start(&mut self, ctx: &mut EngineContext) {
         if let Some(handle) = &self.sponza {
-            for (mesh, mat, transform) in ctx.cpu_assets.get_mesh_instances(handle).unwrap() {
+            for (mesh, mat, transform, _) in ctx.cpu_assets.get_mesh_instances(handle).unwrap() {
                 let mut builder = ctx.world.spawn();
                 builder = builder.insert(mesh);
                 builder = builder.insert(transform.clone());

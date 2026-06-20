@@ -285,7 +285,7 @@ impl RenderPipeline for DefaultPipeline {
                 .iter()
                 .filter_map(|inst| {
                     let gpu = input.gpu_assets.get_gpu_mesh(inst.mesh)?;
-                    let shader = default_shader; // материал -> шейдер сейчас не маршрутизируется отдельно; диффуз для всех
+                    let shader = default_shader;
                     Some(OwnedDrawCall {
                         gpu_mesh_ptr: gpu as *const _,
                         model: inst.model,

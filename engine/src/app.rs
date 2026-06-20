@@ -13,7 +13,7 @@ use crate::assets::cpu_server::CpuAssetServer;
 use crate::assets::upload::GpuUploadRequest;
 use crate::ecs::GameWorld;
 use crate::extract::{default_extract_schedule, ExtractSchedule};
-use crate::render_thread::command::RenderCommand;
+use crate::render_thread::command::{PipelineKind, RenderCommand};
 use crate::render_thread::{render_thread_main, WindowHandles};
 use crate::render_world::{ExtractedRenderSettings, RenderWorld};
 use crate::triple_buffer::TripleBuffer;
@@ -27,7 +27,6 @@ pub trait App {
     fn on_stop(&mut self, ctx: &mut EngineContext);
 }
 
-/// Контекст главного потока. Не содержит GPU ресурсов.
 pub struct EngineContext {
     pub world: GameWorld,
     pub cpu_assets: CpuAssetServer,
@@ -61,13 +60,10 @@ impl EngineContext {
         })
     }
 
-    /// Отправить команду рендер-потоку.
     pub fn send_render_cmd(&self, cmd: RenderCommand) {
         let _ = self.cmd_tx.send(cmd);
     }
 
-    /// Опросить загрузчик ассетов, отправить CPU данные в рендер-поток,
-    /// переключить пайплайн если загрузка завершилась.
     pub fn poll_assets(&mut self) {
         self.cpu_assets.poll_loader();
         self.cpu_assets.flush_uploads_cpu(&self.upload_tx);
@@ -90,7 +86,7 @@ impl EngineContext {
         let write = self.triple_buf.write_slot();
         write.clear();
         write.insert(ExtractedRenderSettings { clear_color, output_size: self.output_size });
-        self.extract_schedule.run(&self.world, write); // убрали gpu_assets-аргумент
+        self.extract_schedule.run(&self.world, write);
         self.triple_buf.publish();
     }
 }
@@ -110,9 +106,6 @@ impl Engine {
     }
 }
 
-// ── Состояния ─────────────────────────────────────────────────────────────────
-
-/// Vulkan инициализируется в рендер-потоке, окно скрыто.
 struct WaitingState {
     window: Window,
     ctx: EngineContext,
@@ -120,7 +113,6 @@ struct WaitingState {
     render_thread: JoinHandle<()>,
 }
 
-/// Рендер готов, основной игровой цикл.
 struct RunningState {
     window: Window,
     ctx: EngineContext,
@@ -134,6 +126,7 @@ struct RunningState {
 
 enum EngineState {
     Waiting(WaitingState),
+    Loading(RunningState),
     Running(RunningState),
 }
 
@@ -155,7 +148,7 @@ impl ApplicationHandler for EngineHandler {
                 WindowAttributes::default()
                     .with_title("engine")
                     .with_inner_size(winit::dpi::LogicalSize::new(1280u32, 720u32))
-                    .with_visible(false), // скрыто до готовности рендера
+                    .with_visible(false),
             )
             .expect("Failed to create window");
 
@@ -168,7 +161,6 @@ impl ApplicationHandler for EngineHandler {
 
         let (cmd_tx, cmd_rx) = mpsc::channel::<RenderCommand>();
         let (upload_tx, upload_rx) = mpsc::channel::<GpuUploadRequest>();
-        // SyncSender с буфером 1 — рендер-поток отправляет один сигнал и не блокируется
         let (ready_tx, ready_rx) = mpsc::sync_channel::<()>(1);
 
         let triple_buf = Arc::new(TripleBuffer::<RenderWorld>::new());
@@ -187,11 +179,12 @@ impl ApplicationHandler for EngineHandler {
 
         self.app.on_load(&mut ctx);
 
+        ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);
+
         self.state = Some(EngineState::Waiting(WaitingState { window, ctx, ready_rx, render_thread }));
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: winit::window::WindowId, event: WindowEvent) {
-        // Попытаться перейти из Waiting → Running
         if matches!(self.state, Some(EngineState::Waiting(_))) {
             let waiting = match self.state.take().unwrap() {
                 EngineState::Waiting(w) => w,
@@ -200,11 +193,9 @@ impl ApplicationHandler for EngineHandler {
 
             match waiting.ready_rx.try_recv() {
                 Ok(()) => {
-                    // Рендер-поток готов
                     waiting.window.set_visible(true);
-                    let WaitingState { window, mut ctx, render_thread, .. } = waiting;
-                    self.app.on_start(&mut ctx);
-                    self.state = Some(EngineState::Running(RunningState {
+                    let WaitingState { window, ctx, render_thread, .. } = waiting;
+                    self.state = Some(EngineState::Loading(RunningState {
                         window,
                         ctx,
                         render_thread,
@@ -216,7 +207,7 @@ impl ApplicationHandler for EngineHandler {
                     }));
                 }
                 Err(_) => {
-                    // Ещё не готов — возвращаем состояние
+                    waiting.ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);
                     self.state = Some(EngineState::Waiting(waiting));
                     if let WindowEvent::CloseRequested = event {
                         event_loop.exit();
@@ -224,6 +215,31 @@ impl ApplicationHandler for EngineHandler {
                     return;
                 }
             }
+        }
+
+        if let Some(EngineState::Loading(_)) = &self.state {
+            if let WindowEvent::RedrawRequested = event {
+                let state = match self.state.as_mut().unwrap() {
+                    EngineState::Loading(s) => s,
+                    _ => unreachable!(),
+                };
+
+                state.ctx.poll_assets();
+                state.ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);
+
+                if !state.ctx.is_loading() {
+                    if let Some(EngineState::Loading(mut s)) = self.state.take() {
+                        self.app.on_start(&mut s.ctx);
+                        log::info!("Загрузка завершена, entering main loop");
+                        self.state = Some(EngineState::Running(s));
+                    }
+                }
+            }
+
+            if let WindowEvent::CloseRequested = event {
+                event_loop.exit();
+            }
+            return;
         }
 
         let Some(EngineState::Running(state)) = self.state.as_mut() else {
@@ -234,7 +250,6 @@ impl ApplicationHandler for EngineHandler {
             WindowEvent::CloseRequested => {
                 self.app.on_stop(&mut state.ctx);
                 let _ = state.ctx.cmd_tx.send(RenderCommand::Shutdown);
-                // join через take чтобы не бороться с borrow checker
                 if let Some(EngineState::Running(s)) = self.state.take() {
                     s.render_thread.join().ok();
                 }
@@ -287,6 +302,15 @@ impl ApplicationHandler for EngineHandler {
             }
 
             _ => {}
+        }
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        match &self.state {
+            Some(EngineState::Waiting(s)) => s.window.request_redraw(),
+            Some(EngineState::Loading(s)) => s.window.request_redraw(),
+            Some(EngineState::Running(s)) => s.window.request_redraw(),
+            None => {}
         }
     }
 }

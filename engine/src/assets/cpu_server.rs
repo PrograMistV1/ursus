@@ -1,8 +1,6 @@
-use crate::assets::builtin_shaders;
 use crate::assets::loader_job::{BackgroundLoader, LoaderMessage, MeshSource};
-use crate::assets::material::MaterialDef;
 use crate::assets::mesh::{Aabb, CpuMesh};
-use crate::assets::shader_registry::{ShaderRegistry, TextureSlot};
+use crate::assets::shader_registry::TextureSlot;
 use crate::assets::upload::GpuUploadRequest;
 use crate::components::Transform;
 use crate::ecs::components::{MaterialHandle, MeshHandle};
@@ -36,16 +34,14 @@ impl LoadProgress {
 
 pub struct CpuAssetServer {
     pub cpu_meshes: Vec<CpuMesh>,
-    pub cpu_materials: Vec<MaterialDef>,
-    pub material_name_cache: HashMap<String, MaterialHandle>,
+    next_material_handle: u32,
 
     pub mesh_path_cache: Arc<Mutex<HashMap<PathBuf, Vec<(MeshHandle, Option<MaterialHandle>, Transform, Aabb)>>>>,
 
-    pub shaders: ShaderRegistry,
     pub load_progress: LoadProgress,
 
     pending_uploads: Vec<GpuUploadRequest>,
-    next_texture_handle: u32, // 0 зарезервирован под white-fallback в BindlessSet
+    next_texture_handle: u32,
 
     loader: BackgroundLoader,
     pending_paths: HashMap<PathBuf, ()>,
@@ -53,15 +49,10 @@ pub struct CpuAssetServer {
 
 impl CpuAssetServer {
     pub fn new() -> Self {
-        let mut shaders = ShaderRegistry::empty();
-        builtin_shaders::register_builtin(&mut shaders);
-
         Self {
             cpu_meshes: Vec::new(),
-            cpu_materials: Vec::new(),
-            material_name_cache: HashMap::new(),
+            next_material_handle: 0,
             mesh_path_cache: Arc::new(Mutex::new(HashMap::new())),
-            shaders,
             load_progress: LoadProgress::default(),
             pending_uploads: Vec::new(),
             next_texture_handle: 1,
@@ -80,19 +71,6 @@ impl CpuAssetServer {
         let id = self.cpu_meshes.len() as u32;
         self.cpu_meshes.push(mesh);
         MeshHandle(id)
-    }
-
-    pub fn register_material(&mut self, mat: MaterialDef) -> MaterialHandle {
-        let name = mat.name.clone();
-        let id = self.cpu_materials.len() as u32;
-        self.cpu_materials.push(mat);
-        let handle = MaterialHandle(id);
-        self.material_name_cache.insert(name, handle);
-        handle
-    }
-
-    pub fn get_material(&self, handle: MaterialHandle) -> Option<&MaterialDef> {
-        self.cpu_materials.get(handle.0 as usize)
     }
     pub fn get_cpu_mesh(&self, handle: MeshHandle) -> Option<&CpuMesh> {
         self.cpu_meshes.get(handle.0 as usize)
@@ -136,10 +114,7 @@ impl CpuAssetServer {
                 self.pending_paths.remove(&path);
                 self.load_progress.completed += 1;
             }
-            LoaderMessage::TextureReady { .. } => {
-                // отдельная загрузка текстур сейчас не используется — текстуры
-                // приходят только как часть glTF-материала.
-            }
+            LoaderMessage::TextureReady { .. } => {}
             LoaderMessage::Error { path, error } => {
                 log::error!("Ошибка загрузки {:?}: {}", path, error);
                 self.pending_paths.remove(&path);
@@ -148,8 +123,6 @@ impl CpuAssetServer {
         }
     }
 
-    /// Строит инстансы (CPU-данные сразу доступны) и складывает GPU-запросы
-    /// в очередь, которая будет отправлена в рендер-поток через канал.
     fn build_instances_and_queue_uploads(
         &mut self,
         source: MeshSource,
@@ -190,14 +163,8 @@ impl CpuAssetServer {
                     texture_slots.push((slot, tex_handle));
                 }
 
-                let mut mat_def = MaterialDef::new(&m.name, self.shaders.by_name("diffuse").unwrap())
-                    .with_color(m.base_color[0], m.base_color[1], m.base_color[2], m.base_color[3])
-                    .with_metallic(m.metallic)
-                    .with_roughness(m.roughness);
-                for &(slot, tex) in &texture_slots {
-                    mat_def.set_texture(slot, tex);
-                }
-                let handle = self.register_material(mat_def);
+                let handle = MaterialHandle(self.next_material_handle);
+                self.next_material_handle += 1;
 
                 self.pending_uploads.push(GpuUploadRequest::Material {
                     handle,
@@ -224,8 +191,6 @@ impl CpuAssetServer {
         instances
     }
 
-    /// Вызывается каждый кадр из главного потока — сливает накопленные
-    /// GPU-запросы в канал к рендер-потоку.
     pub fn flush_uploads_cpu(&mut self, tx: &Sender<GpuUploadRequest>) {
         for req in self.pending_uploads.drain(..) {
             let _ = tx.send(req);

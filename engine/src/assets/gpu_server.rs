@@ -4,6 +4,7 @@ use crate::assets::mesh::{CpuMesh, GpuMesh};
 use crate::assets::shader_registry::TextureSlot;
 use crate::assets::ui::FontAtlas;
 use crate::assets::upload::GpuUploadRequest;
+use crate::assets::{builtin_shaders, ShaderRegistry};
 use crate::ecs::components::{MaterialHandle, MeshHandle};
 use crate::render_world::RenderWorld;
 use crate::vulkan::{BindlessSet, GpuTexture, MaterialBuffer};
@@ -21,7 +22,7 @@ pub struct GpuAssetServer {
     gpu_textures: HashMap<TextureHandle, GpuTexture>,
     materials: Vec<MaterialData>,
 
-    pub shaders: crate::assets::shader_registry::ShaderRegistry,
+    pub shaders: ShaderRegistry,
 
     pub material_buffer: MaterialBuffer,
     pub bindless: BindlessSet,
@@ -47,10 +48,14 @@ impl GpuAssetServer {
         let bindless = BindlessSet::new(&device, physical_device, &instance, command_pool, queue)?;
         let material_buffer = MaterialBuffer::new(&device, physical_device, &instance)?;
 
+        let mut shaders = ShaderRegistry::empty();
+        builtin_shaders::register_builtin(&mut shaders);
+
         Ok(Self {
             gpu_meshes: HashMap::new(),
             gpu_textures: HashMap::new(),
             materials: Vec::new(),
+            shaders,
             material_buffer,
             bindless,
             font_atlas: None,
@@ -140,8 +145,6 @@ impl GpuAssetServer {
             format,
             name,
         )?;
-        // Слот в bindless-массиве должен совпадать с TextureHandle, выданным
-        // на CPU-стороне (material_id ссылается на него до того, как GPU upload завершится).
         self.bindless.register_view_at(handle.0, tex.view);
         self.gpu_textures.insert(handle, tex);
         Ok(())

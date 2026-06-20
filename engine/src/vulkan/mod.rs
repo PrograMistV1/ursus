@@ -47,8 +47,6 @@ impl VulkanContext {
 
         let device = Arc::new(Device::new(&instance, surface)?);
 
-        // Размер окна неизвестен без winit::Window — берём дефолт,
-        // первый Resize от главного потока пересоздаст swapchain под реальный размер.
         let swapchain = Swapchain::new(&instance, &device, surface, 1280, 720, false)?;
 
         let debug_utils = if validation {

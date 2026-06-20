@@ -1,16 +1,6 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 
-/// Типизированная карта ресурсов сцены.
-///
-/// Служит единственным каналом передачи данных о сцене от главного потока
-/// к рендер-потоку. Не знает ни о ECS-компонентах, ни о Vulkan.
-///
-/// Три экземпляра живут в `TripleBuffer<RenderWorld>`. Главный поток заполняет
-/// write-слот через [`ExtractSchedule`], публикует атомарным swap. Рендер-поток
-/// читает render-слот весь кадр.
-///
-/// [`ExtractSchedule`]: crate::extract::ExtractSchedule
 pub struct RenderWorld {
     resources: HashMap<TypeId, Box<dyn Any + Send>>,
 }
@@ -112,7 +102,6 @@ pub struct ExtractedUiRect {
     pub color: [f32; 4],
 }
 
-/// UI текст.
 #[derive(Default, Clone)]
 pub struct ExtractedUiTexts {
     pub texts: Vec<ExtractedUiText>,
@@ -126,7 +115,6 @@ pub struct ExtractedUiText {
     pub color: [f32; 4],
 }
 
-/// Параметры рендера (exposure, clear color и т.д.).
 #[derive(Clone)]
 pub struct ExtractedRenderSettings {
     pub clear_color: [f32; 4],
