@@ -1,19 +1,23 @@
-use crate::assets::cpu_server::CpuAssetServer;
-use crate::assets::gpu_server::GpuAssetServer;
-use crate::assets::{ui, CpuMesh};
-use crate::ecs::GameWorld;
-use crate::pipeline::{DefaultPipeline, LoadingPipeline, RenderPipeline};
-use crate::vulkan::VulkanContext;
-use crate::vulkan::{build_dyn_renderer, DynRenderer};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
+use std::thread::JoinHandle;
 
-use crate::assets::ui::FontAtlas;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowAttributes},
 };
+
+use crate::assets::cpu_server::CpuAssetServer;
+use crate::assets::upload::GpuUploadRequest;
+use crate::ecs::GameWorld;
+use crate::extract::{default_extract_schedule, ExtractSchedule};
+use crate::render_thread::command::{PipelineKind, RenderCommand};
+use crate::render_thread::{render_thread_main, WindowHandles};
+use crate::render_world::{ExtractedRenderSettings, RenderWorld};
+use crate::triple_buffer::TripleBuffer;
+use crate::vulkan::VulkanContext;
 
 pub trait App {
     fn on_load(&mut self, _ctx: &mut EngineContext) {}
@@ -23,94 +27,74 @@ pub trait App {
     fn on_stop(&mut self, ctx: &mut EngineContext);
 }
 
+/// Контекст главного потока. Не содержит GPU ресурсов.
 pub struct EngineContext {
     pub world: GameWorld,
-    pub renderer: Box<dyn DynRenderer>,
     pub cpu_assets: CpuAssetServer,
-    pub gpu_assets: GpuAssetServer,
-    temp_pool: ash::vk::CommandPool,
-    pub vk: VulkanContext,
+    pub extract_schedule: ExtractSchedule,
+
+    pub(crate) cmd_tx: Sender<RenderCommand>,
+    upload_tx: Sender<GpuUploadRequest>,
+    triple_buf: Arc<TripleBuffer<RenderWorld>>,
+    pub(crate) output_size: (f32, f32),
+    was_loading: bool,
 }
 
 impl EngineContext {
-    fn new(vk: VulkanContext) -> anyhow::Result<Self> {
-        let temp_pool = create_temp_pool(&vk)?;
+    fn new(
+        cmd_tx: Sender<RenderCommand>,
+        upload_tx: Sender<GpuUploadRequest>,
+        triple_buf: Arc<TripleBuffer<RenderWorld>>,
+        output_size: (f32, f32),
+    ) -> anyhow::Result<Self> {
+        let upload_queue = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let cpu_assets = CpuAssetServer::new(Arc::clone(&upload_queue));
 
-        let upload_queue = Arc::new(Mutex::new(Vec::new()));
-        let mut cpu_assets = CpuAssetServer::new(Arc::clone(&upload_queue));
-
-        let mut gpu_assets = GpuAssetServer::new(
-            vk.device.handle.clone(),
-            vk.device.physical,
-            vk.instance.handle.clone(),
-            temp_pool,
-            vk.device.graphics_queue,
-            upload_queue,
-            Arc::clone(&cpu_assets.mesh_path_cache),
-        )?;
-
-        let atlas = FontAtlas::new(
-            include_bytes!("../../assets/fonts/RobotoMono.ttf"),
-            ui::DEFAULT_CHARSET,
-            ui::DEFAULT_FONT_SIZES,
-        )?;
-        gpu_assets.upload_font_atlas(atlas)?;
-
-        let tri = cpu_assets.register_mesh(CpuMesh::triangle());
-        let cube = cpu_assets.register_mesh(CpuMesh::cube());
-        let plane = cpu_assets.register_mesh(CpuMesh::plane(10.0, 10));
-        gpu_assets.upload_mesh(tri, cpu_assets.get_cpu_mesh(tri).unwrap())?;
-        gpu_assets.upload_mesh(cube, cpu_assets.get_cpu_mesh(cube).unwrap())?;
-        gpu_assets.upload_mesh(plane, cpu_assets.get_cpu_mesh(plane).unwrap())?;
-
-        let renderer = build_dyn_renderer::<DefaultPipeline>(&vk, &mut cpu_assets, &mut gpu_assets, 0.5, 0.2)?;
-
-        Ok(Self { world: GameWorld::new(), renderer, cpu_assets, gpu_assets, temp_pool, vk })
+        Ok(Self {
+            world: GameWorld::new(),
+            cpu_assets,
+            extract_schedule: default_extract_schedule(),
+            cmd_tx,
+            upload_tx,
+            triple_buf,
+            output_size,
+            was_loading: false,
+        })
     }
 
+    /// Отправить команду рендер-потоку.
+    pub fn send_render_cmd(&self, cmd: RenderCommand) {
+        let _ = self.cmd_tx.send(cmd);
+    }
+
+    /// Опросить загрузчик ассетов, отправить CPU данные в рендер-поток,
+    /// переключить пайплайн если загрузка завершилась.
     pub fn poll_assets(&mut self) {
         self.cpu_assets.poll_loader();
-        self.gpu_assets.flush_uploads(&mut self.cpu_assets).ok();
+        self.cpu_assets.flush_uploads_cpu(&self.upload_tx);
+
+        let is_loading = self.cpu_assets.is_loading();
+        if self.was_loading && !is_loading {
+            let _ = self.cmd_tx.send(RenderCommand::SetPipeline(PipelineKind::Default));
+            log::info!("Загрузка завершена — переключаем на DefaultPipeline");
+        } else if !self.was_loading && is_loading {
+            let _ = self.cmd_tx.send(RenderCommand::SetPipeline(PipelineKind::Loading));
+        }
+        self.was_loading = is_loading;
     }
 
     pub fn is_loading(&self) -> bool {
         self.cpu_assets.is_loading()
     }
 
-    pub fn set_pipeline<P: RenderPipeline + Default + 'static>(&mut self) -> anyhow::Result<()> {
-        unsafe { self.vk.device.handle.device_wait_idle()? };
-
-        let prev_exposure = self.renderer.exposure();
-        let prev_fsr = self.renderer.fsr_sharpness();
-
-        let new_renderer =
-            build_dyn_renderer::<P>(&self.vk, &mut self.cpu_assets, &mut self.gpu_assets, prev_exposure, prev_fsr)?;
-
-        self.renderer = new_renderer;
-        log::info!("Pipeline switched to {}", std::any::type_name::<P>());
-        Ok(())
-    }
-
-    pub fn render_frame(&mut self, clear_color: [f32; 4]) -> anyhow::Result<bool> {
-        let swapchain = self.vk.swapchain.as_ref().unwrap();
-        let aspect = swapchain.extent.width as f32 / swapchain.extent.height as f32;
-        let output_size = (swapchain.extent.width as f32, swapchain.extent.height as f32);
-
-        let render_world =
-            crate::render_world_extract::extract_render_world(&self.world, &self.gpu_assets, output_size, aspect);
-
-        self.renderer.draw_frame(&self.vk, &render_world, &mut self.cpu_assets, &mut self.gpu_assets, clear_color)
-    }
-}
-
-impl Drop for EngineContext {
-    fn drop(&mut self) {
-        unsafe {
-            if let Err(e) = self.vk.device.handle.device_wait_idle() {
-                log::error!("device_wait_idle failed on shutdown: {e}");
-            }
-            self.vk.device.handle.destroy_command_pool(self.temp_pool, None);
-        }
+    /// Extract + publish кадра в тройной буфер.
+    /// Вызывается автоматически из event loop.
+    pub(crate) fn publish_frame(&self, clear_color: [f32; 4]) {
+        let write = self.triple_buf.write_slot();
+        write.clear();
+        write.insert(ExtractedRenderSettings { clear_color, output_size: self.output_size });
+        self.extract_schedule.run(&self.world, write);
+        self.triple_buf.publish();
     }
 }
 
@@ -129,24 +113,30 @@ impl Engine {
     }
 }
 
-struct LoadingState {
+// ── Состояния ─────────────────────────────────────────────────────────────────
+
+/// Vulkan инициализируется в рендер-потоке, окно скрыто.
+struct WaitingState {
     window: Window,
     ctx: EngineContext,
+    ready_rx: Receiver<()>,
+    render_thread: JoinHandle<()>,
 }
 
+/// Рендер готов, основной игровой цикл.
 struct RunningState {
     window: Window,
     ctx: EngineContext,
+    render_thread: JoinHandle<()>,
     last: std::time::Instant,
     fps_timer: std::time::Instant,
     fps_frames: u32,
-    fps_current: f32,
     tick_accumulator: f32,
     paced_frame_time: f64,
 }
 
 enum EngineState {
-    Loading(LoadingState),
+    Waiting(WaitingState),
     Running(RunningState),
 }
 
@@ -167,180 +157,140 @@ impl ApplicationHandler for EngineHandler {
             .create_window(
                 WindowAttributes::default()
                     .with_title("engine")
-                    .with_inner_size(winit::dpi::LogicalSize::new(1280u32, 720u32)),
+                    .with_inner_size(winit::dpi::LogicalSize::new(1280u32, 720u32))
+                    .with_visible(false), // скрыто до готовности рендера
             )
             .expect("Failed to create window");
 
-        let vk = VulkanContext::new(&window, cfg!(debug_assertions)).expect("Failed to init Vulkan");
+        let size = window.inner_size();
+        let output_size = (size.width as f32, size.height as f32);
 
-        let mut ctx = EngineContext::new(vk).expect("Failed to create EngineContext");
+        use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+        let display = window.display_handle().unwrap().as_raw();
+        let whandle = window.window_handle().unwrap().as_raw();
+
+        let (cmd_tx, cmd_rx) = mpsc::channel::<RenderCommand>();
+        let (upload_tx, upload_rx) = mpsc::channel::<GpuUploadRequest>();
+        // SyncSender с буфером 1 — рендер-поток отправляет один сигнал и не блокируется
+        let (ready_tx, ready_rx) = mpsc::sync_channel::<()>(1);
+
+        let triple_buf = Arc::new(TripleBuffer::<RenderWorld>::new());
+        let triple_buf_render = Arc::clone(&triple_buf);
+
+        let handles = WindowHandles { display, window: whandle };
+        let render_thread = std::thread::Builder::new()
+            .name("render".into())
+            .spawn(move || {
+                render_thread_main(handles, triple_buf_render, cmd_rx, upload_rx, ready_tx);
+            })
+            .expect("Failed to spawn render thread");
+
+        let mut ctx =
+            EngineContext::new(cmd_tx, upload_tx, triple_buf, output_size).expect("Failed to create EngineContext");
 
         self.app.on_load(&mut ctx);
 
-        if ctx.is_loading() {
-            ctx.set_pipeline::<LoadingPipeline>().expect("Failed to switch to LoadingPipeline");
-
-            log::info!("Входим в Loading state");
-            self.state = Some(EngineState::Loading(LoadingState { window, ctx }));
-        } else {
-            self.app.on_start(&mut ctx);
-            self.state = Some(EngineState::Running(make_running_state(window, ctx)));
-        }
+        self.state = Some(EngineState::Waiting(WaitingState { window, ctx, ready_rx, render_thread }));
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: winit::window::WindowId, event: WindowEvent) {
-        if self.state.is_none() {
-            return;
-        }
-
-        match self.state.as_mut() {
-            Some(EngineState::Loading(s)) => {
-                handle_loading_event(s, &event, event_loop);
-
-                if !s.ctx.is_loading() {
-                    log::info!("Загрузка завершена — переходим в Running state");
-                    let state = self.state.take().unwrap();
-                    if let EngineState::Loading(mut ls) = state {
-                        unsafe {
-                            ls.ctx.vk.device.handle.device_wait_idle().ok();
-                        }
-                        ls.ctx.set_pipeline::<DefaultPipeline>().expect("Failed to switch to DefaultPipeline");
-                        self.app.on_start(&mut ls.ctx);
-                        let running = make_running_state(ls.window, ls.ctx);
-                        self.state = Some(EngineState::Running(running));
-                    }
-                }
-            }
-            Some(EngineState::Running(s)) => {
-                if let WindowEvent::CloseRequested = event {
-                    if let Some(EngineState::Running(mut s)) = self.state.take() {
-                        self.app.on_stop(&mut s.ctx);
-                        unsafe {
-                            s.ctx.vk.device.handle.device_wait_idle().ok();
-                        }
-                        drop(s);
-                    }
-                    event_loop.exit();
-                    return;
-                }
-                handle_running_event(s, &event, &mut *self.app);
-            }
-            _ => {}
-        }
-    }
-}
-
-fn handle_loading_event(state: &mut LoadingState, event: &WindowEvent, event_loop: &ActiveEventLoop) {
-    match event {
-        WindowEvent::CloseRequested => {
-            event_loop.exit();
-        }
-
-        WindowEvent::Resized(size) => {
-            if size.width == 0 || size.height == 0 {
-                return;
-            }
-            if let Err(e) = state.ctx.vk.recreate_swapchain(size.width, size.height, false) {
-                log::error!("Resize during loading failed: {e}");
-                return;
-            }
-            if let Err(e) = state.ctx.renderer.resize_output(size.width, size.height) {
-                log::error!("Renderer resize during loading failed: {e}");
-            }
-        }
-
-        WindowEvent::RedrawRequested => {
-            state.ctx.poll_assets();
-
-            if let Err(e) = state.ctx.render_frame([0.0; 4]) {
-                log::error!("Loading render error: {e}");
-            }
-
-            state.window.request_redraw();
-        }
-
-        _ => {}
-    }
-}
-
-fn handle_running_event(state: &mut RunningState, event: &WindowEvent, app: &mut dyn App) {
-    match event {
-        WindowEvent::Resized(size) => {
-            if size.width == 0 || size.height == 0 {
-                return;
-            }
-            if let Err(e) = handle_resize(state, size.width, size.height) {
-                log::error!("Resize failed: {e}");
-            }
-        }
-
-        WindowEvent::RedrawRequested => {
-            state.ctx.poll_assets();
-
-            let frame_start = std::time::Instant::now();
-            puffin::GlobalProfiler::lock().new_frame();
-
-            let now = std::time::Instant::now();
-            let dt = now.duration_since(state.last).as_secs_f32().min(0.1);
-            state.last = now;
-            state.fps_frames += 1;
-
-            if now.duration_since(state.fps_timer).as_secs_f32() >= 1.0 {
-                state.fps_current = state.fps_frames as f32 / now.duration_since(state.fps_timer).as_secs_f32();
-                state.fps_frames = 0;
-                state.fps_timer = now;
-            }
-
-            {
-                puffin::profile_scope!("tick_accumulator");
-                state.tick_accumulator += dt;
-                while state.tick_accumulator >= TICK_RATE {
-                    puffin::profile_scope!("on_update");
-                    app.on_update(&mut state.ctx, TICK_RATE);
-                    state.tick_accumulator -= TICK_RATE;
-                }
-            }
-
-            app.on_render(&mut state.ctx);
-
-            let needs_recreate = {
-                puffin::profile_scope!("render_frame");
-                state.ctx.render_frame([0.0, 0.0, 0.0, 1.0]).expect("render failed")
+        // Попытаться перейти из Waiting → Running
+        if matches!(self.state, Some(EngineState::Waiting(_))) {
+            let waiting = match self.state.take().unwrap() {
+                EngineState::Waiting(w) => w,
+                _ => unreachable!(),
             };
 
-            if needs_recreate {
-                let size = state.window.inner_size();
-                if let Err(e) = handle_resize(state, size.width, size.height) {
-                    log::error!("Swapchain recreate failed: {e}");
+            match waiting.ready_rx.try_recv() {
+                Ok(()) => {
+                    // Рендер-поток готов
+                    waiting.window.set_visible(true);
+                    let WaitingState { window, mut ctx, render_thread, .. } = waiting;
+                    self.app.on_start(&mut ctx);
+                    self.state = Some(EngineState::Running(RunningState {
+                        window,
+                        ctx,
+                        render_thread,
+                        last: std::time::Instant::now(),
+                        fps_timer: std::time::Instant::now(),
+                        fps_frames: 0,
+                        tick_accumulator: 0.0,
+                        paced_frame_time: 1.0 / 120.0,
+                    }));
                 }
-            }
-
-            state.window.request_redraw();
-
-            let render_time = frame_start.elapsed();
-            state.paced_frame_time = state.paced_frame_time * 0.9 + render_time.as_secs_f64() * 0.1;
-
-            let pace = std::time::Duration::from_secs_f64(state.paced_frame_time * 0.5);
-            let elapsed = frame_start.elapsed();
-            if pace > elapsed + std::time::Duration::from_micros(500) {
-                std::thread::sleep(pace - elapsed - std::time::Duration::from_micros(500));
+                Err(_) => {
+                    // Ещё не готов — возвращаем состояние
+                    self.state = Some(EngineState::Waiting(waiting));
+                    if let WindowEvent::CloseRequested = event {
+                        event_loop.exit();
+                    }
+                    return;
+                }
             }
         }
 
-        _ => {}
-    }
-}
+        let Some(EngineState::Running(state)) = self.state.as_mut() else {
+            return;
+        };
 
-fn make_running_state(window: Window, ctx: EngineContext) -> RunningState {
-    RunningState {
-        window,
-        ctx,
-        last: std::time::Instant::now(),
-        fps_timer: std::time::Instant::now(),
-        fps_frames: 0,
-        fps_current: 0.0,
-        tick_accumulator: 0.0,
-        paced_frame_time: 1.0 / 120.0,
+        match event {
+            WindowEvent::CloseRequested => {
+                self.app.on_stop(&mut state.ctx);
+                let _ = state.ctx.cmd_tx.send(RenderCommand::Shutdown);
+                // join через take чтобы не бороться с borrow checker
+                if let Some(EngineState::Running(s)) = self.state.take() {
+                    s.render_thread.join().ok();
+                }
+                event_loop.exit();
+            }
+
+            WindowEvent::Resized(size) => {
+                if size.width == 0 || size.height == 0 {
+                    return;
+                }
+                state.ctx.output_size = (size.width as f32, size.height as f32);
+                let _ = state.ctx.cmd_tx.send(RenderCommand::Resize { width: size.width, height: size.height });
+            }
+
+            WindowEvent::RedrawRequested => {
+                puffin::GlobalProfiler::lock().new_frame();
+
+                let frame_start = std::time::Instant::now();
+
+                state.ctx.poll_assets();
+
+                let now = std::time::Instant::now();
+                let dt = now.duration_since(state.last).as_secs_f32().min(0.1);
+                state.last = now;
+                state.fps_frames += 1;
+                if now.duration_since(state.fps_timer).as_secs_f32() >= 1.0 {
+                    state.fps_frames = 0;
+                    state.fps_timer = now;
+                }
+
+                state.tick_accumulator += dt;
+                while state.tick_accumulator >= TICK_RATE {
+                    self.app.on_update(&mut state.ctx, TICK_RATE);
+                    state.tick_accumulator -= TICK_RATE;
+                }
+
+                self.app.on_render(&mut state.ctx);
+
+                state.ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);
+
+                state.window.request_redraw();
+
+                let render_time = frame_start.elapsed();
+                state.paced_frame_time = state.paced_frame_time * 0.9 + render_time.as_secs_f64() * 0.1;
+                let pace = std::time::Duration::from_secs_f64(state.paced_frame_time * 0.5);
+                let elapsed = frame_start.elapsed();
+                if pace > elapsed + std::time::Duration::from_micros(500) {
+                    std::thread::sleep(pace - elapsed - std::time::Duration::from_micros(500));
+                }
+            }
+
+            _ => {}
+        }
     }
 }
 
@@ -355,11 +305,4 @@ pub fn create_temp_pool(vk: &VulkanContext) -> anyhow::Result<ash::vk::CommandPo
         )?
     };
     Ok(pool)
-}
-
-fn handle_resize(state: &mut RunningState, width: u32, height: u32) -> anyhow::Result<()> {
-    unsafe { state.ctx.vk.device.handle.device_wait_idle()? };
-    state.ctx.vk.recreate_swapchain(width, height, false)?;
-    state.ctx.renderer.resize_output(width, height)?;
-    Ok(())
 }

@@ -8,6 +8,7 @@ pub mod mesh;
 pub mod pending;
 pub mod shader_registry;
 pub mod ui;
+pub mod upload;
 
 pub use crate::ecs::components::{MaterialHandle, MeshHandle};
 pub use cpu_server::{AsyncMeshHandle, CpuAssetServer, LoadProgress, TextureHandle};
