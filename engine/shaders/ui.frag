@@ -17,14 +17,31 @@ layout(push_constant) uniform PC {
     vec4 uv_rect;
     uint tex_index;
     uint use_texture;
-    vec2 _pad1;
+    uint sdf_mode;
+    uint _pad1;
 } pc;
 
+const float SDF_PX_RANGE = 4.0;
+
 void main() {
-    if (pc.use_texture != 0u) {
-        float a = texture(sampler2D(textures[nonuniformEXT(pc.tex_index)], samp), fragUV).a;
+    if (pc.use_texture == 0u) {
+        outColor = fragColor;
+        return;
+    }
+
+    if (pc.sdf_mode != 0u) {
+        float sdfv = texture(sampler2D(textures[nonuniformEXT(pc.tex_index)], samp), fragUV).r;
+
+        vec2 tex_size = vec2(textureSize(sampler2D(textures[nonuniformEXT(pc.tex_index)], samp), 0));
+        vec2 unit_range = vec2(SDF_PX_RANGE) / tex_size;
+        vec2 screen_tex_size = vec2(1.0) / fwidth(fragUV);
+        float range = max(0.5 * dot(unit_range, screen_tex_size), 1.0);
+
+        float dist = range * (sdfv - 0.5);
+        float a = clamp(dist + 0.5, 0.0, 1.0);
         outColor = vec4(fragColor.rgb, fragColor.a * a);
     } else {
-        outColor = fragColor;
+        float a = texture(sampler2D(textures[nonuniformEXT(pc.tex_index)], samp), fragUV).a;
+        outColor = vec4(fragColor.rgb, fragColor.a * a);
     }
 }

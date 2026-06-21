@@ -1,5 +1,5 @@
 use crate::assets::ShaderRegistry;
-use crate::render_graph::GpuImage;
+use crate::render::resource::GpuImage;
 use crate::vulkan::gfx_pipeline::builder::{cmd, descriptor, PipelineBuilder};
 use crate::vulkan::resources::light_buffer::{LightBuffer, LightingUbo};
 use ash::vk;

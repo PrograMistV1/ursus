@@ -44,8 +44,8 @@ pub struct GlyphInfo {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AtlasId(pub u32);
 
-const SDF_RADIUS: u32 = 8;
-const OVERSAMPLE: u32 = 2;
+const SDF_RADIUS: u32 = 12;
+const OVERSAMPLE: u32 = 3;
 const ATLAS_SIZE: u32 = 2048;
 const PADDING: u32 = SDF_RADIUS + 2;
 
@@ -54,39 +54,61 @@ fn bitmap_to_sdf(bitmap: &[u8], w: usize, h: usize) -> Vec<u8> {
         return Vec::new();
     }
 
-    let inside: Vec<bool> = bitmap.iter().map(|&v| v >= 128).collect();
+    let coverage: Vec<f32> = bitmap.iter().map(|&v| v as f32 / 255.0).collect();
+    let at = |x: i32, y: i32| -> f32 {
+        if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
+            0.0
+        } else {
+            coverage[(y * w as i32 + x) as usize]
+        }
+    };
+
+    let inside_at = |x: i32, y: i32| at(x, y) >= 0.5;
 
     let radius = SDF_RADIUS as i32;
-
     let mut out = vec![0u8; w * h];
+
     for y in 0..h as i32 {
         for x in 0..w as i32 {
-            let self_inside = inside[(y * w as i32 + x) as usize];
+            let self_inside = inside_at(x, y);
+            let self_cov = at(x, y);
 
-            let mut min_dist2 = (radius + 1) * (radius + 1);
+            let mut min_dist = (radius + 1) as f32 * (radius + 1) as f32;
+
             let y0 = (y - radius).max(0);
             let y1 = (y + radius).min(h as i32 - 1);
             let x0 = (x - radius).max(0);
             let x1 = (x + radius).min(w as i32 - 1);
 
-            'search: for sy in y0..=y1 {
+            for sy in y0..=y1 {
                 for sx in x0..=x1 {
-                    let other = inside[(sy * w as i32 + sx) as usize];
-                    if other != self_inside {
-                        let dx = sx - x;
-                        let dy = sy - y;
-                        let d2 = dx * dx + dy * dy;
-                        if d2 < min_dist2 {
-                            min_dist2 = d2;
-                            if min_dist2 == 1 {
-                                break 'search;
-                            }
-                        }
+                    if sx == x && sy == y {
+                        continue;
+                    }
+                    let other_inside = inside_at(sx, sy);
+                    if other_inside == self_inside {
+                        continue;
+                    }
+
+                    let other_cov = at(sx, sy);
+                    let denom = self_cov - other_cov;
+                    let t = if denom.abs() > 1e-6 {
+                        ((self_cov - 0.5) / denom).clamp(0.0, 1.0)
+                    } else {
+                        0.5
+                    };
+
+                    let dx = (sx - x) as f32 * t;
+                    let dy = (sy - y) as f32 * t;
+                    let d2 = dx * dx + dy * dy;
+
+                    if d2 < min_dist {
+                        min_dist = d2;
                     }
                 }
             }
 
-            let dist = (min_dist2 as f32).sqrt();
+            let dist = min_dist.sqrt();
             let signed = if self_inside { dist } else { -dist };
 
             let normalised = (signed / radius as f32) * 0.5 + 0.5;

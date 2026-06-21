@@ -9,7 +9,8 @@ layout(push_constant) uniform PC {
     vec4 uv_rect;
     uint tex_index;
     uint use_texture;
-    vec2 _pad1;
+    uint sdf_mode;
+    uint _pad1;
 } pc;
 
 layout(location = 0) out vec2 fragUV;

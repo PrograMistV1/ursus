@@ -4,7 +4,6 @@ pub mod ecs;
 pub mod ffi;
 pub mod math;
 pub mod render;
-pub mod render_graph;
 pub mod vulkan;
 
 pub use app::{App, Engine, EngineContext};

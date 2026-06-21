@@ -1,8 +1,9 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use crate::render::frame_pipeline::FrameInput;
+use crate::render::graph::RenderGraph;
+use crate::render::resource::ResourcePool;
 use crate::render::world::RenderWorld;
-use crate::render_graph::{RenderGraph, ResourcePool};
 use crate::vulkan::core::commands::Commands;
 use crate::vulkan::core::sync::FrameSync;
 use crate::vulkan::timestamps::GpuFrameTimes;

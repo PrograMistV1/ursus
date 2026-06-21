@@ -1,6 +1,6 @@
 use crate::assets::mesh::Vertex;
 use crate::assets::{GpuMesh, ShaderRegistry};
-use crate::render_graph::GpuImage;
+use crate::render::resource::GpuImage;
 use crate::vulkan::gfx_pipeline::builder::{cmd, PipelineBuilder};
 use ash::vk;
 use glam::Mat4;
