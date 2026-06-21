@@ -21,7 +21,8 @@ layout(push_constant) uniform PC {
     uint _pad1;
 } pc;
 
-const float SDF_PX_RANGE = 4.0;
+
+const float SDF_RADIUS = 8.0;
 
 void main() {
     if (pc.use_texture == 0u) {
@@ -30,16 +31,16 @@ void main() {
     }
 
     if (pc.sdf_mode != 0u) {
-        float sdfv = texture(sampler2D(textures[nonuniformEXT(pc.tex_index)], samp), fragUV).r;
+        float d = texture(sampler2D(textures[nonuniformEXT(pc.tex_index)], samp), fragUV).r;
 
-        vec2 tex_size = vec2(textureSize(sampler2D(textures[nonuniformEXT(pc.tex_index)], samp), 0));
-        vec2 unit_range = vec2(SDF_PX_RANGE) / tex_size;
-        vec2 screen_tex_size = vec2(1.0) / fwidth(fragUV);
-        float range = max(0.5 * dot(unit_range, screen_tex_size), 1.0);
+        vec2  atlas_size    = vec2(textureSize(sampler2D(textures[nonuniformEXT(pc.tex_index)], samp), 0));
+        float texels_per_px = length(fwidth(fragUV) * atlas_size);
+        float sdf_per_px    = texels_per_px / SDF_RADIUS;
 
-        float dist = range * (sdfv - 0.5);
-        float a = clamp(dist + 0.5, 0.0, 1.0);
-        outColor = vec4(fragColor.rgb, fragColor.a * a);
+        float dist_px = (d - 0.5) / max(sdf_per_px, 0.0001);
+        float alpha   = clamp(dist_px + 0.5, 0.0, 1.0);
+
+        outColor = vec4(fragColor.rgb, fragColor.a * alpha);
     } else {
         float a = texture(sampler2D(textures[nonuniformEXT(pc.tex_index)], samp), fragUV).a;
         outColor = vec4(fragColor.rgb, fragColor.a * a);

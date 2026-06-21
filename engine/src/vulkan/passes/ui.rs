@@ -117,23 +117,31 @@ impl UiPass {
         device: &ash::Device,
         cmd_buf: vk::CommandBuffer,
         screen_size: [f32; 2],
+
         origin: Vec2,
         glyph: &GlyphInfo,
         bindless_slot: u32,
         color: [f32; 4],
+
+        scale: f32,
     ) {
         if glyph.width == 0 || glyph.height == 0 {
             return;
         }
 
-        let x = origin.x + glyph.offset_x as f32;
+        let screen_w = glyph.width as f32 * scale;
+        let screen_h = glyph.height as f32 * scale;
+        let off_x = glyph.offset_x as f32 * scale;
+        let off_y = glyph.offset_y as f32 * scale;
 
-        let y = origin.y - (glyph.offset_y as f32 + glyph.height as f32);
+        let x = origin.x + off_x;
+
+        let y = origin.y - (off_y + screen_h);
 
         let pc = UiPC {
             screen_size,
             pos: [x, y],
-            size: [glyph.width as f32, glyph.height as f32],
+            size: [screen_w, screen_h],
             _pad0: [0.0; 2],
             color,
             uv_rect: [glyph.u0, glyph.v0, glyph.u1, glyph.v1],

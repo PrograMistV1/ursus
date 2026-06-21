@@ -6,9 +6,7 @@ use std::collections::HashMap;
 
 struct GpuFontAtlas {
     atlas_id: AtlasId,
-
     pub bindless_slot: u32,
-
     _texture: GpuTexture,
 }
 
@@ -43,7 +41,7 @@ impl GpuFontManager {
         for atlas_id in dirty_ids {
             let page = font_manager.atlas(atlas_id).expect("dirty atlas must exist");
 
-            let tex = GpuTexture::upload(
+            let tex = GpuTexture::upload_no_mip(
                 &self.device,
                 self.physical_device,
                 &self.instance,
@@ -52,7 +50,7 @@ impl GpuFontManager {
                 &page.pixels,
                 page.width,
                 page.height,
-                vk::Format::R8G8B8A8_UNORM,
+                vk::Format::R8_UNORM,
                 &format!("font_atlas_{}", atlas_id.0),
             )?;
 
@@ -61,18 +59,19 @@ impl GpuFontManager {
             match existing_slot {
                 Some(slot) => {
                     bindless.update_slot(slot, tex.view);
-
                     self.gpu_atlases.insert(atlas_id, GpuFontAtlas { atlas_id, bindless_slot: slot, _texture: tex });
                     log::debug!("GpuFontManager: re-uploaded atlas {:?} (slot {})", atlas_id, slot);
                 }
-
                 None => {
                     let slot = bindless.alloc_slot(tex.view);
                     self.gpu_atlases.insert(atlas_id, GpuFontAtlas { atlas_id, bindless_slot: slot, _texture: tex });
-                    log::info!("GpuFontManager: uploaded new atlas {:?} → bindless slot {}", atlas_id, slot);
+                    log::info!(
+                        "GpuFontManager: uploaded new atlas {:?} → bindless slot {} (R8_UNORM, no mip)",
+                        atlas_id,
+                        slot
+                    );
                 }
             }
-
             font_manager.mark_atlas_clean(atlas_id);
         }
 

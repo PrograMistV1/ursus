@@ -198,6 +198,122 @@ impl GpuTexture {
 
         Ok(Self { image, view, memory, format, width, height, name, device: device.clone() })
     }
+
+    pub fn upload_no_mip(
+        device: &ash::Device,
+        physical_device: vk::PhysicalDevice,
+        instance: &ash::Instance,
+        command_pool: vk::CommandPool,
+        queue: vk::Queue,
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+        format: vk::Format,
+        name: impl Into<String>,
+    ) -> anyhow::Result<Self> {
+        let name = name.into();
+        let size = pixels.len() as vk::DeviceSize;
+
+        let (staging, staging_mem) = alloc_buffer(
+            device,
+            instance,
+            physical_device,
+            size,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        )?;
+        unsafe {
+            let ptr = device.map_memory(staging_mem, 0, size, vk::MemoryMapFlags::empty())? as *mut u8;
+            std::ptr::copy_nonoverlapping(pixels.as_ptr(), ptr, pixels.len());
+            device.unmap_memory(staging_mem);
+        }
+
+        let image_info = vk::ImageCreateInfo::default()
+            .image_type(vk::ImageType::TYPE_2D)
+            .format(format)
+            .extent(vk::Extent3D { width, height, depth: 1 })
+            .mip_levels(1)
+            .array_layers(1)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .initial_layout(vk::ImageLayout::UNDEFINED);
+
+        let image = unsafe { device.create_image(&image_info, None)? };
+
+        let req = unsafe { device.get_image_memory_requirements(image) };
+        let alloc_info = vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(
+            find_memory_type(instance, physical_device, req.memory_type_bits, vk::MemoryPropertyFlags::DEVICE_LOCAL)?,
+        );
+        let memory = unsafe { device.allocate_memory(&alloc_info, None)? };
+        unsafe { device.bind_image_memory(image, memory, 0)? };
+
+        one_shot(device, command_pool, queue, |cmd| unsafe {
+            transition_image_layout(
+                device,
+                cmd,
+                image,
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                0,
+                1,
+            );
+
+            let region = vk::BufferImageCopy::default()
+                .buffer_offset(0)
+                .buffer_row_length(0)
+                .buffer_image_height(0)
+                .image_subresource(vk::ImageSubresourceLayers {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                })
+                .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+                .image_extent(vk::Extent3D { width, height, depth: 1 });
+
+            device.cmd_copy_buffer_to_image(
+                cmd,
+                staging,
+                image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                std::slice::from_ref(&region),
+            );
+
+            transition_image_layout(
+                device,
+                cmd,
+                image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                0,
+                1,
+            );
+        })?;
+
+        unsafe {
+            device.destroy_buffer(staging, None);
+            device.free_memory(staging_mem, None);
+        }
+
+        let view_info = vk::ImageViewCreateInfo::default()
+            .image(image)
+            .view_type(vk::ImageViewType::TYPE_2D)
+            .format(format)
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            });
+        let view = unsafe { device.create_image_view(&view_info, None)? };
+
+        log::debug!("GpuTexture (no mip) '{}': {}x{} {:?}", name, width, height, format);
+
+        Ok(Self { image, view, memory, format, width, height, name, device: device.clone() })
+    }
 }
 
 impl Drop for GpuTexture {
