@@ -1,5 +1,5 @@
 use crate::assets::gpu_server::GpuAssetServer;
-use crate::assets::ui::FontAtlas;
+use crate::assets::ui::font_manager::FontId;
 use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
 use crate::render_graph::{pass, RenderGraph};
 use crate::vulkan::passes::ui::UiPass;
@@ -22,11 +22,9 @@ struct LoadingFrameData {
     progress: f32,
     width: f32,
     height: f32,
-
     bindless_set: vk::DescriptorSet,
-    font_atlas_tex: u32,
 
-    font_atlas_ptr: *mut FontAtlas,
+    gpu_assets: *mut GpuAssetServer,
     ui_pass_ptr: *const UiPass,
 }
 unsafe impl Send for LoadingFrameData {}
@@ -37,6 +35,7 @@ struct PendingState {
     ui_pass: UiPass,
     device: ash::Device,
 }
+
 thread_local! {
     static PENDING: std::cell::RefCell<Option<PendingState>> =
         std::cell::RefCell::new(None);
@@ -52,9 +51,8 @@ pub struct LoadingPipeline {
 
 impl Default for LoadingPipeline {
     fn default() -> Self {
-        let s = PENDING
-            .with(|c| c.borrow_mut().take())
-            .expect("LoadingPipeline::default() вызван без предшествующего build()");
+        let s =
+            PENDING.with(|c| c.borrow_mut().take()).expect("LoadingPipeline::default() called without prior build()");
         Self {
             start_time: std::time::Instant::now(),
             bg_pipeline: s.bg_pipeline,
@@ -94,10 +92,10 @@ impl RenderPipeline for LoadingPipeline {
             .offset(0)
             .size(size_of::<LoadingPC>() as u32);
 
-        let handle = gpu_assets.shaders.by_name("loading").expect("шейдер 'loading' не зарегистрирован");
+        let handle = gpu_assets.shaders.by_name("loading").expect("shader 'loading' not registered");
         let (vert_spv, frag_spv) = gpu_assets.shaders.load_spv(handle)?;
         let vert_spv = vert_spv.to_vec();
-        let frag_spv = frag_spv.expect("'loading' должен иметь frag").to_vec();
+        let frag_spv = frag_spv.expect("'loading' must have frag").to_vec();
 
         let (bg_pipeline, bg_layout) =
             PipelineBuilder::fullscreen(&vert_spv, &frag_spv, std::slice::from_ref(&swapchain.format))
@@ -160,60 +158,54 @@ impl RenderPipeline for LoadingPipeline {
             .read_write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .record(move |cmd, pool, ctx_ptr| unsafe {
                 let data = &*(ctx_ptr as *const LoadingFrameData);
+                let gpu = &mut *data.gpu_assets;
                 let sc = pool.image(h_swapchain);
                 let ui_pass = &*data.ui_pass_ptr;
+                let screen = [data.width, data.height];
+                let font = gpu.default_font;
 
-                let mut atlas: Option<&mut FontAtlas> = data.font_atlas_ptr.as_mut();
-
-                let w = data.width;
-                let h = data.height;
-
-                let font_size = 32u32;
-                let sub_font_size = 14u32;
+                let font_size_big = 32.0f32;
+                let font_size_sub = 14.0f32;
                 let text = "ENGINE";
                 let sub_text = "Loading...";
 
-                let (text_width, line_height, sub_width, _sub_line_height) =
-                    if let Some(ref mut a) = atlas.as_deref_mut() {
-                        (
-                            a.measure_text(text, font_size),
-                            a.line_height(font_size),
-                            a.measure_text(sub_text, sub_font_size),
-                            a.line_height(sub_font_size),
-                        )
-                    } else {
-                        (
-                            font_size as f32 * text.len() as f32 * 0.6,
-                            font_size as f32 * 1.2,
-                            sub_font_size as f32 * sub_text.len() as f32 * 0.6,
-                            sub_font_size as f32 * 1.2,
-                        )
-                    };
+                let text_w = gpu.font_manager.measure(font, text, font_size_big);
+                let sub_w = gpu.font_manager.measure(font, sub_text, font_size_sub);
+                let line_h = gpu.font_manager.line_height(font_size_big);
 
-                let center_x = (w - text_width) * 0.5;
-                let center_y = (h - line_height) * 0.5 - 20.0;
-                let sub_x = (w - sub_width) * 0.5;
-                let sub_y = center_y + line_height + 8.0;
+                let cx = (data.width - text_w) * 0.5;
+                let cy = (data.height - line_h) * 0.5 - 20.0;
+                let sx = (data.width - sub_w) * 0.5;
+                let sy = cy + line_h + 8.0;
 
-                let texts = vec![
-                    (Vec2::new(center_x, center_y), text.to_string(), font_size as f32, [1.0f32, 1.0, 1.0, 1.0]),
-                    (Vec2::new(sub_x, sub_y), sub_text.to_string(), sub_font_size as f32, [0.6f32, 0.7, 0.9, 0.8]),
-                ];
+                ui_pass.begin(&*data.device, cmd, sc.view, sc.extent, data.bindless_set);
 
-                let atlas_mut: Option<&mut FontAtlas> = data.font_atlas_ptr.as_mut();
-
-                ui_pass.record(
+                draw_text_line(
+                    ui_pass,
                     &*data.device,
                     cmd,
-                    sc.view,
-                    sc.extent,
-                    data.bindless_set,
-                    &[],
-                    &texts,
-                    atlas_mut,
-                    data.font_atlas_tex,
-                )?;
+                    screen,
+                    font,
+                    Vec2::new(cx, cy),
+                    text,
+                    font_size_big,
+                    [1.0, 1.0, 1.0, 1.0],
+                    gpu,
+                );
+                draw_text_line(
+                    ui_pass,
+                    &*data.device,
+                    cmd,
+                    screen,
+                    font,
+                    Vec2::new(sx, sy),
+                    sub_text,
+                    font_size_sub,
+                    [0.6, 0.7, 0.9, 0.8],
+                    gpu,
+                );
 
+                ui_pass.end(&*data.device, cmd);
                 Ok(())
             })
             .build(graph);
@@ -222,22 +214,18 @@ impl RenderPipeline for LoadingPipeline {
     }
 
     fn prepare_frame(&mut self, graph: &mut RenderGraph, input: FrameInput<'_>) -> anyhow::Result<()> {
-        let (w, h) = input.output_resolution;
+        input.gpu_assets.flush_font_atlases()?;
 
-        let font_atlas_tex = input.gpu_assets.font_atlas_slot();
-        let bindless_set = input.gpu_assets.bindless.set;
-        let font_atlas_ptr =
-            input.gpu_assets.font_atlas.as_mut().map(|a| a as *mut FontAtlas).unwrap_or(std::ptr::null_mut());
+        let (w, h) = input.output_resolution;
 
         graph.set_frame_data(Box::new(LoadingFrameData {
             device: input.device,
             time: self.start_time.elapsed().as_secs_f32(),
-            progress: input.gpu_assets.font_atlas.is_some() as u32 as f32,
+            progress: 1.0,
             width: w as f32,
             height: h as f32,
-            bindless_set,
-            font_atlas_tex,
-            font_atlas_ptr,
+            bindless_set: input.gpu_assets.bindless.set,
+            gpu_assets: input.gpu_assets as *mut GpuAssetServer,
             ui_pass_ptr: &self.ui_pass as *const UiPass,
         }));
 
@@ -246,5 +234,30 @@ impl RenderPipeline for LoadingPipeline {
 
     fn on_resize(&mut self, _graph: &mut RenderGraph, _width: u32, _height: u32) -> anyhow::Result<()> {
         Ok(())
+    }
+}
+
+unsafe fn draw_text_line(
+    ui_pass: &UiPass,
+    device: &ash::Device,
+    cmd: vk::CommandBuffer,
+    screen_size: [f32; 2],
+    font: FontId,
+    origin: Vec2,
+    text: &str,
+    px: f32,
+    color: [f32; 4],
+    gpu: &mut GpuAssetServer,
+) {
+    let ascent = px * 0.8;
+    let baseline = Vec2::new(origin.x, origin.y + ascent);
+    let mut cursor_x = baseline.x;
+
+    for ch in text.chars() {
+        if let Some(glyph) = gpu.font_manager.glyph(font, ch, px) {
+            let slot = gpu.gpu_fonts.slot_for_glyph(&glyph);
+            ui_pass.draw_sdf_glyph(device, cmd, screen_size, Vec2::new(cursor_x, baseline.y), &glyph, slot, color);
+        }
+        cursor_x += gpu.font_manager.advance(font, ch, px);
     }
 }

@@ -2,20 +2,20 @@ use crate::assets::cpu_server::TextureHandle;
 use crate::assets::material::MaterialData;
 use crate::assets::mesh::{CpuMesh, GpuMesh};
 use crate::assets::shader_registry::TextureSlot;
-use crate::assets::ui::{FontAtlas, DEFAULT_CHARSET, DEFAULT_FONT_SIZES};
-use crate::assets::upload::GpuUploadRequest;
+use crate::assets::ui::font_manager::{FontId, FontManager, SizeBucket};
+use crate::assets::ui::gpu_font_manager::GpuFontManager;
 use crate::assets::{builtin_shaders, ShaderRegistry};
 use crate::ecs::components::{MaterialHandle, MeshHandle};
 use crate::render_world::RenderWorld;
 use crate::vulkan::{BindlessSet, GpuTexture, MaterialBuffer};
 use ash::vk;
 use std::collections::HashMap;
-use std::sync::mpsc::{Receiver, TryRecvError};
-
-const DEFAULT_FONT_BYTES: &[u8] = include_bytes!("../../../assets/fonts/RobotoMono.ttf");
 
 pub const BINDLESS_SLOT_WHITE: u32 = 0;
-pub const BINDLESS_SLOT_FONT_ATLAS: u32 = 1;
+
+const DEFAULT_FONT_BYTES: &[u8] = include_bytes!("../../../assets/fonts/RobotoMono.ttf");
+const DEFAULT_CHARSET: &str = crate::assets::ui::DEFAULT_CHARSET;
+const DEFAULT_FONT_SIZES: &[u32] = crate::assets::ui::DEFAULT_FONT_SIZES;
 
 enum GpuMeshState {
     Ready(GpuMesh),
@@ -32,7 +32,11 @@ pub struct GpuAssetServer {
     pub material_buffer: MaterialBuffer,
     pub bindless: BindlessSet,
 
-    pub font_atlas: Option<FontAtlas>,
+    pub font_manager: FontManager,
+
+    pub gpu_fonts: GpuFontManager,
+
+    pub default_font: FontId,
 
     device: ash::Device,
     physical_device: vk::PhysicalDevice,
@@ -50,46 +54,41 @@ impl GpuAssetServer {
         queue: vk::Queue,
     ) -> anyhow::Result<Self> {
         let mut bindless = BindlessSet::new(&device, physical_device, &instance, command_pool, queue)?;
-        assert_eq!(bindless.next_slot(), 1);
+        assert_eq!(bindless.next_slot(), 1, "slot 0 must be white fallback");
 
         let material_buffer = MaterialBuffer::new(&device, physical_device, &instance)?;
 
         let mut shaders = ShaderRegistry::empty();
         builtin_shaders::register_builtin(&mut shaders);
 
-        let mut font_atlas = FontAtlas::new(DEFAULT_FONT_BYTES, DEFAULT_CHARSET, DEFAULT_FONT_SIZES)
-            .map_err(|e| anyhow::anyhow!("Не удалось создать FontAtlas: {}", e))?;
+        let mut font_manager = FontManager::new();
+        let default_font = font_manager.load_font(DEFAULT_FONT_BYTES)?;
 
-        let font_tex = GpuTexture::upload(
-            &device,
-            physical_device,
-            &instance,
-            command_pool,
-            queue,
-            &font_atlas.pixels,
-            font_atlas.atlas_width,
-            font_atlas.atlas_height,
-            vk::Format::R8G8B8A8_UNORM,
-            "font_atlas",
-        )?;
-        let font_slot = bindless.alloc_slot(font_tex.view);
-        assert_eq!(font_slot, BINDLESS_SLOT_FONT_ATLAS);
-        font_atlas.dirty = false;
+        for &size_px in DEFAULT_FONT_SIZES {
+            font_manager.preload(default_font, DEFAULT_CHARSET.chars(), SizeBucket::from_px(size_px as f32));
+        }
 
-        let mut gpu_textures = HashMap::new();
-        gpu_textures.insert(font_slot, font_tex);
+        let mut gpu_fonts = GpuFontManager::new(device.clone(), physical_device, instance.clone(), command_pool, queue);
 
-        log::info!("GpuAssetServer: white=slot0, font_atlas=slot1, следующий свободный={}", bindless.next_slot());
+        gpu_fonts.flush(&mut font_manager, &mut bindless)?;
+
+        log::info!(
+            "GpuAssetServer: white=slot0, font atlases={} pages, next_slot={}",
+            font_manager.atlases().len(),
+            bindless.next_slot(),
+        );
 
         Ok(Self {
             gpu_meshes: HashMap::new(),
             texture_slots: HashMap::new(),
-            gpu_textures,
+            gpu_textures: HashMap::new(),
             materials: Vec::new(),
             shaders,
             material_buffer,
             bindless,
-            font_atlas: Some(font_atlas),
+            font_manager,
+            gpu_fonts,
+            default_font,
             device,
             physical_device,
             instance,
@@ -98,65 +97,15 @@ impl GpuAssetServer {
         })
     }
 
-    pub fn font_atlas_slot(&self) -> u32 {
-        BINDLESS_SLOT_FONT_ATLAS
+    pub fn font_slot_for_char(&mut self, font_id: FontId, ch: char, px: f32) -> u32 {
+        match self.font_manager.glyph(font_id, ch, px) {
+            Some(g) => self.gpu_fonts.slot_for_glyph(&g),
+            None => BINDLESS_SLOT_WHITE,
+        }
     }
 
-    pub fn flush_font_atlas_if_dirty(&mut self) -> anyhow::Result<()> {
-        let dirty = self.font_atlas.as_ref().map(|a| a.dirty).unwrap_or(false);
-        if !dirty {
-            return Ok(());
-        }
-        let atlas = self.font_atlas.as_mut().unwrap();
-        let new_tex = GpuTexture::upload(
-            &self.device,
-            self.physical_device,
-            &self.instance,
-            self.command_pool,
-            self.queue,
-            &atlas.pixels,
-            atlas.atlas_width,
-            atlas.atlas_height,
-            vk::Format::R8G8B8A8_UNORM,
-            "font_atlas",
-        )?;
-        self.bindless.update_slot(BINDLESS_SLOT_FONT_ATLAS, new_tex.view);
-        self.gpu_textures.insert(BINDLESS_SLOT_FONT_ATLAS, new_tex);
-        atlas.dirty = false;
-        log::debug!("FontAtlas перезалит (слот {})", BINDLESS_SLOT_FONT_ATLAS);
-        Ok(())
-    }
-
-    pub fn flush_uploads_gpu(&mut self, rx: &Receiver<GpuUploadRequest>) -> anyhow::Result<()> {
-        loop {
-            match rx.try_recv() {
-                Ok(req) => self.apply_upload(req)?,
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => break,
-            }
-        }
-        Ok(())
-    }
-
-    fn apply_upload(&mut self, req: GpuUploadRequest) -> anyhow::Result<()> {
-        match req {
-            GpuUploadRequest::Mesh { handle, vertices, indices, name } => {
-                let cpu = CpuMesh::new(name, vertices, indices);
-                if let Err(e) = self.upload_mesh(handle, &cpu) {
-                    log::error!("GPU upload mesh failed: {e}");
-                }
-            }
-            GpuUploadRequest::Texture { handle, pixels, width, height, format, name } => {
-                if let Err(e) = self.upload_texture(handle, &pixels, width, height, format, &name) {
-                    log::error!("GPU upload texture failed: {e}");
-                }
-            }
-            GpuUploadRequest::Material { handle, base_color, metallic, roughness, emissive, texture_slots, name } => {
-                self.register_material_gpu(handle, base_color, metallic, roughness, emissive, texture_slots, name);
-            }
-            GpuUploadRequest::FontAtlas { .. } => {}
-        }
-        Ok(())
+    pub fn flush_font_atlases(&mut self) -> anyhow::Result<()> {
+        self.gpu_fonts.flush(&mut self.font_manager, &mut self.bindless)
     }
 
     pub fn upload_mesh(&mut self, handle: MeshHandle, cpu_mesh: &CpuMesh) -> anyhow::Result<()> {
@@ -203,7 +152,7 @@ impl GpuAssetServer {
         let slot = self.bindless.alloc_slot(tex.view);
         self.texture_slots.insert(handle, slot);
         self.gpu_textures.insert(slot, tex);
-        log::debug!("Текстура '{}': handle={} -> slot={}", name, handle.0, slot);
+        log::debug!("Texture '{}': handle={} -> slot={}", name, handle.0, slot);
         Ok(())
     }
 

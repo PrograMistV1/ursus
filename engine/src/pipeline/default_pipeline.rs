@@ -1,9 +1,10 @@
 use crate::assets::gpu_server::GpuAssetServer;
+use crate::assets::ui::font_manager::FontId;
 use crate::assets::{GpuMesh, MaterialHandle, ShaderHandle};
 use crate::lighting::buffer::LightingUbo;
 use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
 use crate::render_graph::{pass, RenderGraph, ResourceDesc, ResourceExtent};
-use crate::render_world::{ExtractedInstance, ExtractedLights, RenderWorld};
+use crate::render_world::{ExtractedInstance, ExtractedLights};
 use crate::vulkan::passes::depth_prepass::{DepthPrepass, DepthPrepassDrawCall};
 use crate::vulkan::passes::fsr::{compute_easu_con, compute_rcas_con, FsrPass};
 use crate::vulkan::passes::geometry::GeometryPass;
@@ -174,7 +175,7 @@ impl RenderPipeline for DefaultPipeline {
         let fsr_pass = Arc::new(FsrPass::new(&ctx.device.handle, LDR_FORMAT, &mut gpu_assets.shaders)?);
         let (fsr_easu_set, fsr_rcas_set, fsr_sampler) =
             (fsr_pass.easu_descriptor_set, fsr_pass.rcas_descriptor_set, fsr_pass.sampler);
-        let (fsr_pass_easu, fsr_pass_rcas) = (Arc::clone(&fsr_pass), Arc::clone(&fsr_pass));
+        let (fsr_easu, fsr_rcas) = (Arc::clone(&fsr_pass), Arc::clone(&fsr_pass));
 
         pass("fsr_easu")
             .read(h_ldr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
@@ -186,7 +187,7 @@ impl RenderPipeline for DefaultPipeline {
                 let (iw, ih) = data.internal_resolution;
                 let (ow, oh) = data.output_resolution;
                 let pc = compute_easu_con((iw as f32, ih as f32), (iw as f32, ih as f32), (ow as f32, oh as f32));
-                fsr_pass_easu.record_easu(&*data.device, cmd, &dst, &pc);
+                fsr_easu.record_easu(&*data.device, cmd, &dst, &pc);
                 Ok(())
             })
             .build(graph);
@@ -199,7 +200,7 @@ impl RenderPipeline for DefaultPipeline {
                 let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
                 let dst = pool.image(h_fsr_rcas);
                 let pc = compute_rcas_con(data.fsr_sharpness);
-                fsr_pass_rcas.record_rcas(&*data.device, cmd, &dst, &pc);
+                fsr_rcas.record_rcas(&*data.device, cmd, &dst, &pc);
                 Ok(())
             })
             .build(graph);
@@ -256,20 +257,22 @@ impl RenderPipeline for DefaultPipeline {
             .read_write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .record(move |cmd, pool, ctx_ptr| unsafe {
                 let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+                let gpu = &mut *data.gpu_assets;
                 let sc = pool.image(h_swapchain);
-                let gpu_assets = &mut *data.gpu_assets;
-                let font_atlas_tex = gpu_assets.font_atlas_slot();
-                ui_pass.record(
-                    &*data.device,
-                    cmd,
-                    sc.view,
-                    sc.extent,
-                    gpu_assets.bindless.set,
-                    &data.ui_rects,
-                    &data.ui_texts,
-                    gpu_assets.font_atlas.as_mut(),
-                    font_atlas_tex,
-                )?;
+                let screen = [sc.extent.width as f32, sc.extent.height as f32];
+                let font = gpu.default_font;
+
+                ui_pass.begin(&*data.device, cmd, sc.view, sc.extent, gpu.bindless.set);
+
+                for (pos, size, color) in &data.ui_rects {
+                    ui_pass.draw_rect(&*data.device, cmd, screen, *pos, *size, *color);
+                }
+
+                for (origin, text, px, color) in &data.ui_texts {
+                    draw_text_line(&ui_pass, &*data.device, cmd, screen, font, *origin, text, *px, *color, gpu);
+                }
+
+                ui_pass.end(&*data.device, cmd);
                 Ok(())
             })
             .build(graph);
@@ -278,7 +281,9 @@ impl RenderPipeline for DefaultPipeline {
     }
 
     fn prepare_frame(&mut self, graph: &mut RenderGraph, input: FrameInput<'_>) -> anyhow::Result<()> {
-        let rw: &RenderWorld = input.render_world;
+        input.gpu_assets.flush_font_atlases()?;
+
+        let rw = input.render_world;
         let default_shader = input.gpu_assets.shaders.by_name("diffuse").unwrap();
 
         let to_owned = |instances: &[ExtractedInstance]| -> Vec<OwnedDrawCall> {
@@ -286,12 +291,11 @@ impl RenderPipeline for DefaultPipeline {
                 .iter()
                 .filter_map(|inst| {
                     let gpu = input.gpu_assets.get_gpu_mesh(inst.mesh)?;
-                    let shader = default_shader;
                     Some(OwnedDrawCall {
                         gpu_mesh_ptr: gpu as *const _,
                         model: inst.model,
                         material: inst.material,
-                        shader,
+                        shader: default_shader,
                     })
                 })
                 .collect()
@@ -302,6 +306,7 @@ impl RenderPipeline for DefaultPipeline {
             rw.get::<crate::render_world::ExtractedShadowMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
         let camera = rw.get::<crate::render_world::ExtractedCamera>().cloned().unwrap_or_default();
         let lights = rw.get::<ExtractedLights>().cloned().unwrap_or_default();
+
         let ui_rects = rw
             .get::<crate::render_world::ExtractedUiRects>()
             .map(|r| r.rects.iter().map(|r| (r.pos, r.size, r.color)).collect())
@@ -324,7 +329,7 @@ impl RenderPipeline for DefaultPipeline {
             .collect();
         let shadow_calls = to_owned(shadow_meshes);
 
-        let frame_data = Box::new(DefaultPipelineFrameData {
+        graph.set_frame_data(Box::new(DefaultPipelineFrameData {
             device: input.device,
             draw_calls,
             prepass_calls,
@@ -342,16 +347,40 @@ impl RenderPipeline for DefaultPipeline {
             },
             ui_rects,
             ui_texts,
-            gpu_assets: input.gpu_assets,
+            gpu_assets: input.gpu_assets as *mut GpuAssetServer,
             exposure: input.exposure,
             fsr_sharpness: input.fsr_sharpness,
             clear_color: input.clear_color,
             internal_resolution: input.internal_resolution,
             output_resolution: input.output_resolution,
-        });
+        }));
 
-        graph.set_frame_data(frame_data);
         Ok(())
+    }
+}
+
+unsafe fn draw_text_line(
+    ui_pass: &UiPass,
+    device: &ash::Device,
+    cmd: vk::CommandBuffer,
+    screen_size: [f32; 2],
+    font: FontId,
+    origin: Vec2,
+    text: &str,
+    px: f32,
+    color: [f32; 4],
+    gpu: &mut GpuAssetServer,
+) {
+    let ascent = px * 0.8;
+    let baseline = Vec2::new(origin.x, origin.y + ascent);
+    let mut cursor_x = baseline.x;
+
+    for ch in text.chars() {
+        if let Some(glyph) = gpu.font_manager.glyph(font, ch, px) {
+            let slot = gpu.gpu_fonts.slot_for_glyph(&glyph);
+            ui_pass.draw_sdf_glyph(device, cmd, screen_size, Vec2::new(cursor_x, baseline.y), &glyph, slot, color);
+        }
+        cursor_x += gpu.font_manager.advance(font, ch, px);
     }
 }
 
