@@ -12,13 +12,13 @@ use winit::{
 use crate::assets::cpu_server::CpuAssetServer;
 use crate::assets::upload::GpuUploadRequest;
 use crate::ecs::GameWorld;
-use crate::extract::{default_extract_schedule, ExtractSchedule};
-use crate::pipeline::render_pipeline::RenderPipeline;
-use crate::pipeline::LoadingPipeline;
-use crate::render_thread::command::{PipelineFactory, RenderCommand};
-use crate::render_thread::{render_thread_main, WindowHandles};
-use crate::render_world::{ExtractedRenderSettings, RenderWorld};
-use crate::triple_buffer::TripleBuffer;
+use crate::render::extract::{default_extract_schedule, ExtractSchedule};
+use crate::render::frame_pipeline::render_pipeline::RenderPipeline;
+use crate::render::frame_pipeline::LoadingPipeline;
+use crate::render::thread::command::{PipelineFactory, RenderCommand};
+use crate::render::thread::{render_thread_main, WindowHandles};
+use crate::render::triple_buffer::TripleBuffer;
+use crate::render::world::{ExtractedRenderSettings, RenderWorld};
 use crate::vulkan::VulkanContext;
 
 pub trait App {

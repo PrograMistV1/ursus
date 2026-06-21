@@ -1,5 +1,5 @@
 use crate::assets::mesh::Vertex;
-use crate::vulkan::pipeline::builder::PipelineBuilder;
+use crate::vulkan::gfx_pipeline::builder::PipelineBuilder;
 use ash::vk;
 
 pub struct PipelineDesc<'a> {

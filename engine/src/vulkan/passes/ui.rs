@@ -1,6 +1,6 @@
 use crate::assets::ui::font_manager::GlyphInfo;
 use crate::assets::ShaderRegistry;
-use crate::vulkan::pipeline::builder::{cmd, PipelineBuilder};
+use crate::vulkan::gfx_pipeline::builder::{cmd, PipelineBuilder};
 use ash::vk;
 use glam::Vec2;
 

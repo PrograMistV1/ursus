@@ -5,7 +5,7 @@ use crate::ecs::components::{
 };
 use crate::ecs::GameWorld;
 use crate::lighting::buffer::{GpuPointLight, MAX_POINT_LIGHTS};
-use crate::render_world::{
+use crate::render::world::{
     ExtractedCamera, ExtractedInstance, ExtractedLights, ExtractedMeshes, ExtractedRenderSettings,
     ExtractedShadowMeshes, ExtractedUiRect, ExtractedUiRects, ExtractedUiText, ExtractedUiTexts, RenderWorld,
 };

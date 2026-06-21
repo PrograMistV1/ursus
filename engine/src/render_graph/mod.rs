@@ -1,8 +1,5 @@
-pub mod graph;
-pub mod resource;
-
-pub use graph::{pass, PassAccess, PassBuilder, PassHandle, PassNode, PassNodeReady, RenderGraph};
-pub use resource::{
+pub use crate::render::graph::{pass, PassAccess, PassBuilder, PassHandle, PassNode, PassNodeReady, RenderGraph};
+pub use crate::render::resource::{
     DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, ExternalImageDesc, GpuImage, ImageRef,
     LayoutTracker, ResourceDesc, ResourceExtent, ResourceHandle, ResourceKind, ResourcePool,
 };

@@ -1,6 +1,6 @@
 use crate::assets::gpu_server::GpuAssetServer;
+use crate::render::world::RenderWorld;
 use crate::render_graph::{RenderGraph, ResourceHandle};
-use crate::render_world::RenderWorld;
 use crate::vulkan::VulkanContext;
 use ash::vk;
 

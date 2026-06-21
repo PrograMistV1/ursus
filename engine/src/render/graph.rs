@@ -1,4 +1,4 @@
-use crate::render_graph::resource::{
+use crate::render::resource::{
     make_barrier, DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, LayoutTracker, ResourceHandle,
     ResourcePool,
 };

@@ -1,6 +1,6 @@
 use crate::assets::material::MaterialData;
 use crate::vulkan::core::memory::find_memory_type;
-use crate::vulkan::pipeline::builder::descriptor::alloc_single_set;
+use crate::vulkan::gfx_pipeline::builder::descriptor::alloc_single_set;
 use ash::vk;
 
 pub struct MaterialBuffer {

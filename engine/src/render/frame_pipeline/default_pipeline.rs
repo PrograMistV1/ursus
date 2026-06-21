@@ -2,9 +2,9 @@ use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::ui::font_manager::FontId;
 use crate::assets::{GpuMesh, MaterialHandle, ShaderHandle};
 use crate::lighting::buffer::LightingUbo;
-use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
+use crate::render::frame_pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
+use crate::render::world::{ExtractedInstance, ExtractedLights};
 use crate::render_graph::{pass, RenderGraph, ResourceDesc, ResourceExtent};
-use crate::render_world::{ExtractedInstance, ExtractedLights};
 use crate::vulkan::passes::depth_prepass::{DepthPrepass, DepthPrepassDrawCall};
 use crate::vulkan::passes::fsr::{compute_easu_con, compute_rcas_con, FsrPass};
 use crate::vulkan::passes::geometry::GeometryPass;
@@ -301,18 +301,18 @@ impl RenderPipeline for DefaultPipeline {
                 .collect()
         };
 
-        let meshes = rw.get::<crate::render_world::ExtractedMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
+        let meshes = rw.get::<crate::render::world::ExtractedMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
         let shadow_meshes =
-            rw.get::<crate::render_world::ExtractedShadowMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
-        let camera = rw.get::<crate::render_world::ExtractedCamera>().cloned().unwrap_or_default();
+            rw.get::<crate::render::world::ExtractedShadowMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
+        let camera = rw.get::<crate::render::world::ExtractedCamera>().cloned().unwrap_or_default();
         let lights = rw.get::<ExtractedLights>().cloned().unwrap_or_default();
 
         let ui_rects = rw
-            .get::<crate::render_world::ExtractedUiRects>()
+            .get::<crate::render::world::ExtractedUiRects>()
             .map(|r| r.rects.iter().map(|r| (r.pos, r.size, r.color)).collect())
             .unwrap_or_default();
         let ui_texts = rw
-            .get::<crate::render_world::ExtractedUiTexts>()
+            .get::<crate::render::world::ExtractedUiTexts>()
             .map(|t| t.texts.iter().map(|t| (t.pos, t.text.clone(), t.font_size, t.color)).collect())
             .unwrap_or_default();
 

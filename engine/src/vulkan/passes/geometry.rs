@@ -4,7 +4,7 @@ use crate::assets::{GpuMesh, ShaderRegistry};
 use crate::ecs::components::MaterialHandle;
 use crate::render_graph::GpuImage;
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
-use crate::vulkan::pipeline::pipeline::PipelineDesc;
+use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use crate::vulkan::Pipeline;
 use ash::ext::debug_utils::Device;
 use ash::vk;

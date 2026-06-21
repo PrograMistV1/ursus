@@ -1,7 +1,7 @@
 use crate::assets::ShaderRegistry;
 use crate::render_graph::GpuImage;
 use crate::vulkan::core::sampler;
-use crate::vulkan::pipeline::builder::{cmd, descriptor, PipelineBuilder};
+use crate::vulkan::gfx_pipeline::builder::{cmd, descriptor, PipelineBuilder};
 use ash::vk;
 use cmd::begin_rendering_discard;
 use descriptor::alloc_sets;

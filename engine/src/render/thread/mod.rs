@@ -7,8 +7,8 @@ use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::upload::GpuUploadRequest;
-use crate::render_world::{ExtractedRenderSettings, RenderWorld};
-use crate::triple_buffer::TripleBuffer;
+use crate::render::triple_buffer::TripleBuffer;
+use crate::render::world::{ExtractedRenderSettings, RenderWorld};
 use crate::vulkan::VulkanContext;
 
 use self::command::{PipelineFactory, RenderCommand};
@@ -89,7 +89,7 @@ fn render_loop(
                         let prev_exp = renderer.exposure();
                         let prev_fsr = renderer.fsr_sharpness();
                         renderer = factory.build(&vk, &mut gpu_assets, prev_exp, prev_fsr)?;
-                        log::info!("Render thread: pipeline switched");
+                        log::info!("Render thread: frame_pipeline switched");
                     }
                 },
                 Err(std::sync::mpsc::TryRecvError::Empty) => break,

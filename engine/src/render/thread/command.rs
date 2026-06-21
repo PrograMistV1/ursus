@@ -10,7 +10,7 @@ pub struct PipelineFactory {
 impl PipelineFactory {
     pub fn of<P>() -> Self
     where
-        P: crate::pipeline::render_pipeline::RenderPipeline + Default + 'static,
+        P: crate::render::frame_pipeline::render_pipeline::RenderPipeline + Default + 'static,
     {
         Self {
             build: Box::new(|ctx, gpu_assets, exposure, fsr_sharpness| {

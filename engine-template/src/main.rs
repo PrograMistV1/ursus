@@ -1,5 +1,5 @@
 use engine::components::{ActiveCamera, CameraComponent, DirectionalLightComponent, UiLayout, UiText};
-use engine::pipeline::DefaultPipeline;
+use engine::render::frame_pipeline::DefaultPipeline;
 use engine::{App, AsyncMeshHandle, Engine, EngineContext};
 use glam::{Vec2, Vec3};
 
