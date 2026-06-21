@@ -17,10 +17,10 @@ log = "0.4"
 env_logger = "0.11"
 glam = "0.33.0"
 hecs = "0.11.0"
-bytemuck = { version = "1", features = ["derive"] }
-image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "tga", "bmp", "webp"] }
-tobj = "4"
-gltf = { version = "1", features = ["image"] }
+bytemuck = "1.25.0"
+image = "0.25.10"
+tobj = "4.0.4"
+gltf = "1.4.1"
 fontdue = "0.9.3"
 puffin = "0.20.0"
 
