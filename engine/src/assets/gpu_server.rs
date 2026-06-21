@@ -5,7 +5,7 @@ use crate::assets::shader_registry::TextureSlot;
 use crate::assets::ui::font_manager::{FontId, FontManager, SizeBucket};
 use crate::assets::ui::gpu_font_manager::GpuFontManager;
 use crate::assets::{builtin_shaders, ShaderRegistry};
-use crate::ecs::components::{MaterialHandle, MeshHandle};
+use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::render::world::RenderWorld;
 use crate::vulkan::{BindlessSet, GpuTexture, MaterialBuffer};
 use ash::vk;

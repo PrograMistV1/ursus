@@ -1,7 +1,7 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::shader_registry::ShaderHandle;
 use crate::assets::{GpuMesh, ShaderRegistry};
-use crate::ecs::components::MaterialHandle;
+use crate::components::mesh::MaterialHandle;
 use crate::render::resource::GpuImage;
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;

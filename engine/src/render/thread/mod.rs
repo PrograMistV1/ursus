@@ -159,7 +159,6 @@ fn flush_uploads_gpu(rx: &Receiver<GpuUploadRequest>, gpu: &mut GpuAssetServer) 
                 } => {
                     gpu.register_material_gpu(handle, base_color, metallic, roughness, emissive, texture_slots, name);
                 }
-                GpuUploadRequest::FontAtlas { .. } => {}
             },
             Err(std::sync::mpsc::TryRecvError::Empty) => break,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => break,

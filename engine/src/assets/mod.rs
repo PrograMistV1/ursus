@@ -10,7 +10,6 @@ pub mod shader_registry;
 pub mod ui;
 pub mod upload;
 
-pub use crate::ecs::components::{MaterialHandle, MeshHandle};
 pub use cpu_server::{AsyncMeshHandle, CpuAssetServer, LoadProgress, TextureHandle};
 pub use material::MaterialData;
 pub use mesh::{CpuMesh, GpuMesh, Vertex};

@@ -26,5 +26,3 @@ impl MaterialData {
 
 unsafe impl bytemuck::Pod for MaterialData {}
 unsafe impl bytemuck::Zeroable for MaterialData {}
-
-pub use crate::ecs::components::MaterialHandle;

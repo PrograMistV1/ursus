@@ -1,8 +1,9 @@
 use crate::assets::mesh::Aabb;
-use crate::ecs::components::{
-    ActiveCamera, CameraComponent, DirectionalLightComponent, MaterialHandle, MeshHandle, PointLightComponent,
-    Transform, UiLayout, UiRect, UiText,
-};
+use crate::components::camera::{ActiveCamera, CameraComponent};
+use crate::components::light::{DirectionalLightComponent, PointLightComponent};
+use crate::components::mesh::{MaterialHandle, MeshHandle};
+use crate::components::transform::Transform;
+use crate::components::ui::{UiLayout, UiRect, UiText};
 use crate::ecs::GameWorld;
 use crate::math::light_frustum::compute_light_view_proj;
 use crate::render::world::{

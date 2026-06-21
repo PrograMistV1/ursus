@@ -1,6 +1,11 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 
+use crate::assets::mesh::Aabb;
+use crate::components::mesh::{MaterialHandle, MeshHandle};
+use crate::vulkan::resources::light_buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
+use glam::{Mat4, Vec2, Vec3};
+
 pub struct RenderWorld {
     resources: HashMap<TypeId, Box<dyn Any + Send>>,
 }
@@ -32,12 +37,6 @@ impl Default for RenderWorld {
         Self::new()
     }
 }
-
-use crate::assets::mesh::Aabb;
-use crate::assets::MeshHandle;
-use crate::ecs::components::MaterialHandle;
-use crate::vulkan::resources::light_buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
-use glam::{Mat4, Vec2, Vec3};
 
 #[derive(Clone)]
 pub struct ExtractedInstance {

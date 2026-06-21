@@ -1,4 +1,6 @@
 use crate::app::EngineContext;
+use crate::components::mesh::MeshHandle;
+use crate::components::transform::Transform;
 use std::ffi::c_void;
 
 pub struct EngineHandle {
@@ -120,7 +122,6 @@ pub unsafe extern "C" fn engine_spawn_mesh(handle: *mut EngineHandle, mesh_id: u
     if ctx.is_null() {
         return u64::MAX;
     }
-    use crate::ecs::components::{MeshHandle, Transform};
     let entity = unsafe { (*ctx).world.spawn().insert(MeshHandle(mesh_id)).insert(Transform::at(x, y, z)).build() };
     entity.id() as u64
 }
@@ -150,7 +151,6 @@ pub unsafe extern "C" fn engine_set_transform(
     if ctx.is_null() {
         return;
     }
-    use crate::ecs::components::Transform;
     let entity = hecs::Entity::from_bits(entity_id).unwrap();
     unsafe {
         if let Ok(mut t) = (*ctx).world.inner.get::<&mut Transform>(entity) {

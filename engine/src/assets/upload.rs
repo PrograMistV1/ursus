@@ -1,7 +1,7 @@
 use crate::assets::mesh::Vertex;
 use crate::assets::shader_registry::TextureSlot;
 use crate::assets::TextureHandle;
-use crate::ecs::components::{MaterialHandle, MeshHandle};
+use crate::components::mesh::{MaterialHandle, MeshHandle};
 use ash::vk;
 
 #[derive(Debug)]
@@ -28,10 +28,5 @@ pub enum GpuUploadRequest {
         emissive: [f32; 4],
         texture_slots: Vec<(TextureSlot, TextureHandle)>,
         name: String,
-    },
-    FontAtlas {
-        pixels: Vec<u8>,
-        width: u32,
-        height: u32,
     },
 }

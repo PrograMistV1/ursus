@@ -1,6 +1,6 @@
 use crate::assets::mesh::CpuMesh;
 use crate::assets::shader_registry::TextureSlot;
-use crate::components::Transform;
+use crate::components::transform::Transform;
 
 pub enum PendingUpload {
     Mesh {

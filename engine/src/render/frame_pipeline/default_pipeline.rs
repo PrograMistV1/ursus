@@ -1,6 +1,7 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::ui::font_manager::FontId;
-use crate::assets::{GpuMesh, MaterialHandle, ShaderHandle};
+use crate::assets::{GpuMesh, ShaderHandle};
+use crate::components::mesh::MaterialHandle;
 use crate::render::frame_pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
 use crate::render::graph::{pass, RenderGraph};
 use crate::render::resource::{ResourceDesc, ResourceExtent};
