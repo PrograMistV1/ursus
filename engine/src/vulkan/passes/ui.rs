@@ -70,7 +70,7 @@ impl UiPass {
         bindless_set: vk::DescriptorSet,
         rects: &[(Vec2, Vec2, [f32; 4])],
         texts: &[(Vec2, String, f32, [f32; 4])],
-        font_atlas: Option<&FontAtlas>,
+        font_atlas: Option<&mut FontAtlas>,
         font_atlas_tex: u32,
     ) -> anyhow::Result<()> {
         cmd::begin_rendering_load(device, cmd_buf, swapchain_view, extent);
@@ -107,9 +107,7 @@ impl UiPass {
         if let Some(atlas) = font_atlas {
             for (origin, text, font_size, color) in texts {
                 let font_size_u32 = *font_size as u32;
-
                 let ascent = font_size * 0.8;
-
                 let mut cursor_x = origin.x;
 
                 for ch in text.chars() {
@@ -118,7 +116,6 @@ impl UiPass {
                     if let Some(glyph) = atlas.get_glyph(ch, font_size_u32) {
                         if glyph.width > 0 && glyph.height > 0 {
                             let gx = cursor_x + glyph.offset_x as f32;
-
                             let baseline_y = origin.y + ascent;
                             let gy = baseline_y - (glyph.offset_y as f32 + glyph.height as f32);
 
@@ -136,6 +133,7 @@ impl UiPass {
                             self.draw_quad(device, cmd_buf, &pc);
                         }
                     }
+
                     cursor_x += advance;
                 }
             }

@@ -144,7 +144,7 @@ fn flush_uploads_gpu(rx: &Receiver<GpuUploadRequest>, gpu: &mut GpuAssetServer) 
                     }
                 }
                 GpuUploadRequest::Texture { handle, pixels, width, height, format, name } => {
-                    if let Err(e) = gpu.upload_texture_at(handle, &pixels, width, height, format, &name) {
+                    if let Err(e) = gpu.upload_texture(handle, &pixels, width, height, format, &name) {
                         log::error!("GPU upload texture failed: {e}");
                     }
                 }
@@ -159,11 +159,7 @@ fn flush_uploads_gpu(rx: &Receiver<GpuUploadRequest>, gpu: &mut GpuAssetServer) 
                 } => {
                     gpu.register_material_gpu(handle, base_color, metallic, roughness, emissive, texture_slots, name);
                 }
-                GpuUploadRequest::FontAtlas { pixels, width, height } => {
-                    if let Err(e) = gpu.upload_font_atlas_raw(pixels, width, height) {
-                        log::error!("GPU upload font atlas failed: {e}");
-                    }
-                }
+                GpuUploadRequest::FontAtlas { .. } => {}
             },
             Err(std::sync::mpsc::TryRecvError::Empty) => break,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => break,

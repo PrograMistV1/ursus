@@ -85,7 +85,7 @@ impl BindlessSet {
             )?[0]
         };
 
-        let mut bindless =
+        let mut this =
             Self { layout, set, pool, sampler, next_slot: 0, owned_textures: Vec::new(), device: device.clone() };
 
         let white = GpuTexture::upload(
@@ -100,38 +100,28 @@ impl BindlessSet {
             vk::Format::R8G8B8A8_SRGB,
             "white_fallback",
         )?;
-        let slot = bindless.register_view(white.view);
+        let slot = this.alloc_slot(white.view);
         assert_eq!(slot, 0, "white fallback должен быть слотом 0");
-
-        bindless.owned_textures.push(white);
+        this.owned_textures.push(white);
 
         log::info!("BindlessSet создан (MAX_TEXTURES={})", MAX_TEXTURES);
-        Ok(bindless)
+        Ok(this)
     }
 
-    pub fn register_view(&mut self, view: vk::ImageView) -> u32 {
+    pub fn alloc_slot(&mut self, view: vk::ImageView) -> u32 {
         let slot = self.next_slot;
         assert!(slot < MAX_TEXTURES, "bindless texture array переполнен");
-
-        let image_info =
-            vk::DescriptorImageInfo::default().image_view(view).image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-
-        let write = vk::WriteDescriptorSet::default()
-            .dst_set(self.set)
-            .dst_binding(1)
-            .dst_array_element(slot)
-            .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-            .image_info(std::slice::from_ref(&image_info));
-
-        unsafe { self.device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
-
+        self.write_slot(slot, view);
         self.next_slot += 1;
         slot
     }
 
-    pub fn register_view_at(&mut self, slot: u32, view: vk::ImageView) {
-        assert!(slot < MAX_TEXTURES, "bindless texture array переполнен");
+    pub fn update_slot(&self, slot: u32, view: vk::ImageView) {
+        assert!(slot < self.next_slot, "update_slot: слот {} не выделен", slot);
+        self.write_slot(slot, view);
+    }
 
+    fn write_slot(&self, slot: u32, view: vk::ImageView) {
         let image_info =
             vk::DescriptorImageInfo::default().image_view(view).image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
 
@@ -143,10 +133,10 @@ impl BindlessSet {
             .image_info(std::slice::from_ref(&image_info));
 
         unsafe { self.device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
+    }
 
-        if slot >= self.next_slot {
-            self.next_slot = slot + 1;
-        }
+    pub fn next_slot(&self) -> u32 {
+        self.next_slot
     }
 }
 

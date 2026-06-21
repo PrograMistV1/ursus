@@ -257,7 +257,8 @@ impl RenderPipeline for DefaultPipeline {
             .record(move |cmd, pool, ctx_ptr| unsafe {
                 let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
                 let sc = pool.image(h_swapchain);
-                let gpu_assets = &*data.gpu_assets;
+                let gpu_assets = &mut *data.gpu_assets;
+                let font_atlas_tex = gpu_assets.font_atlas_slot();
                 ui_pass.record(
                     &*data.device,
                     cmd,
@@ -266,8 +267,8 @@ impl RenderPipeline for DefaultPipeline {
                     gpu_assets.bindless.set,
                     &data.ui_rects,
                     &data.ui_texts,
-                    gpu_assets.font_atlas.as_ref(),
-                    gpu_assets.font_atlas_texture.map(|h| h.0).unwrap_or(0),
+                    gpu_assets.font_atlas.as_mut(),
+                    font_atlas_tex,
                 )?;
                 Ok(())
             })
@@ -391,7 +392,7 @@ struct DefaultPipelineFrameData {
     lighting: LightingUbo,
     ui_rects: Vec<(Vec2, Vec2, [f32; 4])>,
     ui_texts: Vec<(Vec2, String, f32, [f32; 4])>,
-    gpu_assets: *const GpuAssetServer,
+    gpu_assets: *mut GpuAssetServer,
     exposure: f32,
     fsr_sharpness: f32,
     clear_color: [f32; 4],

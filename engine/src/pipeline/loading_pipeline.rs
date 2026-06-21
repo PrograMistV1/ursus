@@ -1,4 +1,5 @@
 use crate::assets::gpu_server::GpuAssetServer;
+use crate::assets::ui::FontAtlas;
 use crate::pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
 use crate::render_graph::{pass, RenderGraph};
 use crate::vulkan::passes::ui::UiPass;
@@ -25,7 +26,7 @@ struct LoadingFrameData {
     bindless_set: vk::DescriptorSet,
     font_atlas_tex: u32,
 
-    font_atlas_ptr: *const crate::assets::ui::FontAtlas,
+    font_atlas_ptr: *mut FontAtlas,
     ui_pass_ptr: *const UiPass,
 }
 unsafe impl Send for LoadingFrameData {}
@@ -144,7 +145,6 @@ impl RenderPipeline for LoadingPipeline {
                     }],
                 );
                 device_bg.cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent }]);
-
                 device_bg.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, bg_pipeline);
 
                 let pc = LoadingPC { time: data.time, progress: data.progress, width: data.width, height: data.height };
@@ -161,44 +161,46 @@ impl RenderPipeline for LoadingPipeline {
             .record(move |cmd, pool, ctx_ptr| unsafe {
                 let data = &*(ctx_ptr as *const LoadingFrameData);
                 let sc = pool.image(h_swapchain);
-
-                let font_atlas = data.font_atlas_ptr.as_ref();
                 let ui_pass = &*data.ui_pass_ptr;
+
+                let mut atlas: Option<&mut FontAtlas> = data.font_atlas_ptr.as_mut();
 
                 let w = data.width;
                 let h = data.height;
 
-                let font_size = 32.0f32;
+                let font_size = 32u32;
+                let sub_font_size = 14u32;
                 let text = "ENGINE";
+                let sub_text = "Loading...";
 
-                let text_width = if let Some(atlas) = font_atlas {
-                    atlas.measure_text(text, font_size as u32)
-                } else {
-                    font_size * text.len() as f32 * 0.6
-                };
-                let line_height = if let Some(atlas) = font_atlas {
-                    atlas.line_height(font_size as u32)
-                } else {
-                    font_size * 1.2
-                };
+                let (text_width, line_height, sub_width, _sub_line_height) =
+                    if let Some(ref mut a) = atlas.as_deref_mut() {
+                        (
+                            a.measure_text(text, font_size),
+                            a.line_height(font_size),
+                            a.measure_text(sub_text, sub_font_size),
+                            a.line_height(sub_font_size),
+                        )
+                    } else {
+                        (
+                            font_size as f32 * text.len() as f32 * 0.6,
+                            font_size as f32 * 1.2,
+                            sub_font_size as f32 * sub_text.len() as f32 * 0.6,
+                            sub_font_size as f32 * 1.2,
+                        )
+                    };
 
                 let center_x = (w - text_width) * 0.5;
                 let center_y = (h - line_height) * 0.5 - 20.0;
-
-                let sub_font_size = 14.0f32;
-                let sub_text = "Loading...";
-                let sub_width = if let Some(atlas) = font_atlas {
-                    atlas.measure_text(sub_text, sub_font_size as u32)
-                } else {
-                    sub_font_size * sub_text.len() as f32 * 0.6
-                };
                 let sub_x = (w - sub_width) * 0.5;
                 let sub_y = center_y + line_height + 8.0;
 
                 let texts = vec![
-                    (Vec2::new(center_x, center_y), text.to_string(), font_size, [1.0f32, 1.0, 1.0, 1.0]),
-                    (Vec2::new(sub_x, sub_y), sub_text.to_string(), sub_font_size, [0.6f32, 0.7, 0.9, 0.8]),
+                    (Vec2::new(center_x, center_y), text.to_string(), font_size as f32, [1.0f32, 1.0, 1.0, 1.0]),
+                    (Vec2::new(sub_x, sub_y), sub_text.to_string(), sub_font_size as f32, [0.6f32, 0.7, 0.9, 0.8]),
                 ];
+
+                let atlas_mut: Option<&mut FontAtlas> = data.font_atlas_ptr.as_mut();
 
                 ui_pass.record(
                     &*data.device,
@@ -208,7 +210,7 @@ impl RenderPipeline for LoadingPipeline {
                     data.bindless_set,
                     &[],
                     &texts,
-                    font_atlas,
+                    atlas_mut,
                     data.font_atlas_tex,
                 )?;
 
@@ -222,14 +224,15 @@ impl RenderPipeline for LoadingPipeline {
     fn prepare_frame(&mut self, graph: &mut RenderGraph, input: FrameInput<'_>) -> anyhow::Result<()> {
         let (w, h) = input.output_resolution;
 
-        let font_atlas_tex = input.gpu_assets.font_atlas_texture.map(|h| h.0).unwrap_or(0);
+        let font_atlas_tex = input.gpu_assets.font_atlas_slot();
         let bindless_set = input.gpu_assets.bindless.set;
-        let font_atlas_ptr = input.gpu_assets.font_atlas.as_ref().map(|a| a as *const _).unwrap_or(std::ptr::null());
+        let font_atlas_ptr =
+            input.gpu_assets.font_atlas.as_mut().map(|a| a as *mut FontAtlas).unwrap_or(std::ptr::null_mut());
 
         graph.set_frame_data(Box::new(LoadingFrameData {
             device: input.device,
             time: self.start_time.elapsed().as_secs_f32(),
-            progress: 0.0,
+            progress: input.gpu_assets.font_atlas.is_some() as u32 as f32,
             width: w as f32,
             height: h as f32,
             bindless_set,

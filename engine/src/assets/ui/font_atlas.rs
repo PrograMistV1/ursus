@@ -14,11 +14,21 @@ pub struct GlyphUv {
 }
 
 pub struct FontAtlas {
+    font: Font,
     pub pixels: Vec<u8>,
     pub atlas_width: u32,
     pub atlas_height: u32,
+    pub dirty: bool,
+
     glyphs: HashMap<(char, u32), GlyphUv>,
-    pub advances: HashMap<(char, u32), f32>,
+    advances: HashMap<(char, u32), f32>,
+
+    cursor_x: u32,
+    cursor_y: u32,
+    row_height: u32,
+    padding: u32,
+
+    preload_chars: String,
 }
 
 impl FontAtlas {
@@ -28,88 +38,125 @@ impl FontAtlas {
 
         let atlas_width = 1024u32;
         let atlas_height = 1024u32;
-        let mut pixels = vec![0u8; (atlas_width * atlas_height) as usize];
 
-        let mut glyphs = HashMap::new();
-        let mut advances = HashMap::new();
-
-        let padding = 1u32;
-        let mut cursor_x = padding;
-        let mut cursor_y = padding;
-        let mut row_height = 0u32;
+        let mut atlas = Self {
+            font,
+            pixels: vec![0u8; (atlas_width * atlas_height * 4) as usize],
+            atlas_width,
+            atlas_height,
+            dirty: true,
+            glyphs: HashMap::new(),
+            advances: HashMap::new(),
+            cursor_x: 1,
+            cursor_y: 1,
+            row_height: 0,
+            padding: 1,
+            preload_chars: preload_chars.to_string(),
+        };
 
         for &size in preload_sizes {
-            let px = size as f32;
-            for ch in preload_chars.chars() {
-                let (metrics, bitmap) = font.rasterize(ch, px);
-
-                if bitmap.is_empty() {
-                    advances.insert((ch, size), metrics.advance_width);
-                    glyphs.insert(
-                        (ch, size),
-                        GlyphUv { u0: 0.0, v0: 0.0, u1: 0.0, v1: 0.0, width: 0, height: 0, offset_x: 0, offset_y: 0 },
-                    );
-                    continue;
-                }
-
-                let gw = metrics.width as u32;
-                let gh = metrics.height as u32;
-
-                if cursor_x + gw + padding > atlas_width {
-                    cursor_y += row_height + padding;
-                    cursor_x = padding;
-                    row_height = 0;
-                }
-
-                if cursor_y + gh + padding > atlas_height {
-                    log::warn!("Font atlas переполнен при глифе '{}' размер {}", ch, size);
-                    break;
-                }
-
-                for row in 0..gh {
-                    for col in 0..gw {
-                        let src = (row * gw + col) as usize;
-                        let dst = ((cursor_y + row) * atlas_width + cursor_x + col) as usize;
-                        pixels[dst] = bitmap[src];
-                    }
-                }
-
-                let u0 = cursor_x as f32 / atlas_width as f32;
-                let v0 = cursor_y as f32 / atlas_height as f32;
-                let u1 = (cursor_x + gw) as f32 / atlas_width as f32;
-                let v1 = (cursor_y + gh) as f32 / atlas_height as f32;
-
-                glyphs.insert(
-                    (ch, size),
-                    GlyphUv { u0, v0, u1, v1, width: gw, height: gh, offset_x: metrics.xmin, offset_y: metrics.ymin },
-                );
-                advances.insert((ch, size), metrics.advance_width);
-
-                cursor_x += gw + padding;
-                if gh > row_height {
-                    row_height = gh;
-                }
+            let chars: Vec<char> = preload_chars.chars().collect();
+            for ch in chars {
+                atlas.rasterize_char_internal(ch, size);
             }
         }
 
-        let rgba: Vec<u8> = pixels.iter().flat_map(|&a| [255, 255, 255, a]).collect();
-
-        Ok(Self { pixels: rgba, atlas_width, atlas_height, glyphs, advances })
+        Ok(atlas)
     }
 
-    pub fn get_glyph(&self, ch: char, size: u32) -> Option<&GlyphUv> {
+    pub fn get_glyph(&mut self, ch: char, size: u32) -> Option<&GlyphUv> {
+        if !self.glyphs.contains_key(&(ch, size)) {
+            self.rasterize_char_internal(ch, size);
+        }
         self.glyphs.get(&(ch, size))
     }
 
-    pub fn get_advance(&self, ch: char, size: u32) -> f32 {
+    pub fn get_advance(&mut self, ch: char, size: u32) -> f32 {
+        if !self.advances.contains_key(&(ch, size)) {
+            self.rasterize_char_internal(ch, size);
+        }
         self.advances.get(&(ch, size)).copied().unwrap_or(0.0)
     }
 
-    pub fn measure_text(&self, text: &str, font_size: u32) -> f32 {
-        text.chars().map(|c| self.get_advance(c, font_size)).sum()
+    pub fn preload_size(&mut self, size: u32) {
+        let chars: Vec<char> = self.preload_chars.chars().collect();
+        for ch in chars {
+            if !self.glyphs.contains_key(&(ch, size)) {
+                self.rasterize_char_internal(ch, size);
+            }
+        }
     }
 
-    pub fn line_height(&self, font_size: u32) -> f32 {
-        font_size as f32 * 1.2
+    pub fn measure_text(&mut self, text: &str, size: u32) -> f32 {
+        text.chars().map(|c| self.get_advance(c, size)).sum()
+    }
+
+    pub fn line_height(&self, size: u32) -> f32 {
+        size as f32 * 1.2
+    }
+
+    fn rasterize_char_internal(&mut self, ch: char, size: u32) {
+        let (metrics, bitmap) = self.font.rasterize(ch, size as f32);
+
+        self.advances.insert((ch, size), metrics.advance_width);
+
+        if bitmap.is_empty() || metrics.width == 0 || metrics.height == 0 {
+            self.glyphs.insert(
+                (ch, size),
+                GlyphUv { u0: 0.0, v0: 0.0, u1: 0.0, v1: 0.0, width: 0, height: 0, offset_x: 0, offset_y: 0 },
+            );
+            return;
+        }
+
+        let gw = metrics.width as u32;
+        let gh = metrics.height as u32;
+
+        if self.cursor_x + gw + self.padding > self.atlas_width {
+            self.cursor_y += self.row_height + self.padding;
+            self.cursor_x = self.padding;
+            self.row_height = 0;
+        }
+
+        if self.cursor_y + gh + self.padding > self.atlas_height {
+            log::warn!("FontAtlas переполнен: глиф '{}' размер {}", ch, size);
+            self.glyphs.insert(
+                (ch, size),
+                GlyphUv { u0: 0.0, v0: 0.0, u1: 0.0, v1: 0.0, width: 0, height: 0, offset_x: 0, offset_y: 0 },
+            );
+            return;
+        }
+
+        let cx = self.cursor_x;
+        let cy = self.cursor_y;
+        let stride = self.atlas_width as usize * 4;
+
+        for row in 0..gh as usize {
+            for col in 0..gw as usize {
+                let src = row * gw as usize + col;
+                let dst = (cy as usize + row) * stride + (cx as usize + col) * 4;
+                let a = bitmap[src];
+                self.pixels[dst] = 255;
+                self.pixels[dst + 1] = 255;
+                self.pixels[dst + 2] = 255;
+                self.pixels[dst + 3] = a;
+            }
+        }
+
+        let u0 = cx as f32 / self.atlas_width as f32;
+        let v0 = cy as f32 / self.atlas_height as f32;
+        let u1 = (cx + gw) as f32 / self.atlas_width as f32;
+        let v1 = (cy + gh) as f32 / self.atlas_height as f32;
+
+        self.glyphs.insert(
+            (ch, size),
+            GlyphUv { u0, v0, u1, v1, width: gw, height: gh, offset_x: metrics.xmin, offset_y: metrics.ymin },
+        );
+
+        self.cursor_x += gw + self.padding;
+        if gh > self.row_height {
+            self.row_height = gh;
+        }
+
+        self.dirty = true;
     }
 }
