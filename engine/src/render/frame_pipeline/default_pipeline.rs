@@ -1,7 +1,6 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::ui::font_manager::FontId;
 use crate::assets::{GpuMesh, MaterialHandle, ShaderHandle};
-use crate::lighting::buffer::LightingUbo;
 use crate::render::frame_pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
 use crate::render::world::{ExtractedInstance, ExtractedLights};
 use crate::render_graph::{pass, RenderGraph, ResourceDesc, ResourceExtent};
@@ -13,6 +12,7 @@ use crate::vulkan::passes::post_process::PostProcessPass;
 use crate::vulkan::passes::shadow::{ShadowDrawCall, ShadowPass};
 use crate::vulkan::passes::ui::UiPass;
 use crate::vulkan::resources::gbuffer::GBuffer;
+use crate::vulkan::resources::light_buffer::LightingUbo;
 use crate::vulkan::resources::shadow_map::SHADOW_MAP_SIZE;
 use crate::vulkan::{DrawCall, VulkanContext};
 use ash::vk;

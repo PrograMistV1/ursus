@@ -36,7 +36,7 @@ impl Default for RenderWorld {
 use crate::assets::mesh::Aabb;
 use crate::assets::MeshHandle;
 use crate::ecs::components::MaterialHandle;
-use crate::lighting::buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
+use crate::vulkan::resources::light_buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
 use glam::{Mat4, Vec2, Vec3};
 
 #[derive(Clone)]

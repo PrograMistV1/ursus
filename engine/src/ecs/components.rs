@@ -1,5 +1,8 @@
 use glam::{Mat4, Quat, Vec2, Vec3};
 
+pub const DEFAULT_LIGHT_DIRECTION: Vec3 = Vec3::new(-0.3, -1.0, -0.2);
+pub const DEFAULT_LIGHT_COLOR: [f32; 4] = [1.0, 0.95, 0.85, 2.0];
+
 #[derive(Debug, Clone)]
 pub struct Transform {
     pub position: Vec3,
@@ -142,7 +145,7 @@ pub struct DirectionalLightComponent {
 
 impl Default for DirectionalLightComponent {
     fn default() -> Self {
-        Self { direction: Vec3::new(-0.3, -1.0, -0.2), color: [1.0, 0.95, 0.85, 2.0] }
+        Self { direction: DEFAULT_LIGHT_DIRECTION, color: DEFAULT_LIGHT_COLOR }
     }
 }
 

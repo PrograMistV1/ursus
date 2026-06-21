@@ -1,7 +1,7 @@
 use crate::assets::ShaderRegistry;
-use crate::lighting::buffer::LightBuffer;
 use crate::render_graph::GpuImage;
 use crate::vulkan::gfx_pipeline::builder::{cmd, descriptor, PipelineBuilder};
+use crate::vulkan::resources::light_buffer::{LightBuffer, LightingUbo};
 use ash::vk;
 use cmd::begin_rendering_discard;
 use descriptor::alloc_single_set;
@@ -88,7 +88,7 @@ impl LightingPass {
         let buf_info = vk::DescriptorBufferInfo::default()
             .buffer(light_buffer.buffer)
             .offset(0)
-            .range(size_of::<crate::lighting::buffer::LightingUbo>() as vk::DeviceSize);
+            .range(size_of::<LightingUbo>() as vk::DeviceSize);
 
         let ubo_write = vk::WriteDescriptorSet::default()
             .dst_set(descriptor_set)
@@ -127,7 +127,7 @@ impl LightingPass {
         })
     }
 
-    pub fn upload_lights(&self, data: &crate::lighting::buffer::LightingUbo) {
+    pub fn upload_lights(&self, data: &LightingUbo) {
         self.light_buffer.upload(data);
     }
 

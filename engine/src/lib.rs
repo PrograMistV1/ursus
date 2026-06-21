@@ -2,7 +2,6 @@ pub mod app;
 pub mod assets;
 pub mod ecs;
 pub mod ffi;
-pub mod lighting;
 pub mod math;
 pub mod render;
 pub mod render_graph;

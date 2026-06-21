@@ -4,11 +4,12 @@ use crate::ecs::components::{
     Transform, UiLayout, UiRect, UiText,
 };
 use crate::ecs::GameWorld;
-use crate::lighting::buffer::{GpuPointLight, MAX_POINT_LIGHTS};
+use crate::math::light_frustum::compute_light_view_proj;
 use crate::render::world::{
     ExtractedCamera, ExtractedInstance, ExtractedLights, ExtractedMeshes, ExtractedRenderSettings,
     ExtractedShadowMeshes, ExtractedUiRect, ExtractedUiRects, ExtractedUiText, ExtractedUiTexts, RenderWorld,
 };
+use crate::vulkan::resources::light_buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
 use glam::Vec2;
 
 pub type ExtractFn = Box<dyn Fn(&GameWorld, &mut RenderWorld) + Send + Sync>;
@@ -79,19 +80,20 @@ pub fn extract_meshes(world: &GameWorld, rw: &mut RenderWorld) {
 }
 
 pub fn extract_lights(world: &GameWorld, rw: &mut RenderWorld) {
-    let directional = world
-        .inner
-        .query::<&DirectionalLightComponent>()
-        .iter()
-        .next()
-        .map(|light| crate::lighting::buffer::DirectionalLight {
+    let directional = match world.inner.query::<&DirectionalLightComponent>().iter().next() {
+        Some(light) => DirectionalLight {
             direction: [light.direction.x, light.direction.y, light.direction.z, 0.0],
             color: light.color,
-        })
-        .unwrap_or(crate::lighting::buffer::DirectionalLight {
-            direction: [-0.3, -1.0, -0.2, 0.0],
-            color: [1.0, 0.95, 0.85, 2.0],
-        });
+        },
+        None => {
+            log::warn!("extract_lights: в мире нет DirectionalLightComponent, используется дефолт");
+            let light = DirectionalLightComponent::default();
+            DirectionalLight {
+                direction: [light.direction.x, light.direction.y, light.direction.z, 0.0],
+                color: light.color,
+            }
+        }
+    };
 
     let mut point_lights = [GpuPointLight { position: [0.0; 4], color: [0.0; 4] }; MAX_POINT_LIGHTS];
     let mut point_light_count = 0u32;
@@ -108,8 +110,7 @@ pub fn extract_lights(world: &GameWorld, rw: &mut RenderWorld) {
     }
 
     let light_dir = glam::Vec3::new(directional.direction[0], directional.direction[1], directional.direction[2]);
-    let light_view_proj =
-        crate::lighting::compute_light_view_proj(light_dir.into(), glam::Vec3::new(0.0, 2.0, 0.0), 20.0);
+    let light_view_proj = compute_light_view_proj(light_dir.into(), glam::Vec3::new(0.0, 2.0, 0.0), 20.0);
 
     rw.insert(ExtractedLights { directional, point_lights, point_light_count, light_view_proj });
 }

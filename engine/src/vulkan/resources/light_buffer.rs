@@ -30,7 +30,7 @@ pub struct LightingUbo {
 impl Default for LightingUbo {
     fn default() -> Self {
         Self {
-            directional: DirectionalLight { direction: [-0.3, -1.0, -0.2, 0.0], color: [1.0, 0.95, 0.85, 2.0] },
+            directional: DirectionalLight { direction: [0.0; 4], color: [0.0; 4] },
             point_lights: [GpuPointLight { position: [0.0; 4], color: [0.0; 4] }; MAX_POINT_LIGHTS],
             point_light_count: 0,
             _pad: [0; 3],

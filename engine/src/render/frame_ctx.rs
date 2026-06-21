@@ -1,8 +1,8 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::CpuAssetServer;
-use crate::lighting::LightingUbo;
 use crate::vulkan::passes::geometry::DrawCall;
 pub use crate::vulkan::passes::geometry::DrawCall as FrameDrawCall;
+use crate::vulkan::resources::light_buffer::LightingUbo;
 use crate::vulkan::timestamps::GpuTimestampPool;
 use ash::vk;
 use glam::Mat4;
