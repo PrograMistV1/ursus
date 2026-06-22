@@ -220,7 +220,7 @@ impl RenderPipeline for LoadingPipeline {
                 let ui = &*data.ui_pass_ptr;
                 let screen = [data.width, data.height];
 
-                let logo_h = data.height.min(data.width) * 0.35;
+                let logo_h = data.height.min(data.width) * 0.55;
                 let logo_w = logo_h * data.logo_aspect;
                 let logo_x = (data.width - logo_w) * 0.5;
                 let logo_y = (data.height - logo_h) * 0.5 - data.height * 0.04;
