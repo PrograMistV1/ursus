@@ -87,6 +87,7 @@ impl TextRenderer {
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         buffer.set_text(text, &attrs, Shaping::Advanced, None);
         buffer.set_size(None, None);
+        buffer.shape_until_scroll(&mut self.font_system,false);
 
         let mut width = 0.0f32;
         let mut lines = 0usize;
@@ -125,6 +126,7 @@ impl TextRenderer {
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         buffer.set_text(text, &attrs, Shaping::Advanced, None);
         buffer.set_size(max_width, None);
+        buffer.shape_until_scroll(&mut self.font_system,false);
 
         let runs: Vec<(f32, Vec<cosmic_text::LayoutGlyph>)> =
             buffer.layout_runs().map(|r| (r.line_y, r.glyphs.to_vec())).collect();

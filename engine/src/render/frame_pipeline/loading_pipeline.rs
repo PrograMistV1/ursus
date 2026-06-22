@@ -163,7 +163,7 @@ impl RenderPipeline for LoadingPipeline {
                 let screen = [data.width, data.height];
                 let font = gpu.default_font;
 
-                let font_size_big = 32.0f32;
+                let font_size_big = 80.0f32;
                 let font_size_sub = 14.0f32;
                 let text = "ENGINE";
                 let sub_text = "Loading...";
