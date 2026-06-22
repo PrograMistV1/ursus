@@ -1,4 +1,4 @@
-use crate::assets::ui::font_manager::GlyphInfo;
+use crate::assets::text::atlas::GlyphUv;
 use crate::assets::ShaderRegistry;
 use crate::vulkan::gfx_pipeline::builder::{cmd, PipelineBuilder};
 use ash::vk;
@@ -112,42 +112,30 @@ impl UiPass {
         self.push_and_draw(device, cmd_buf, &pc);
     }
 
-    pub fn draw_sdf_glyph(
+    pub fn draw_glyph(
         &self,
         device: &ash::Device,
         cmd_buf: vk::CommandBuffer,
         screen_size: [f32; 2],
-
-        origin: Vec2,
-        glyph: &GlyphInfo,
+        pos: Vec2,
+        glyph: &GlyphUv,
         bindless_slot: u32,
         color: [f32; 4],
-
-        scale: f32,
     ) {
         if glyph.width == 0 || glyph.height == 0 {
             return;
         }
 
-        let screen_w = glyph.width as f32 * scale;
-        let screen_h = glyph.height as f32 * scale;
-        let off_x = glyph.offset_x as f32 * scale;
-        let off_y = glyph.offset_y as f32 * scale;
-
-        let x = origin.x + off_x;
-
-        let y = origin.y - (off_y + screen_h);
-
         let pc = UiPC {
             screen_size,
-            pos: [x, y],
-            size: [screen_w, screen_h],
+            pos: pos.into(),
+            size: [glyph.width as f32, glyph.height as f32],
             _pad0: [0.0; 2],
             color,
             uv_rect: [glyph.u0, glyph.v0, glyph.u1, glyph.v1],
             tex_index: bindless_slot,
             use_texture: 1,
-            sdf_mode: 1,
+            sdf_mode: 0,
             _pad1: 0,
         };
         self.push_and_draw(device, cmd_buf, &pc);

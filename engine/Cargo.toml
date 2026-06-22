@@ -21,7 +21,8 @@ bytemuck = "1.25.0"
 image = "0.25.10"
 tobj = "4.0.4"
 gltf = "1.4.1"
-fontdue = "0.9.3"
+cosmic-text = "0.19.0"
+etagere = "0.3.0"
 puffin = "0.20.0"
 
 [build-dependencies]

@@ -1,5 +1,4 @@
 use crate::assets::gpu_server::GpuAssetServer;
-use crate::assets::ui::font_manager::FontId;
 use crate::render::frame_pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
 use crate::render::graph::{pass, RenderGraph};
 use crate::vulkan::gfx_pipeline::builder::PipelineBuilder;
@@ -169,9 +168,9 @@ impl RenderPipeline for LoadingPipeline {
                 let text = "ENGINE";
                 let sub_text = "Loading...";
 
-                let text_w = gpu.font_manager.measure(font, text, font_size_big);
-                let sub_w = gpu.font_manager.measure(font, sub_text, font_size_sub);
-                let line_h = gpu.font_manager.line_height(font_size_big);
+                let text_w = gpu.text_renderer.measure(font, text, font_size_big).x;
+                let sub_w = gpu.text_renderer.measure(font, sub_text, font_size_sub).x;
+                let line_h = gpu.text_renderer.line_height(font_size_big);
 
                 let cx = (data.width - text_w) * 0.5;
                 let cy = (data.height - line_h) * 0.5 - 20.0;
@@ -180,29 +179,29 @@ impl RenderPipeline for LoadingPipeline {
 
                 ui_pass.begin(&*data.device, cmd, sc.view, sc.extent, data.bindless_set);
 
-                draw_text_line(
-                    ui_pass,
+                gpu.text_renderer.draw_text(
                     &*data.device,
                     cmd,
-                    screen,
+                    ui_pass,
                     font,
-                    Vec2::new(cx, cy),
                     text,
                     font_size_big,
+                    Vec2::new(cx, cy),
                     [1.0, 1.0, 1.0, 1.0],
-                    gpu,
+                    None,
+                    screen,
                 );
-                draw_text_line(
-                    ui_pass,
+                gpu.text_renderer.draw_text(
                     &*data.device,
                     cmd,
-                    screen,
+                    ui_pass,
                     font,
-                    Vec2::new(sx, sy),
                     sub_text,
                     font_size_sub,
+                    Vec2::new(sx, sy),
                     [0.6, 0.7, 0.9, 0.8],
-                    gpu,
+                    None,
+                    screen,
                 );
 
                 ui_pass.end(&*data.device, cmd);
@@ -234,43 +233,5 @@ impl RenderPipeline for LoadingPipeline {
 
     fn on_resize(&mut self, _graph: &mut RenderGraph, _width: u32, _height: u32) -> anyhow::Result<()> {
         Ok(())
-    }
-}
-
-unsafe fn draw_text_line(
-    ui_pass: &UiPass,
-    device: &ash::Device,
-    cmd: vk::CommandBuffer,
-    screen_size: [f32; 2],
-    font: FontId,
-    origin: Vec2,
-    text: &str,
-    px: f32,
-    color: [f32; 4],
-    gpu: &mut GpuAssetServer,
-) {
-    use crate::assets::ui::font_manager::FontManager;
-
-    let scale = FontManager::scale_for_px(px);
-
-    let ascent = px * 0.8;
-    let baseline = Vec2::new(origin.x, origin.y + ascent);
-    let mut cursor_x = baseline.x;
-
-    for ch in text.chars() {
-        if let Some(glyph) = gpu.font_manager.glyph(font, ch, px) {
-            let slot = gpu.gpu_fonts.slot_for_glyph(&glyph);
-            ui_pass.draw_sdf_glyph(
-                device,
-                cmd,
-                screen_size,
-                Vec2::new(cursor_x, baseline.y),
-                &glyph,
-                slot,
-                color,
-                scale,
-            );
-        }
-        cursor_x += gpu.font_manager.advance(font, ch, px);
     }
 }

@@ -7,7 +7,7 @@ pub mod material;
 pub mod mesh;
 pub mod pending;
 pub mod shader_registry;
-pub mod ui;
+pub mod text;
 pub mod upload;
 
 pub use cpu_server::{AsyncMeshHandle, CpuAssetServer, LoadProgress, TextureHandle};

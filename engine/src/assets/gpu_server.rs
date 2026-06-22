@@ -2,8 +2,7 @@ use crate::assets::cpu_server::TextureHandle;
 use crate::assets::material::MaterialData;
 use crate::assets::mesh::{CpuMesh, GpuMesh};
 use crate::assets::shader_registry::TextureSlot;
-use crate::assets::ui::font_manager::{FontId, FontManager, SizeBucket};
-use crate::assets::ui::gpu_font_manager::GpuFontManager;
+use crate::assets::text::{FontId, TextRenderer};
 use crate::assets::{builtin_shaders, ShaderRegistry};
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::render::world::RenderWorld;
@@ -14,8 +13,6 @@ use std::collections::HashMap;
 pub const BINDLESS_SLOT_WHITE: u32 = 0;
 
 const DEFAULT_FONT_BYTES: &[u8] = include_bytes!("../../../assets/fonts/RobotoMono.ttf");
-const DEFAULT_CHARSET: &str = crate::assets::ui::DEFAULT_CHARSET;
-const DEFAULT_FONT_SIZES: &[u32] = crate::assets::ui::DEFAULT_FONT_SIZES;
 
 enum GpuMeshState {
     Ready(GpuMesh),
@@ -32,10 +29,7 @@ pub struct GpuAssetServer {
     pub material_buffer: MaterialBuffer,
     pub bindless: BindlessSet,
 
-    pub font_manager: FontManager,
-
-    pub gpu_fonts: GpuFontManager,
-
+    pub text_renderer: TextRenderer,
     pub default_font: FontId,
 
     device: ash::Device,
@@ -61,22 +55,12 @@ impl GpuAssetServer {
         let mut shaders = ShaderRegistry::empty();
         builtin_shaders::register_builtin(&mut shaders);
 
-        let mut font_manager = FontManager::new();
-        let default_font = font_manager.load_font(DEFAULT_FONT_BYTES)?;
+        let mut text_renderer =
+            TextRenderer::new(device.clone(), physical_device, instance.clone(), command_pool, queue);
+        let default_font = text_renderer.load_font(DEFAULT_FONT_BYTES);
+        text_renderer.flush_atlas(&mut bindless)?;
 
-        for &size_px in DEFAULT_FONT_SIZES {
-            font_manager.preload(default_font, DEFAULT_CHARSET.chars(), SizeBucket::from_px(size_px as f32));
-        }
-
-        let mut gpu_fonts = GpuFontManager::new(device.clone(), physical_device, instance.clone(), command_pool, queue);
-
-        gpu_fonts.flush(&mut font_manager, &mut bindless)?;
-
-        log::info!(
-            "GpuAssetServer: white=slot0, font atlases={} pages, next_slot={}",
-            font_manager.atlases().len(),
-            bindless.next_slot(),
-        );
+        log::info!("GpuAssetServer: white=slot0, text_renderer готов, next_slot={}", bindless.next_slot());
 
         Ok(Self {
             gpu_meshes: HashMap::new(),
@@ -86,8 +70,7 @@ impl GpuAssetServer {
             shaders,
             material_buffer,
             bindless,
-            font_manager,
-            gpu_fonts,
+            text_renderer,
             default_font,
             device,
             physical_device,
@@ -97,15 +80,8 @@ impl GpuAssetServer {
         })
     }
 
-    pub fn font_slot_for_char(&mut self, font_id: FontId, ch: char, px: f32) -> u32 {
-        match self.font_manager.glyph(font_id, ch, px) {
-            Some(g) => self.gpu_fonts.slot_for_glyph(&g),
-            None => BINDLESS_SLOT_WHITE,
-        }
-    }
-
     pub fn flush_font_atlases(&mut self) -> anyhow::Result<()> {
-        self.gpu_fonts.flush(&mut self.font_manager, &mut self.bindless)
+        self.text_renderer.flush_atlas(&mut self.bindless)
     }
 
     pub fn upload_mesh(&mut self, handle: MeshHandle, cpu_mesh: &CpuMesh) -> anyhow::Result<()> {

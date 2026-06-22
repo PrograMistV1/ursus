@@ -1,5 +1,4 @@
 use crate::assets::gpu_server::GpuAssetServer;
-use crate::assets::ui::font_manager::FontId;
 use crate::assets::{GpuMesh, ShaderHandle};
 use crate::components::mesh::MaterialHandle;
 use crate::render::frame_pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
@@ -271,7 +270,18 @@ impl RenderPipeline for DefaultPipeline {
                 }
 
                 for (origin, text, px, color) in &data.ui_texts {
-                    draw_text_line(&ui_pass, &*data.device, cmd, screen, font, *origin, text, *px, *color, gpu);
+                    gpu.text_renderer.draw_text(
+                        &*data.device,
+                        cmd,
+                        &ui_pass,
+                        font,
+                        text,
+                        *px,
+                        *origin,
+                        *color,
+                        None,
+                        screen,
+                    );
                 }
 
                 ui_pass.end(&*data.device, cmd);
@@ -358,44 +368,6 @@ impl RenderPipeline for DefaultPipeline {
         }));
 
         Ok(())
-    }
-}
-
-unsafe fn draw_text_line(
-    ui_pass: &UiPass,
-    device: &ash::Device,
-    cmd: vk::CommandBuffer,
-    screen_size: [f32; 2],
-    font: FontId,
-    origin: Vec2,
-    text: &str,
-    px: f32,
-    color: [f32; 4],
-    gpu: &mut GpuAssetServer,
-) {
-    use crate::assets::ui::font_manager::FontManager;
-
-    let scale = FontManager::scale_for_px(px);
-
-    let ascent = px * 0.8;
-    let baseline = Vec2::new(origin.x, origin.y + ascent);
-    let mut cursor_x = baseline.x;
-
-    for ch in text.chars() {
-        if let Some(glyph) = gpu.font_manager.glyph(font, ch, px) {
-            let slot = gpu.gpu_fonts.slot_for_glyph(&glyph);
-            ui_pass.draw_sdf_glyph(
-                device,
-                cmd,
-                screen_size,
-                Vec2::new(cursor_x, baseline.y),
-                &glyph,
-                slot,
-                color,
-                scale,
-            );
-        }
-        cursor_x += gpu.font_manager.advance(font, ch, px);
     }
 }
 
