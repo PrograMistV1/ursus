@@ -186,4 +186,8 @@ impl GpuAssetServer {
     pub fn is_mesh_ready(&self, handle: MeshHandle) -> bool {
         matches!(self.gpu_meshes.get(&handle), Some(GpuMeshState::Ready(_)))
     }
+
+    pub fn command_pool(&self) -> vk::CommandPool {
+        self.command_pool
+    }
 }

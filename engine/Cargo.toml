@@ -24,5 +24,6 @@ gltf = "1.4.1"
 cosmic-text = "0.19.0"
 etagere = "0.3.0"
 puffin = "0.20.0"
+resvg = "0.47.0"
 
 [build-dependencies]

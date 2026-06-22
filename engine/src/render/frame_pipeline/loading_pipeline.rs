@@ -3,7 +3,7 @@ use crate::render::frame_pipeline::render_pipeline::{FrameInput, PipelineHandles
 use crate::render::graph::{pass, RenderGraph};
 use crate::vulkan::gfx_pipeline::builder::PipelineBuilder;
 use crate::vulkan::passes::ui::UiPass;
-use crate::vulkan::VulkanContext;
+use crate::vulkan::{GpuTexture, VulkanContext};
 use ash::vk;
 use glam::Vec2;
 
@@ -23,8 +23,9 @@ struct LoadingFrameData {
     height: f32,
     bindless_set: vk::DescriptorSet,
 
-    gpu_assets: *mut GpuAssetServer,
     ui_pass_ptr: *const UiPass,
+    logo_slot: u32,
+    logo_aspect: f32,
 }
 unsafe impl Send for LoadingFrameData {}
 
@@ -33,6 +34,9 @@ struct PendingState {
     bg_layout: vk::PipelineLayout,
     ui_pass: UiPass,
     device: ash::Device,
+    logo_texture: GpuTexture,
+    logo_slot: u32,
+    logo_aspect: f32,
 }
 
 thread_local! {
@@ -46,6 +50,9 @@ pub struct LoadingPipeline {
     bg_layout: vk::PipelineLayout,
     ui_pass: UiPass,
     device: ash::Device,
+    _logo_texture: GpuTexture,
+    logo_slot: u32,
+    logo_aspect: f32,
 }
 
 impl Default for LoadingPipeline {
@@ -58,8 +65,44 @@ impl Default for LoadingPipeline {
             bg_layout: s.bg_layout,
             ui_pass: s.ui_pass,
             device: s.device,
+            _logo_texture: s.logo_texture,
+            logo_slot: s.logo_slot,
+            logo_aspect: s.logo_aspect,
         }
     }
+}
+
+fn load_svg_as_rgba(path: &str) -> anyhow::Result<(Vec<u8>, u32, u32)> {
+    use resvg::{tiny_skia, usvg};
+
+    let svg_data = std::fs::read(path).map_err(|e| anyhow::anyhow!("Не удалось прочитать {}: {}", path, e))?;
+
+    let options = usvg::Options::default();
+    let tree = usvg::Tree::from_data(&svg_data, &options).map_err(|e| anyhow::anyhow!("Ошибка парсинга SVG: {}", e))?;
+
+    let svg_size = tree.size();
+    let max_dim = 512u32;
+    let scale = (max_dim as f32 / svg_size.width().max(svg_size.height())).min(4.0);
+    let w = (svg_size.width() * scale) as u32;
+    let h = (svg_size.height() * scale) as u32;
+
+    let mut pixmap =
+        tiny_skia::Pixmap::new(w, h).ok_or_else(|| anyhow::anyhow!("Не удалось создать pixmap {}x{}", w, h))?;
+
+    resvg::render(&tree, tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
+
+    let mut pixels = pixmap.data().to_vec();
+    for chunk in pixels.chunks_mut(4) {
+        let a = chunk[3] as f32 / 255.0;
+        if a > 0.001 {
+            chunk[0] = (chunk[0] as f32 / a).min(255.0) as u8;
+            chunk[1] = (chunk[1] as f32 / a).min(255.0) as u8;
+            chunk[2] = (chunk[2] as f32 / a).min(255.0) as u8;
+        }
+    }
+
+    log::info!("SVG лого загружено: {}x{} (scale={})", w, h, scale);
+    Ok((pixels, w, h))
 }
 
 impl Drop for LoadingPipeline {
@@ -103,9 +146,25 @@ impl RenderPipeline for LoadingPipeline {
 
         let ui_pass = UiPass::new(device, swapchain.format, gpu_assets.bindless.layout, &mut gpu_assets.shaders)?;
 
-        PENDING.with(|c| {
-            *c.borrow_mut() = Some(PendingState { bg_pipeline, bg_layout, ui_pass, device: device.clone() });
+        let (logo_pixels, logo_w, logo_h) = load_svg_as_rgba("assets/ursus.svg").unwrap_or_else(|e| {
+            log::warn!("Лого не загружено: {} — fallback 1x1", e);
+            (vec![255u8, 255, 255, 255], 1, 1)
         });
+        let logo_aspect = logo_w as f32 / logo_h as f32;
+
+        let logo_texture = GpuTexture::upload_no_mip(
+            device,
+            ctx.device.physical,
+            &ctx.instance.handle,
+            gpu_assets.command_pool(),
+            ctx.device.graphics_queue,
+            &logo_pixels,
+            logo_w,
+            logo_h,
+            vk::Format::R8G8B8A8_UNORM,
+            "ursus_logo",
+        )?;
+        let logo_slot = gpu_assets.bindless.alloc_slot(logo_texture.view);
 
         let device_bg = device.clone();
         pass("loading_background")
@@ -115,7 +174,7 @@ impl RenderPipeline for LoadingPipeline {
                 let sc = pool.image(h_swapchain);
                 let extent = sc.extent;
 
-                let color_attachment = vk::RenderingAttachmentInfo::default()
+                let attachment = vk::RenderingAttachmentInfo::default()
                     .image_view(sc.view)
                     .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                     .load_op(vk::AttachmentLoadOp::CLEAR)
@@ -127,7 +186,7 @@ impl RenderPipeline for LoadingPipeline {
                     &vk::RenderingInfo::default()
                         .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent })
                         .layer_count(1)
-                        .color_attachments(std::slice::from_ref(&color_attachment)),
+                        .color_attachments(std::slice::from_ref(&attachment)),
                 );
                 device_bg.cmd_set_viewport(
                     cmd,
@@ -153,68 +212,50 @@ impl RenderPipeline for LoadingPipeline {
             })
             .build(graph);
 
-        pass("loading_text")
+        pass("loading_logo")
             .read_write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .record(move |cmd, pool, ctx_ptr| unsafe {
                 let data = &*(ctx_ptr as *const LoadingFrameData);
-                let gpu = &mut *data.gpu_assets;
                 let sc = pool.image(h_swapchain);
-                let ui_pass = &*data.ui_pass_ptr;
+                let ui = &*data.ui_pass_ptr;
                 let screen = [data.width, data.height];
-                let font = gpu.default_font;
 
-                let font_size_big = 80.0f32;
-                let font_size_sub = 14.0f32;
-                let text = "ENGINE";
-                let sub_text = "Loading...";
+                let logo_h = data.height.min(data.width) * 0.35;
+                let logo_w = logo_h * data.logo_aspect;
+                let logo_x = (data.width - logo_w) * 0.5;
+                let logo_y = (data.height - logo_h) * 0.5 - data.height * 0.04;
 
-                let text_w = gpu.text_renderer.measure(font, text, font_size_big).x;
-                let sub_w = gpu.text_renderer.measure(font, sub_text, font_size_sub).x;
-                let line_h = gpu.text_renderer.line_height(font_size_big);
-
-                let cx = (data.width - text_w) * 0.5;
-                let cy = (data.height - line_h) * 0.5 - 20.0;
-                let sx = (data.width - sub_w) * 0.5;
-                let sy = cy + line_h + 8.0;
-
-                ui_pass.begin(&*data.device, cmd, sc.view, sc.extent, data.bindless_set);
-
-                gpu.text_renderer.draw_text(
+                ui.begin(&*data.device, cmd, sc.view, sc.extent, data.bindless_set);
+                ui.draw_textured_rect(
                     &*data.device,
                     cmd,
-                    ui_pass,
-                    font,
-                    text,
-                    font_size_big,
-                    Vec2::new(cx, cy),
+                    screen,
+                    Vec2::new(logo_x, logo_y),
+                    Vec2::new(logo_w, logo_h),
                     [1.0, 1.0, 1.0, 1.0],
-                    None,
-                    screen,
+                    data.logo_slot,
                 );
-                gpu.text_renderer.draw_text(
-                    &*data.device,
-                    cmd,
-                    ui_pass,
-                    font,
-                    sub_text,
-                    font_size_sub,
-                    Vec2::new(sx, sy),
-                    [0.6, 0.7, 0.9, 0.8],
-                    None,
-                    screen,
-                );
-
-                ui_pass.end(&*data.device, cmd);
+                ui.end(&*data.device, cmd);
                 Ok(())
             })
             .build(graph);
+
+        PENDING.with(|c| {
+            *c.borrow_mut() = Some(PendingState {
+                bg_pipeline,
+                bg_layout,
+                ui_pass,
+                device: device.clone(),
+                logo_texture,
+                logo_slot,
+                logo_aspect,
+            });
+        });
 
         Ok(PipelineHandles { swapchain: h_swapchain })
     }
 
     fn prepare_frame(&mut self, graph: &mut RenderGraph, input: FrameInput<'_>) -> anyhow::Result<()> {
-        input.gpu_assets.flush_font_atlases()?;
-
         let (w, h) = input.output_resolution;
 
         graph.set_frame_data(Box::new(LoadingFrameData {
@@ -224,8 +265,9 @@ impl RenderPipeline for LoadingPipeline {
             width: w as f32,
             height: h as f32,
             bindless_set: input.gpu_assets.bindless.set,
-            gpu_assets: input.gpu_assets as *mut GpuAssetServer,
             ui_pass_ptr: &self.ui_pass as *const UiPass,
+            logo_slot: self.logo_slot,
+            logo_aspect: self.logo_aspect,
         }));
 
         Ok(())

@@ -27,6 +27,12 @@ void main() {
         return;
     }
 
+    if (pc.use_texture == 2u) {
+        vec4 tex = texture(sampler2D(textures[nonuniformEXT(pc.tex_index)], samp), fragUV);
+        outColor = fragColor * tex;
+        return;
+    }
+
     float alpha = texture(sampler2D(textures[nonuniformEXT(pc.tex_index)], samp), fragUV).r;
     outColor = vec4(fragColor.rgb, fragColor.a * alpha);
 }
