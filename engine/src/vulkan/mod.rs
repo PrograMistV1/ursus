@@ -36,7 +36,9 @@ impl VulkanContext {
     pub fn from_handles(display: RawDisplayHandle, window: RawWindowHandle, validation: bool) -> anyhow::Result<Self> {
         let instance = Arc::new(Instance::new(display, validation)?);
 
-        let debug = if validation {
+        let validation_active = instance.validation_active;
+
+        let debug = if validation_active {
             Some(DebugMessenger::new(&instance)?)
         } else {
             None
@@ -48,7 +50,7 @@ impl VulkanContext {
 
         let swapchain = Swapchain::new(&instance, &device, surface, 1280, 720, false)?;
 
-        let debug_utils = if validation {
+        let debug_utils = if validation_active {
             Some(Arc::new(debug_utils::Device::new(&instance.handle, &device.handle)))
         } else {
             None

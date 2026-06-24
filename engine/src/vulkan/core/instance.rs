@@ -4,6 +4,7 @@ use raw_window_handle::RawDisplayHandle;
 pub struct Instance {
     pub entry: ash::Entry,
     pub handle: ash::Instance,
+    pub validation_active: bool,
 }
 
 impl Instance {
@@ -16,7 +17,8 @@ impl Instance {
             extensions.push(ash::ext::debug_utils::NAME.as_ptr());
         }
 
-        let layers: Vec<*const i8> = if validation && Self::has_validation(&entry) {
+        let validation_active = validation && Self::has_validation(&entry);
+        let layers: Vec<*const i8> = if validation_active {
             log::info!("Validation layers включены");
             vec![c"VK_LAYER_KHRONOS_validation".as_ptr()]
         } else {
@@ -42,7 +44,7 @@ impl Instance {
         let handle = unsafe { entry.create_instance(&create_info, None)? };
         log::info!("Vulkan instance создан (API 1.3)");
 
-        Ok(Self { entry, handle })
+        Ok(Self { entry, handle, validation_active })
     }
 
     fn has_validation(entry: &ash::Entry) -> bool {
