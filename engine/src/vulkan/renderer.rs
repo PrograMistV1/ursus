@@ -40,6 +40,8 @@ pub struct Renderer<P: RenderPipeline> {
 
     pub commands: Commands,
     pub(crate) frames: Vec<FrameSync>,
+    pub(crate) acquire_semaphores: Vec<vk::Semaphore>,
+    pub(crate) present_semaphores: Vec<vk::Semaphore>,
     pub(crate) current_frame: usize,
     pub(crate) swapchain_loader: ash::khr::swapchain::Device,
     pub(crate) device: Arc<Device>,
@@ -69,13 +71,9 @@ impl<P: RenderPipeline> Renderer<P> {
             device.wait_for_fences(&[frame.render_fence], true, u64::MAX)?;
         }
 
+        let acquire_sem = self.acquire_semaphores[self.current_frame];
         let (image_index, suboptimal) = match unsafe {
-            self.swapchain_loader.acquire_next_image(
-                swapchain.handle,
-                u64::MAX,
-                frame.image_available,
-                vk::Fence::null(),
-            )
+            self.swapchain_loader.acquire_next_image(swapchain.handle, u64::MAX, acquire_sem, vk::Fence::null())
         } {
             Ok(r) => r,
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => return Ok(true),
@@ -123,16 +121,16 @@ impl<P: RenderPipeline> Renderer<P> {
 
         unsafe { device.end_command_buffer(cmd)? };
 
-        let signal_semaphores = [frame.render_finished];
+        let present_sem = self.present_semaphores[image_index as usize];
 
         unsafe {
             puffin::profile_scope!("queue_submit");
             let wait_info = vk::SemaphoreSubmitInfo::default()
-                .semaphore(frame.image_available)
+                .semaphore(acquire_sem)
                 .stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT);
 
             let signal_info = vk::SemaphoreSubmitInfo::default()
-                .semaphore(frame.render_finished)
+                .semaphore(present_sem)
                 .stage_mask(vk::PipelineStageFlags2::ALL_GRAPHICS);
 
             let cmd_info = vk::CommandBufferSubmitInfo::default().command_buffer(cmd);
@@ -150,6 +148,7 @@ impl<P: RenderPipeline> Renderer<P> {
 
         let needs_recreate = match unsafe {
             puffin::profile_scope!("queue_present");
+            let signal_semaphores = [present_sem];
             self.swapchain_loader.queue_present(
                 ctx.device.present_queue,
                 &vk::PresentInfoKHR::default()
@@ -226,6 +225,20 @@ pub fn build_dyn_renderer<P: RenderPipeline + Default + 'static>(
     prev_fsr_sharpness: f32,
 ) -> anyhow::Result<Box<dyn DynRenderer>> {
     let swapchain = ctx.swapchain.as_ref().unwrap();
+    let image_count = swapchain.images.len();
+
+    let acquire_semaphores: Vec<vk::Semaphore> = (0..image_count)
+        .map(|_| {
+            let info = vk::SemaphoreCreateInfo::default();
+            unsafe { ctx.device.handle.create_semaphore(&info, None) }
+        })
+        .collect::<Result<_, _>>()?;
+
+    let present_semaphores: Vec<vk::Semaphore> = (0..image_count)
+        .map(|_| unsafe {
+            ctx.device.handle.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
+        })
+        .collect::<Result<_, _>>()?;
 
     let pool = ResourcePool::new(
         ctx.device.handle.clone(),
@@ -267,6 +280,8 @@ pub fn build_dyn_renderer<P: RenderPipeline + Default + 'static>(
         pipeline: Default::default(),
         commands,
         frames,
+        acquire_semaphores,
+        present_semaphores,
         current_frame: 0,
         swapchain_loader,
         device: ctx.device.clone(),
@@ -278,6 +293,14 @@ pub fn build_dyn_renderer<P: RenderPipeline + Default + 'static>(
 
 impl<P: RenderPipeline> Drop for Renderer<P> {
     fn drop(&mut self) {
-        unsafe { self.device.handle.device_wait_idle().ok() };
+        unsafe {
+            self.device.handle.device_wait_idle().ok();
+            for &sem in &self.acquire_semaphores {
+                self.device.handle.destroy_semaphore(sem, None);
+            }
+            for &sem in &self.present_semaphores {
+                self.device.handle.destroy_semaphore(sem, None);
+            }
+        }
     }
 }
