@@ -30,7 +30,7 @@ impl ExtractSchedule {
 
     pub fn run(&self, world: &GameWorld, dst: &mut RenderWorld) {
         for system in &self.systems {
-            puffin::profile_scope!(system.name());
+            puffin::profile_scope!("extract_system", system.name());
             system.extract(world, dst);
         }
     }

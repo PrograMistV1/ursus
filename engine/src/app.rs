@@ -97,6 +97,11 @@ impl Engine {
     pub fn run<A: App + 'static>(app: A) -> anyhow::Result<()> {
         env_logger::builder().filter_level(log::LevelFilter::Info).parse_default_env().init();
 
+        let server_addr = format!("127.0.0.1:{}", puffin_http::DEFAULT_PORT);
+        let _puffin_server = puffin_http::Server::new(&server_addr)?;
+        log::info!("Run this to view profiling data:  puffin_viewer {server_addr}");
+        puffin::set_scopes_on(true);
+
         let initial_pipeline = A::initial_pipeline();
 
         let event_loop = EventLoop::new()?;
@@ -244,8 +249,6 @@ impl ApplicationHandler for EngineHandler {
             }
 
             WindowEvent::RedrawRequested => {
-                puffin::GlobalProfiler::lock().new_frame();
-
                 let frame_start = std::time::Instant::now();
 
                 state.ctx.poll_assets();
@@ -262,12 +265,11 @@ impl ApplicationHandler for EngineHandler {
                 state.tick_accumulator += dt;
                 while state.tick_accumulator >= TICK_RATE {
                     self.app.on_update(&mut state.ctx, TICK_RATE);
+                    state.ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);
                     state.tick_accumulator -= TICK_RATE;
                 }
 
                 self.app.on_render(&mut state.ctx);
-
-                state.ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);
 
                 state.window.request_redraw();
 

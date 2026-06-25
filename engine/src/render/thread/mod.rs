@@ -61,6 +61,7 @@ fn render_loop(
     let _ = ready_tx.send(());
 
     loop {
+        puffin::GlobalProfiler::lock().new_frame();
         loop {
             match cmd_rx.try_recv() {
                 Ok(cmd) => match cmd {
