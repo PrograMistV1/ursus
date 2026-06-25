@@ -41,6 +41,6 @@ impl ExtractSystem for UiExtract {
         rw.insert(ui_texts);
     }
     fn name(&self) -> &'static str {
-        "extract_meshes"
+        "extract_ui"
     }
 }
