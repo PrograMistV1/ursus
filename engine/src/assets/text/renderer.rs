@@ -69,13 +69,6 @@ impl TextRenderer {
         FontId(id)
     }
 
-    fn attrs_for(&self, font: FontId) -> Attrs<'_> {
-        match self.families.get(&font) {
-            Some(name) => Attrs::new().family(Family::Name(name)),
-            None => Attrs::new(),
-        }
-    }
-
     pub fn measure(&mut self, font: FontId, text: &str, px: f32) -> Vec2 {
         let metrics = Metrics::new(px, px * 1.2);
         let family_name: Option<String> = self.families.get(&font).cloned();
