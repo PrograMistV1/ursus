@@ -8,7 +8,7 @@ use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::upload::GpuUploadRequest;
 use crate::render::triple_buffer::TripleBuffer;
-use crate::render::world::{ExtractedRenderSettings, RenderWorld};
+use crate::render::world::{RenderWorld};
 use crate::vulkan::VulkanContext;
 
 use self::command::{PipelineFactory, RenderCommand};
@@ -115,13 +115,9 @@ fn render_loop(
 
         let render_world = triple_buf.render_slot(render_idx);
 
-        let settings = render_world.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
-
-        let clear_color = settings.clear_color;
-
         gpu_assets.upload_materials_from_render_world(render_world);
 
-        let needs_recreate = renderer.draw_frame(&vk, render_world, &mut gpu_assets, clear_color)?;
+        let needs_recreate = renderer.draw_frame(&vk, render_world, &mut gpu_assets)?;
 
         if needs_recreate {
             let sw = vk.swapchain.as_ref().unwrap();

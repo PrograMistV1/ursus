@@ -3,19 +3,10 @@ use crate::render::graph::RenderGraph;
 use crate::render::resource::ResourceHandle;
 use crate::render::world::RenderWorld;
 use crate::vulkan::VulkanContext;
-use ash::vk;
 
 pub struct FrameInput<'a> {
-    pub device: &'a ash::Device,
     pub render_world: &'a RenderWorld,
     pub gpu_assets: &'a mut GpuAssetServer,
-    pub graphics_queue: vk::Queue,
-    pub command_pool: vk::CommandPool,
-    pub exposure: f32,
-    pub clear_color: [f32; 4],
-    pub internal_resolution: (u32, u32),
-    pub output_resolution: (u32, u32),
-    pub fsr_sharpness: f32,
 }
 
 pub trait RenderPipeline: Send + 'static {

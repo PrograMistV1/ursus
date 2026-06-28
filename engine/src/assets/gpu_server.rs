@@ -183,6 +183,10 @@ impl GpuAssetServer {
         }
     }
 
+    pub fn device(&self) -> &ash::Device {
+        &self.device
+    }
+
     pub fn is_mesh_ready(&self, handle: MeshHandle) -> bool {
         matches!(self.gpu_meshes.get(&handle), Some(GpuMeshState::Ready(_)))
     }

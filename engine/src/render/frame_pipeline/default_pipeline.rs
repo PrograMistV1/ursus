@@ -1,23 +1,21 @@
 use crate::assets::gpu_server::GpuAssetServer;
-use crate::assets::{GpuMesh, ShaderHandle};
-use crate::components::mesh::MaterialHandle;
 use crate::render::frame_pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
 use crate::render::graph::{pass, RenderGraph};
 use crate::render::resource::{ResourceDesc, ResourceExtent};
-use crate::render::world::{ExtractedInstance, ExtractedLights};
+use crate::render::world::{
+    ExtractedCamera, ExtractedLights, ExtractedMeshes, ExtractedRenderSettings, ExtractedShadowMeshes,
+};
 use crate::vulkan::passes::depth_prepass::{DepthPrepass, DepthPrepassDrawCall};
 use crate::vulkan::passes::fsr::{compute_easu_con, compute_rcas_con, FsrPass};
 use crate::vulkan::passes::geometry::GeometryPass;
 use crate::vulkan::passes::lighting::LightingPass;
 use crate::vulkan::passes::post_process::PostProcessPass;
 use crate::vulkan::passes::shadow::{ShadowDrawCall, ShadowPass};
-use crate::vulkan::passes::ui::UiPass;
 use crate::vulkan::resources::gbuffer::GBuffer;
 use crate::vulkan::resources::light_buffer::LightingUbo;
 use crate::vulkan::resources::shadow_map::SHADOW_MAP_SIZE;
 use crate::vulkan::{DrawCall, VulkanContext};
 use ash::vk;
-use glam::{Mat4, Vec2};
 use std::sync::Arc;
 
 const LDR_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
@@ -94,23 +92,34 @@ impl RenderPipeline for DefaultPipeline {
 
         pass("shadow")
             .write(h_shadow_map, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .record(move |cmd, pool, ctx_ptr| unsafe {
-                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+            .record(move |cmd, pool, rw, gpu| {
                 let sm = pool.image(h_shadow_map);
-                let calls: Vec<ShadowDrawCall> = data.shadow_calls.iter().map(|dc| dc.as_shadow_draw_call()).collect();
-                shadow_pass.record(&*data.device, cmd, &sm, data.light_view_proj, &calls);
+                let lights = rw.get::<ExtractedLights>().cloned().unwrap_or_default();
+                let meshes = rw.get::<ExtractedShadowMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
+                let calls: Vec<ShadowDrawCall> = meshes
+                    .iter()
+                    .filter_map(|inst| {
+                        Some(ShadowDrawCall { gpu_mesh: gpu.get_gpu_mesh(inst.mesh)?, model: inst.model })
+                    })
+                    .collect();
+                shadow_pass.record(gpu.device(), cmd, &sm, lights.light_view_proj, &calls);
                 Ok(())
             })
             .build(graph);
 
         pass("depth_prepass")
             .write(h_depth, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .record(move |cmd, pool, ctx_ptr| unsafe {
-                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+            .record(move |cmd, pool, rw, gpu| {
                 let depth = pool.image(h_depth);
-                let calls: Vec<DepthPrepassDrawCall> =
-                    data.prepass_calls.iter().map(|dc| dc.as_depth_prepass_draw_call()).collect();
-                depth_prepass.record(&*data.device, cmd, &depth, data.view_proj, &calls);
+                let camera = rw.get::<ExtractedCamera>().cloned().unwrap_or_default();
+                let meshes = rw.get::<ExtractedMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
+                let calls: Vec<DepthPrepassDrawCall> = meshes
+                    .iter()
+                    .filter_map(|inst| {
+                        Some(DepthPrepassDrawCall { gpu_mesh: gpu.get_gpu_mesh(inst.mesh)?, model: inst.model })
+                    })
+                    .collect();
+                depth_prepass.record(gpu.device(), cmd, &depth, camera.view_proj, &calls);
                 Ok(())
             })
             .build(graph);
@@ -120,22 +129,35 @@ impl RenderPipeline for DefaultPipeline {
             .write(h_gbuffer_albedo, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .write(h_gbuffer_normal, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .read_write(h_depth, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .record(move |cmd, pool, ctx_ptr| unsafe {
-                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+            .record(move |cmd, pool, rw, gpu| {
+                let camera = rw.get::<ExtractedCamera>().cloned().unwrap_or_default();
+                let meshes = rw.get::<ExtractedMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
+                let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
                 let albedo = pool.image(h_gbuffer_albedo);
                 let normal = pool.image(h_gbuffer_normal);
                 let depth = pool.image(h_depth);
-                let draw_calls: Vec<DrawCall> = data.draw_calls.iter().map(|dc| dc.as_draw_call()).collect();
+                let default_shader = gpu.shaders.by_name("diffuse").unwrap();
+                let draw_calls: Vec<DrawCall> = meshes
+                    .iter()
+                    .filter_map(|inst| {
+                        Some(DrawCall {
+                            gpu_mesh: gpu.get_gpu_mesh(inst.mesh)?,
+                            model: inst.model,
+                            material: inst.material,
+                            shader: default_shader,
+                        })
+                    })
+                    .collect();
                 geometry_pass.record(
-                    &*data.device,
+                    gpu.device(),
                     cmd,
                     &albedo,
                     &normal,
                     &depth,
-                    data.clear_color,
-                    data.view_proj,
+                    settings.clear_color,
+                    camera.view_proj,
                     &draw_calls,
-                    &*data.gpu_assets,
+                    gpu,
                     debug_utils.as_deref(),
                 );
                 Ok(())
@@ -152,11 +174,19 @@ impl RenderPipeline for DefaultPipeline {
             .bind_sampled(h_gbuffer_normal, lighting_pass.descriptor_set, 1, lighting_pass.sampler)
             .bind_sampled(h_depth, lighting_pass.descriptor_set, 2, lighting_pass.sampler)
             .bind_sampled(h_shadow_map, lighting_pass.descriptor_set, 4, lighting_pass.shadow_sampler)
-            .record(move |cmd, pool, ctx_ptr| unsafe {
-                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+            .record(move |cmd, pool, rw, gpu| {
+                let camera = rw.get::<ExtractedCamera>().cloned().unwrap_or_default();
+                let lights = rw.get::<ExtractedLights>().cloned().unwrap_or_default();
                 let hdr = pool.image(h_hdr);
-                lighting_pass.upload_lights(&data.lighting);
-                lighting_pass.record(&*data.device, cmd, &hdr, data.view, data.proj);
+                let ubo = LightingUbo {
+                    directional: lights.directional,
+                    point_lights: lights.point_lights,
+                    point_light_count: lights.point_light_count,
+                    _pad: [0; 3],
+                    light_space_matrix: lights.light_view_proj.to_cols_array_2d(),
+                };
+                lighting_pass.upload_lights(&ubo);
+                lighting_pass.record(gpu.device(), cmd, &hdr, camera.view, camera.proj);
                 Ok(())
             })
             .build(graph);
@@ -165,10 +195,10 @@ impl RenderPipeline for DefaultPipeline {
             .read(h_hdr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .write(h_ldr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .bind_sampled(h_hdr, post_pass.descriptor_set, 0, post_pass.sampler)
-            .record(move |cmd, pool, ctx_ptr| unsafe {
-                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+            .record(move |cmd, pool, rw, gpu| {
+                let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
                 let ldr = pool.image(h_ldr);
-                post_pass.record_to_target(&*data.device, cmd, &ldr, data.exposure);
+                post_pass.record_to_target(gpu.device(), cmd, &ldr, settings.exposure);
                 Ok(())
             })
             .build(graph);
@@ -182,13 +212,13 @@ impl RenderPipeline for DefaultPipeline {
             .read(h_ldr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .write(h_fsr_easu, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .bind_sampled(h_ldr, fsr_easu_set, 0, fsr_sampler)
-            .record(move |cmd, pool, ctx_ptr| unsafe {
-                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+            .record(move |cmd, pool, rw, gpu| {
                 let dst = pool.image(h_fsr_easu);
-                let (iw, ih) = data.internal_resolution;
-                let (ow, oh) = data.output_resolution;
-                let pc = compute_easu_con((iw as f32, ih as f32), (iw as f32, ih as f32), (ow as f32, oh as f32));
-                fsr_easu.record_easu(&*data.device, cmd, &dst, &pc);
+                let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
+                let (iw, ih) = (dst.extent.width, dst.extent.height);
+                let (ow, oh) = settings.output_size;
+                let pc = compute_easu_con((iw as f32, ih as f32), (iw as f32, ih as f32), (ow, oh));
+                fsr_easu.record_easu(gpu.device(), cmd, &dst, &pc);
                 Ok(())
             })
             .build(graph);
@@ -197,19 +227,19 @@ impl RenderPipeline for DefaultPipeline {
             .read(h_fsr_easu, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .write(h_fsr_rcas, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .bind_sampled(h_fsr_easu, fsr_rcas_set, 0, fsr_sampler)
-            .record(move |cmd, pool, ctx_ptr| unsafe {
-                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
+            .record(move |cmd, pool, rw, gpu| {
                 let dst = pool.image(h_fsr_rcas);
-                let pc = compute_rcas_con(data.fsr_sharpness);
-                fsr_rcas.record_rcas(&*data.device, cmd, &dst, &pc);
+                let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
+                let pc = compute_rcas_con(settings.fsr_sharpness);
+                fsr_rcas.record_rcas(gpu.device(), cmd, &dst, &pc);
                 Ok(())
             })
             .build(graph);
 
-        let blit_handle = pass("blit_to_swapchain")
+        pass("blit_to_swapchain")
             .read(h_fsr_rcas, vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
             .write(h_swapchain, vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .record(move |cmd, pool, ctx_ptr| {
+            .record(move |cmd, pool, _rw, gpu| {
                 let src = pool.image(h_fsr_rcas);
                 let dst = pool.image(h_swapchain);
                 let blit = vk::ImageBlit2::default()
@@ -234,8 +264,7 @@ impl RenderPipeline for DefaultPipeline {
                         vk::Offset3D { x: dst.extent.width as i32, y: dst.extent.height as i32, z: 1 },
                     ]);
                 unsafe {
-                    let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
-                    (*data.device).cmd_blit_image2(
+                    gpu.device().cmd_blit_image2(
                         cmd,
                         &vk::BlitImageInfo2::default()
                             .src_image(src.image)
@@ -250,7 +279,7 @@ impl RenderPipeline for DefaultPipeline {
             })
             .build(graph);
 
-        let ui_pass =
+        /*let ui_pass =
             UiPass::new(&ctx.device.handle, swapchain.format, gpu_assets.bindless.layout, &mut gpu_assets.shaders)?;
 
         pass("ui")
@@ -287,132 +316,13 @@ impl RenderPipeline for DefaultPipeline {
                 ui_pass.end(&*data.device, cmd);
                 Ok(())
             })
-            .build(graph);
+            .build(graph);*/
 
         Ok(PipelineHandles { swapchain: h_swapchain })
     }
 
-    fn prepare_frame(&mut self, graph: &mut RenderGraph, input: FrameInput<'_>) -> anyhow::Result<()> {
+    fn prepare_frame(&mut self, _graph: &mut RenderGraph, input: FrameInput<'_>) -> anyhow::Result<()> {
         input.gpu_assets.flush_font_atlases()?;
-
-        let rw = input.render_world;
-        let default_shader = input.gpu_assets.shaders.by_name("diffuse").unwrap();
-
-        let to_owned = |instances: &[ExtractedInstance]| -> Vec<OwnedDrawCall> {
-            instances
-                .iter()
-                .filter_map(|inst| {
-                    let gpu = input.gpu_assets.get_gpu_mesh(inst.mesh)?;
-                    Some(OwnedDrawCall {
-                        gpu_mesh_ptr: gpu as *const _,
-                        model: inst.model,
-                        material: inst.material,
-                        shader: default_shader,
-                    })
-                })
-                .collect()
-        };
-
-        let meshes = rw.get::<crate::render::world::ExtractedMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
-        let shadow_meshes =
-            rw.get::<crate::render::world::ExtractedShadowMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
-        let camera = rw.get::<crate::render::world::ExtractedCamera>().cloned().unwrap_or_default();
-        let lights = rw.get::<ExtractedLights>().cloned().unwrap_or_default();
-
-        let ui_rects = rw
-            .get::<crate::render::world::ExtractedUiRects>()
-            .map(|r| r.rects.iter().map(|r| (r.pos, r.size, r.color)).collect())
-            .unwrap_or_default();
-        let ui_texts = rw
-            .get::<crate::render::world::ExtractedUiTexts>()
-            .map(|t| t.texts.iter().map(|t| (t.pos, t.text.clone(), t.font_size, t.color)).collect())
-            .unwrap_or_default();
-
-        let mut draw_calls = to_owned(meshes);
-        draw_calls.sort_by_key(|dc| dc.shader.0);
-        let prepass_calls = draw_calls
-            .iter()
-            .map(|dc| OwnedDrawCall {
-                gpu_mesh_ptr: dc.gpu_mesh_ptr,
-                model: dc.model,
-                material: None,
-                shader: dc.shader,
-            })
-            .collect();
-        let shadow_calls = to_owned(shadow_meshes);
-
-        graph.set_frame_data(Box::new(DefaultPipelineFrameData {
-            device: input.device,
-            draw_calls,
-            prepass_calls,
-            shadow_calls,
-            view: camera.view,
-            proj: camera.proj,
-            view_proj: camera.view_proj,
-            light_view_proj: lights.light_view_proj,
-            lighting: LightingUbo {
-                directional: lights.directional,
-                point_lights: lights.point_lights,
-                point_light_count: lights.point_light_count,
-                _pad: [0; 3],
-                light_space_matrix: lights.light_view_proj.to_cols_array_2d(),
-            },
-            ui_rects,
-            ui_texts,
-            gpu_assets: input.gpu_assets as *mut GpuAssetServer,
-            exposure: input.exposure,
-            fsr_sharpness: input.fsr_sharpness,
-            clear_color: input.clear_color,
-            internal_resolution: input.internal_resolution,
-            output_resolution: input.output_resolution,
-        }));
-
         Ok(())
     }
 }
-
-struct OwnedDrawCall {
-    gpu_mesh_ptr: *const GpuMesh,
-    model: Mat4,
-    material: Option<MaterialHandle>,
-    shader: ShaderHandle,
-}
-unsafe impl Send for OwnedDrawCall {}
-
-impl OwnedDrawCall {
-    fn as_shadow_draw_call(&self) -> ShadowDrawCall<'_> {
-        ShadowDrawCall { gpu_mesh: unsafe { &*self.gpu_mesh_ptr }, model: self.model }
-    }
-    fn as_depth_prepass_draw_call(&self) -> DepthPrepassDrawCall<'_> {
-        DepthPrepassDrawCall { gpu_mesh: unsafe { &*self.gpu_mesh_ptr }, model: self.model }
-    }
-    fn as_draw_call(&self) -> DrawCall<'_> {
-        DrawCall {
-            gpu_mesh: unsafe { &*self.gpu_mesh_ptr },
-            model: self.model,
-            material: self.material,
-            shader: self.shader,
-        }
-    }
-}
-
-struct DefaultPipelineFrameData {
-    device: *const ash::Device,
-    draw_calls: Vec<OwnedDrawCall>,
-    prepass_calls: Vec<OwnedDrawCall>,
-    shadow_calls: Vec<OwnedDrawCall>,
-    view: Mat4,
-    proj: Mat4,
-    view_proj: Mat4,
-    light_view_proj: Mat4,
-    lighting: LightingUbo,
-    ui_rects: Vec<(Vec2, Vec2, [f32; 4])>,
-    ui_texts: Vec<(Vec2, String, f32, [f32; 4])>,
-    gpu_assets: *mut GpuAssetServer,
-    exposure: f32,
-    fsr_sharpness: f32,
-    clear_color: [f32; 4],
-    internal_resolution: (u32, u32),
-    output_resolution: (u32, u32),
-}
-unsafe impl Send for DefaultPipelineFrameData {}

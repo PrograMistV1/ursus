@@ -85,7 +85,12 @@ impl EngineContext {
     pub(crate) fn publish_frame(&self, clear_color: [f32; 4]) {
         let write = self.triple_buf.write_slot();
         write.clear();
-        write.insert(ExtractedRenderSettings { clear_color, output_size: self.output_size });
+        write.insert(ExtractedRenderSettings {
+            clear_color,
+            output_size: self.output_size,
+            fsr_sharpness: 0.2,
+            exposure: 0.5,
+        });
         self.extract_schedule.run(&self.world, write);
         self.triple_buf.publish();
     }

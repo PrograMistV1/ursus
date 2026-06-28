@@ -18,8 +18,7 @@ pub trait DynRenderer: Send {
         &mut self,
         ctx: &VulkanContext,
         render_world: &RenderWorld,
-        gpu_assets: &mut GpuAssetServer,
-        clear_color: [f32; 4],
+        gpu_assets: &mut GpuAssetServer
     ) -> anyhow::Result<bool>;
 
     fn resize_output(&mut self, w: u32, h: u32) -> anyhow::Result<()>;
@@ -57,7 +56,6 @@ impl<P: RenderPipeline> Renderer<P> {
         ctx: &VulkanContext,
         render_world: &RenderWorld,
         gpu_assets: &mut GpuAssetServer,
-        clear_color: [f32; 4],
     ) -> anyhow::Result<bool> {
         puffin::profile_function!();
 
@@ -97,18 +95,7 @@ impl<P: RenderPipeline> Renderer<P> {
             )?;
         }
 
-        let input = FrameInput {
-            device,
-            render_world,
-            gpu_assets,
-            graphics_queue: ctx.device.graphics_queue,
-            command_pool: self.commands.pool,
-            exposure: self.exposure,
-            clear_color,
-            internal_resolution: self.graph.internal_resolution(),
-            output_resolution: self.graph.output_resolution(),
-            fsr_sharpness: self.fsr_sharpness,
-        };
+        let input = FrameInput { render_world, gpu_assets };
 
         {
             puffin::profile_scope!("pipeline_prepare");
@@ -116,7 +103,7 @@ impl<P: RenderPipeline> Renderer<P> {
         }
         {
             puffin::profile_scope!("graph_execute");
-            self.graph.execute(device, cmd)?;
+            self.graph.execute(device, cmd, render_world, gpu_assets)?;
         }
 
         unsafe { device.end_command_buffer(cmd)? };
@@ -185,10 +172,9 @@ impl<P: RenderPipeline> DynRenderer for Renderer<P> {
         &mut self,
         ctx: &VulkanContext,
         render_world: &RenderWorld,
-        gpu_assets: &mut GpuAssetServer,
-        clear_color: [f32; 4],
+        gpu_assets: &mut GpuAssetServer
     ) -> anyhow::Result<bool> {
-        self.draw_frame(ctx, render_world, gpu_assets, clear_color)
+        self.draw_frame(ctx, render_world, gpu_assets)
     }
 
     fn resize_output(&mut self, w: u32, h: u32) -> anyhow::Result<()> {
@@ -235,9 +221,7 @@ pub fn build_dyn_renderer<P: RenderPipeline + Default + 'static>(
         .collect::<Result<_, _>>()?;
 
     let present_semaphores: Vec<vk::Semaphore> = (0..image_count)
-        .map(|_| unsafe {
-            ctx.device.handle.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
-        })
+        .map(|_| unsafe { ctx.device.handle.create_semaphore(&vk::SemaphoreCreateInfo::default(), None) })
         .collect::<Result<_, _>>()?;
 
     let pool = ResourcePool::new(

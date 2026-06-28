@@ -1,7 +1,9 @@
+use crate::assets::gpu_server::GpuAssetServer;
 use crate::render::resource::{
     make_barrier, DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, LayoutTracker, ResourceHandle,
     ResourcePool,
 };
+use crate::render::world::RenderWorld;
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
 use crate::vulkan::timestamps::{GpuFrameTimes, GpuTimestampPool};
 use ash::ext::debug_utils;
@@ -23,9 +25,6 @@ pub struct PassAccess {
     pub layout: vk::ImageLayout,
 }
 
-struct FrameDataBox(*mut ());
-unsafe impl Send for FrameDataBox {}
-
 impl PassAccess {
     pub fn read(handle: ResourceHandle, layout: vk::ImageLayout) -> Self {
         Self { handle, access: AccessType::Read, layout }
@@ -40,7 +39,8 @@ impl PassAccess {
     }
 }
 
-pub type RecordFn = Box<dyn FnMut(vk::CommandBuffer, &ResourcePool, *mut ()) -> anyhow::Result<()> + Send>;
+pub type RecordFn =
+    Box<dyn FnMut(vk::CommandBuffer, &ResourcePool, &RenderWorld, &GpuAssetServer) -> anyhow::Result<()> + Send>;
 
 pub struct PassNode {
     pub name: String,
@@ -97,9 +97,6 @@ pub struct RenderGraph {
     compiled_passes: Vec<CompiledPass>,
     compiled_finals: Vec<CompiledBarrier>,
 
-    frame_data: Option<FrameDataBox>,
-    frame_data_drop: Option<Box<dyn FnOnce(*mut ()) + Send>>,
-
     barrier_scratch: Vec<vk::ImageMemoryBarrier2<'static>>,
 
     timestamps: Option<GpuTimestampPool>,
@@ -129,8 +126,6 @@ impl RenderGraph {
             compiled_passes: Vec::new(),
             compiled_finals: Vec::new(),
             debug_utils,
-            frame_data: None,
-            frame_data_drop: None,
             barrier_scratch: Vec::new(),
             timestamps: None,
             last_frame_times: None,
@@ -276,14 +271,18 @@ impl RenderGraph {
         }
     }
 
-    pub fn execute(&mut self, device: &ash::Device, cmd: vk::CommandBuffer) -> anyhow::Result<()> {
+    pub fn execute(
+        &mut self,
+        device: &ash::Device,
+        cmd: vk::CommandBuffer,
+        rw: &RenderWorld,
+        gpu_assets: &GpuAssetServer,
+    ) -> anyhow::Result<()> {
         assert!(self.compiled, "RenderGraph::compile() не был вызван");
 
         if let Some(ts) = &mut self.timestamps {
             ts.read_and_reset(self.current_frame, cmd);
         }
-
-        let frame_ptr = self.frame_data.as_ref().map(|b| b.0).unwrap_or(std::ptr::null_mut());
 
         for (order_idx, cp) in self.compiled_passes.iter().enumerate() {
             let node = &mut self.nodes[cp.node_index];
@@ -320,7 +319,7 @@ impl RenderGraph {
                 ts.begin_pass(cmd, self.current_frame, order_idx);
             }
 
-            (node.record)(cmd, &self.pool, frame_ptr)?;
+            (node.record)(cmd, &self.pool, rw, gpu_assets)?;
 
             if let Some(ts) = &self.timestamps {
                 ts.end_pass(cmd, self.current_frame, order_idx);
@@ -394,34 +393,6 @@ impl RenderGraph {
 
     pub fn pass_mut(&mut self, handle: PassHandle) -> &mut PassNode {
         &mut self.nodes[handle.0 as usize]
-    }
-
-    pub fn set_frame_data<T: Send + 'static>(&mut self, data: Box<T>) {
-        self.drop_frame_data_inner();
-
-        let ptr = Box::into_raw(data) as *mut ();
-        self.frame_data = Some(FrameDataBox(ptr));
-        self.frame_data_drop = Some(Box::new(|p| unsafe {
-            drop(Box::from_raw(p as *mut T));
-        }));
-    }
-
-    pub fn frame_data_ptr(&self) -> *mut () {
-        self.frame_data.as_ref().map(|b| b.0).unwrap_or(std::ptr::null_mut())
-    }
-
-    fn drop_frame_data_inner(&mut self) {
-        if let Some(drop_fn) = self.frame_data_drop.take() {
-            if let Some(FrameDataBox(ptr)) = self.frame_data.take() {
-                drop_fn(ptr);
-            }
-        }
-    }
-}
-
-impl Drop for RenderGraph {
-    fn drop(&mut self) {
-        self.drop_frame_data_inner();
     }
 }
 
@@ -575,7 +546,9 @@ impl PassBuilder {
 
     pub fn record<F>(self, f: F) -> PassNodeReady
     where
-        F: FnMut(vk::CommandBuffer, &ResourcePool, *mut ()) -> anyhow::Result<()> + Send + 'static,
+        F: FnMut(vk::CommandBuffer, &ResourcePool, &RenderWorld, &GpuAssetServer) -> anyhow::Result<()>
+            + Send
+            + 'static,
     {
         PassNodeReady {
             node: PassNode { depends_on: self.explicit_deps, ..PassNode::new(self.name, self.accesses, Box::new(f)) },

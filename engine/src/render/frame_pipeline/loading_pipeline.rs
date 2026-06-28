@@ -6,6 +6,7 @@ use crate::vulkan::passes::ui::UiPass;
 use crate::vulkan::{GpuTexture, VulkanContext};
 use ash::vk;
 use glam::Vec2;
+use std::sync::Arc;
 
 #[repr(C)]
 struct LoadingPC {
@@ -15,28 +16,11 @@ struct LoadingPC {
     height: f32,
 }
 
-struct LoadingFrameData {
-    device: *const ash::Device,
-    time: f32,
-    progress: f32,
-    width: f32,
-    height: f32,
-    bindless_set: vk::DescriptorSet,
-
-    ui_pass_ptr: *const UiPass,
-    logo_slot: u32,
-    logo_aspect: f32,
-}
-unsafe impl Send for LoadingFrameData {}
-
 struct PendingState {
     bg_pipeline: vk::Pipeline,
     bg_layout: vk::PipelineLayout,
-    ui_pass: UiPass,
     device: ash::Device,
     logo_texture: GpuTexture,
-    logo_slot: u32,
-    logo_aspect: f32,
 }
 
 thread_local! {
@@ -45,14 +29,10 @@ thread_local! {
 }
 
 pub struct LoadingPipeline {
-    start_time: std::time::Instant,
     bg_pipeline: vk::Pipeline,
     bg_layout: vk::PipelineLayout,
-    ui_pass: UiPass,
     device: ash::Device,
     _logo_texture: GpuTexture,
-    logo_slot: u32,
-    logo_aspect: f32,
 }
 
 impl Default for LoadingPipeline {
@@ -60,14 +40,10 @@ impl Default for LoadingPipeline {
         let s =
             PENDING.with(|c| c.borrow_mut().take()).expect("LoadingPipeline::default() called without prior build()");
         Self {
-            start_time: std::time::Instant::now(),
             bg_pipeline: s.bg_pipeline,
             bg_layout: s.bg_layout,
-            ui_pass: s.ui_pass,
             device: s.device,
             _logo_texture: s.logo_texture,
-            logo_slot: s.logo_slot,
-            logo_aspect: s.logo_aspect,
         }
     }
 }
@@ -144,8 +120,6 @@ impl RenderPipeline for LoadingPipeline {
                 .push_constants(std::slice::from_ref(&push_range))
                 .build(device)?;
 
-        let ui_pass = UiPass::new(device, swapchain.format, gpu_assets.bindless.layout, &mut gpu_assets.shaders)?;
-
         let (logo_pixels, logo_w, logo_h) = load_svg_as_rgba("assets/ursus.svg").unwrap_or_else(|e| {
             log::warn!("Лого не загружено: {} — fallback 1x1", e);
             (vec![255u8, 255, 255, 255], 1, 1)
@@ -166,11 +140,10 @@ impl RenderPipeline for LoadingPipeline {
         )?;
         let logo_slot = gpu_assets.bindless.alloc_slot(logo_texture.view);
 
-        let device_bg = device.clone();
+        let start_time = std::time::Instant::now();
         pass("loading_background")
             .write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .record(move |cmd, pool, ctx_ptr| unsafe {
-                let data = &*(ctx_ptr as *const LoadingFrameData);
+            .record(move |cmd, pool, _rw, gpu| {
                 let sc = pool.image(h_swapchain);
                 let extent = sc.extent;
 
@@ -181,61 +154,71 @@ impl RenderPipeline for LoadingPipeline {
                     .store_op(vk::AttachmentStoreOp::STORE)
                     .clear_value(vk::ClearValue { color: vk::ClearColorValue { float32: [0.05, 0.05, 0.08, 1.0] } });
 
-                device_bg.cmd_begin_rendering(
-                    cmd,
-                    &vk::RenderingInfo::default()
-                        .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent })
-                        .layer_count(1)
-                        .color_attachments(std::slice::from_ref(&attachment)),
-                );
-                device_bg.cmd_set_viewport(
-                    cmd,
-                    0,
-                    &[vk::Viewport {
-                        x: 0.0,
-                        y: 0.0,
+                unsafe {
+                    gpu.device().cmd_begin_rendering(
+                        cmd,
+                        &vk::RenderingInfo::default()
+                            .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent })
+                            .layer_count(1)
+                            .color_attachments(std::slice::from_ref(&attachment)),
+                    );
+                    gpu.device().cmd_set_viewport(
+                        cmd,
+                        0,
+                        &[vk::Viewport {
+                            x: 0.0,
+                            y: 0.0,
+                            width: extent.width as f32,
+                            height: extent.height as f32,
+                            min_depth: 0.0,
+                            max_depth: 1.0,
+                        }],
+                    );
+                    gpu.device().cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent }]);
+                    gpu.device().cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, bg_pipeline);
+
+                    let pc = LoadingPC {
+                        time: start_time.elapsed().as_secs_f32(),
+                        progress: 1.0,
                         width: extent.width as f32,
                         height: extent.height as f32,
-                        min_depth: 0.0,
-                        max_depth: 1.0,
-                    }],
-                );
-                device_bg.cmd_set_scissor(cmd, 0, &[vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent }]);
-                device_bg.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, bg_pipeline);
-
-                let pc = LoadingPC { time: data.time, progress: data.progress, width: data.width, height: data.height };
-                let pc_bytes = std::slice::from_raw_parts(&pc as *const LoadingPC as *const u8, size_of::<LoadingPC>());
-                device_bg.cmd_push_constants(cmd, bg_layout, vk::ShaderStageFlags::FRAGMENT, 0, pc_bytes);
-                device_bg.cmd_draw(cmd, 3, 1, 0, 0);
-                device_bg.cmd_end_rendering(cmd);
+                    };
+                    let pc_bytes =
+                        std::slice::from_raw_parts(&pc as *const LoadingPC as *const u8, size_of::<LoadingPC>());
+                    gpu.device().cmd_push_constants(cmd, bg_layout, vk::ShaderStageFlags::FRAGMENT, 0, pc_bytes);
+                    gpu.device().cmd_draw(cmd, 3, 1, 0, 0);
+                    gpu.device().cmd_end_rendering(cmd);
+                }
                 Ok(())
             })
             .build(graph);
 
+        let ui_pass =
+            Arc::new(UiPass::new(device, swapchain.format, gpu_assets.bindless.layout, &mut gpu_assets.shaders)?);
+        let ui_pass_cap = Arc::clone(&ui_pass);
+
         pass("loading_logo")
             .read_write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .record(move |cmd, pool, ctx_ptr| unsafe {
-                let data = &*(ctx_ptr as *const LoadingFrameData);
+            .record(move |cmd, pool, _rw, gpu| {
                 let sc = pool.image(h_swapchain);
-                let ui = &*data.ui_pass_ptr;
-                let screen = [data.width, data.height];
+                let screen = [sc.extent.width as f32, sc.extent.height as f32];
 
-                let logo_h = data.height.min(data.width) * 0.55;
-                let logo_w = logo_h * data.logo_aspect;
-                let logo_x = (data.width - logo_w) * 0.5;
-                let logo_y = (data.height - logo_h) * 0.5 - data.height * 0.04;
+                let logo_h = screen[1].min(screen[0]) * 0.55;
+                let logo_w = logo_h * logo_aspect;
+                let logo_x = (screen[0] - logo_w) * 0.5;
+                let logo_y = (screen[1] - logo_h) * 0.5 - screen[1] * 0.04;
 
-                ui.begin(&*data.device, cmd, sc.view, sc.extent, data.bindless_set);
-                ui.draw_textured_rect(
-                    &*data.device,
+                ui_pass_cap.begin(gpu.device(), cmd, sc.view, sc.extent, gpu.bindless.set);
+                ui_pass_cap.draw_textured_rect(
+                    gpu.device(),
                     cmd,
                     screen,
                     Vec2::new(logo_x, logo_y),
                     Vec2::new(logo_w, logo_h),
                     [1.0, 1.0, 1.0, 1.0],
-                    data.logo_slot,
+                    logo_slot,
                 );
-                ui.end(&*data.device, cmd);
+                ui_pass_cap.end(gpu.device(), cmd);
                 Ok(())
             })
             .build(graph);
@@ -244,32 +227,15 @@ impl RenderPipeline for LoadingPipeline {
             *c.borrow_mut() = Some(PendingState {
                 bg_pipeline,
                 bg_layout,
-                ui_pass,
                 device: device.clone(),
                 logo_texture,
-                logo_slot,
-                logo_aspect,
             });
         });
 
         Ok(PipelineHandles { swapchain: h_swapchain })
     }
 
-    fn prepare_frame(&mut self, graph: &mut RenderGraph, input: FrameInput<'_>) -> anyhow::Result<()> {
-        let (w, h) = input.output_resolution;
-
-        graph.set_frame_data(Box::new(LoadingFrameData {
-            device: input.device,
-            time: self.start_time.elapsed().as_secs_f32(),
-            progress: 1.0,
-            width: w as f32,
-            height: h as f32,
-            bindless_set: input.gpu_assets.bindless.set,
-            ui_pass_ptr: &self.ui_pass as *const UiPass,
-            logo_slot: self.logo_slot,
-            logo_aspect: self.logo_aspect,
-        }));
-
+    fn prepare_frame(&mut self, _graph: &mut RenderGraph, _input: FrameInput<'_>) -> anyhow::Result<()> {
         Ok(())
     }
 
