@@ -1,9 +1,10 @@
 use crate::assets::gpu_server::GpuAssetServer;
-use crate::render::frame_pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
+use crate::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use crate::render::graph::{pass, RenderGraph};
 use crate::render::resource::{ResourceDesc, ResourceExtent};
 use crate::render::world::{
     ExtractedCamera, ExtractedLights, ExtractedMeshes, ExtractedRenderSettings, ExtractedShadowMeshes,
+    PreparedUiDrawList, UiPrimitive,
 };
 use crate::vulkan::passes::depth_prepass::{DepthPrepass, DepthPrepassDrawCall};
 use crate::vulkan::passes::fsr::{compute_easu_con, compute_rcas_con, FsrPass};
@@ -11,6 +12,7 @@ use crate::vulkan::passes::geometry::GeometryPass;
 use crate::vulkan::passes::lighting::LightingPass;
 use crate::vulkan::passes::post_process::PostProcessPass;
 use crate::vulkan::passes::shadow::{ShadowDrawCall, ShadowPass};
+use crate::vulkan::passes::ui::UiPass;
 use crate::vulkan::resources::gbuffer::GBuffer;
 use crate::vulkan::resources::light_buffer::LightingUbo;
 use crate::vulkan::resources::shadow_map::SHADOW_MAP_SIZE;
@@ -236,7 +238,7 @@ impl RenderPipeline for DefaultPipeline {
             })
             .build(graph);
 
-        pass("blit_to_swapchain")
+        let blit_handle = pass("blit_to_swapchain")
             .read(h_fsr_rcas, vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
             .write(h_swapchain, vk::ImageLayout::TRANSFER_DST_OPTIMAL)
             .record(move |cmd, pool, _rw, gpu| {
@@ -279,50 +281,59 @@ impl RenderPipeline for DefaultPipeline {
             })
             .build(graph);
 
-        /*let ui_pass =
+        let ui_pass =
             UiPass::new(&ctx.device.handle, swapchain.format, gpu_assets.bindless.layout, &mut gpu_assets.shaders)?;
 
         pass("ui")
             .after(blit_handle)
             .read_write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .record(move |cmd, pool, ctx_ptr| unsafe {
-                let data = &*(ctx_ptr as *const DefaultPipelineFrameData);
-                let gpu = &mut *data.gpu_assets;
+            .record(move |cmd, pool, rw, gpu| {
+                let Some(draw_list) = rw.get::<PreparedUiDrawList>() else {
+                    return Ok(());
+                };
+
                 let sc = pool.image(h_swapchain);
                 let screen = [sc.extent.width as f32, sc.extent.height as f32];
-                let font = gpu.default_font;
 
-                ui_pass.begin(&*data.device, cmd, sc.view, sc.extent, gpu.bindless.set);
+                ui_pass.begin(gpu.device(), cmd, sc.view, sc.extent, gpu.bindless.set);
 
-                for (pos, size, color) in &data.ui_rects {
-                    ui_pass.draw_rect(&*data.device, cmd, screen, *pos, *size, *color);
+                for primitive in &draw_list.primitives {
+                    match primitive {
+                        UiPrimitive::Rect { pos, size, color, border_radius: _ } => {
+                            ui_pass.draw_rect(gpu.device(), cmd, screen, *pos, *size, *color);
+                        }
+                        UiPrimitive::TexturedRect { pos, size, color, bindless_slot, uv } => {
+                            ui_pass.draw_textured_rect_uv(
+                                gpu.device(),
+                                cmd,
+                                screen,
+                                *pos,
+                                *size,
+                                *color,
+                                *bindless_slot,
+                                *uv,
+                            );
+                        }
+                        UiPrimitive::GlyphRect { pos, size, color, bindless_slot, uv } => {
+                            ui_pass.draw_glyph_rect(
+                                gpu.device(),
+                                cmd,
+                                screen,
+                                *pos,
+                                *size,
+                                *color,
+                                *bindless_slot,
+                                *uv,
+                            );
+                        }
+                    }
                 }
 
-                for (origin, text, px, color) in &data.ui_texts {
-                    gpu.text_renderer.draw_text(
-                        &*data.device,
-                        cmd,
-                        &ui_pass,
-                        font,
-                        text,
-                        *px,
-                        *origin,
-                        *color,
-                        None,
-                        screen,
-                    );
-                }
-
-                ui_pass.end(&*data.device, cmd);
+                ui_pass.end(gpu.device(), cmd);
                 Ok(())
             })
-            .build(graph);*/
+            .build(graph);
 
         Ok(PipelineHandles { swapchain: h_swapchain })
-    }
-
-    fn prepare_frame(&mut self, _graph: &mut RenderGraph, input: FrameInput<'_>) -> anyhow::Result<()> {
-        input.gpu_assets.flush_font_atlases()?;
-        Ok(())
     }
 }

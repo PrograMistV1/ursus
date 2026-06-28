@@ -17,8 +17,6 @@ pub trait RenderPipeline: Send + 'static {
     ) -> anyhow::Result<PipelineHandles>
     where
         Self: Sized;
-
-    fn prepare_frame(&mut self, graph: &mut RenderGraph, input: FrameInput<'_>) -> anyhow::Result<()>;
     fn on_resize(&mut self, _graph: &mut RenderGraph, _width: u32, _height: u32) -> anyhow::Result<()> {
         Ok(())
     }

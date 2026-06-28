@@ -2,7 +2,6 @@ use crate::assets::cpu_server::TextureHandle;
 use crate::assets::material::MaterialData;
 use crate::assets::mesh::{CpuMesh, GpuMesh};
 use crate::assets::shader_registry::TextureSlot;
-use crate::assets::text::{FontId, TextRenderer};
 use crate::assets::{builtin_shaders, ShaderRegistry};
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::render::world::RenderWorld;
@@ -11,8 +10,6 @@ use ash::vk;
 use std::collections::HashMap;
 
 pub const BINDLESS_SLOT_WHITE: u32 = 0;
-
-const DEFAULT_FONT_BYTES: &[u8] = include_bytes!("../../../assets/fonts/RobotoMono.ttf");
 
 enum GpuMeshState {
     Ready(GpuMesh),
@@ -28,9 +25,6 @@ pub struct GpuAssetServer {
     pub shaders: ShaderRegistry,
     pub material_buffer: MaterialBuffer,
     pub bindless: BindlessSet,
-
-    pub text_renderer: TextRenderer,
-    pub default_font: FontId,
 
     device: ash::Device,
     physical_device: vk::PhysicalDevice,
@@ -55,11 +49,6 @@ impl GpuAssetServer {
         let mut shaders = ShaderRegistry::empty();
         builtin_shaders::register_builtin(&mut shaders);
 
-        let mut text_renderer =
-            TextRenderer::new(device.clone(), physical_device, instance.clone(), command_pool, queue);
-        let default_font = text_renderer.load_font(DEFAULT_FONT_BYTES);
-        text_renderer.flush_atlas(&mut bindless)?;
-
         log::info!("GpuAssetServer: white=slot0, text_renderer готов, next_slot={}", bindless.next_slot());
 
         Ok(Self {
@@ -70,18 +59,12 @@ impl GpuAssetServer {
             shaders,
             material_buffer,
             bindless,
-            text_renderer,
-            default_font,
             device,
             physical_device,
             instance,
             command_pool,
             queue,
         })
-    }
-
-    pub fn flush_font_atlases(&mut self) -> anyhow::Result<()> {
-        self.text_renderer.flush_atlas(&mut self.bindless)
     }
 
     pub fn upload_mesh(&mut self, handle: MeshHandle, cpu_mesh: &CpuMesh) -> anyhow::Result<()> {

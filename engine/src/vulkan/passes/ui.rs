@@ -112,28 +112,51 @@ impl UiPass {
         self.push_and_draw(device, cmd_buf, &pc);
     }
 
-    pub fn draw_glyph(
+    pub fn draw_textured_rect_uv(
         &self,
         device: &ash::Device,
         cmd_buf: vk::CommandBuffer,
         screen_size: [f32; 2],
         pos: Vec2,
-        glyph: &GlyphUv,
-        bindless_slot: u32,
+        size: Vec2,
         color: [f32; 4],
+        tex_index: u32,
+        uv: [f32; 4],
     ) {
-        if glyph.width == 0 || glyph.height == 0 {
-            return;
-        }
-
         let pc = UiPC {
             screen_size,
             pos: pos.into(),
-            size: [glyph.width as f32, glyph.height as f32],
+            size: size.into(),
             _pad0: [0.0; 2],
             color,
-            uv_rect: [glyph.u0, glyph.v0, glyph.u1, glyph.v1],
-            tex_index: bindless_slot,
+            uv_rect: uv,
+            tex_index,
+            use_texture: 2,
+            sdf_mode: 0,
+            _pad1: 0,
+        };
+        self.push_and_draw(device, cmd_buf, &pc);
+    }
+
+    pub fn draw_glyph_rect(
+        &self,
+        device: &ash::Device,
+        cmd_buf: vk::CommandBuffer,
+        screen_size: [f32; 2],
+        pos: Vec2,
+        size: Vec2,
+        color: [f32; 4],
+        tex_index: u32,
+        uv: [f32; 4],
+    ) {
+        let pc = UiPC {
+            screen_size,
+            pos: pos.into(),
+            size: size.into(),
+            _pad0: [0.0; 2],
+            color,
+            uv_rect: uv,
+            tex_index,
             use_texture: 1,
             sdf_mode: 0,
             _pad1: 0,
@@ -151,19 +174,7 @@ impl UiPass {
         color: [f32; 4],
         tex_index: u32,
     ) {
-        let pc = UiPC {
-            screen_size,
-            pos: pos.into(),
-            size: size.into(),
-            _pad0: [0.0; 2],
-            color,
-            uv_rect: [0.0, 0.0, 1.0, 1.0],
-            tex_index,
-            use_texture: 2,
-            sdf_mode: 0,
-            _pad1: 0,
-        };
-        self.push_and_draw(device, cmd_buf, &pc);
+        self.draw_textured_rect_uv(device, cmd_buf, screen_size, pos, size, color, tex_index, [0.0, 0.0, 1.0, 1.0]);
     }
 
     fn push_and_draw(&self, device: &ash::Device, cmd_buf: vk::CommandBuffer, pc: &UiPC) {

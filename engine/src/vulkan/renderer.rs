@@ -1,6 +1,5 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
-use crate::render::frame_pipeline::FrameInput;
 use crate::render::graph::RenderGraph;
 use crate::render::resource::ResourcePool;
 use crate::render::world::RenderWorld;
@@ -18,7 +17,7 @@ pub trait DynRenderer: Send {
         &mut self,
         ctx: &VulkanContext,
         render_world: &RenderWorld,
-        gpu_assets: &mut GpuAssetServer
+        gpu_assets: &mut GpuAssetServer,
     ) -> anyhow::Result<bool>;
 
     fn resize_output(&mut self, w: u32, h: u32) -> anyhow::Result<()>;
@@ -95,12 +94,6 @@ impl<P: RenderPipeline> Renderer<P> {
             )?;
         }
 
-        let input = FrameInput { render_world, gpu_assets };
-
-        {
-            puffin::profile_scope!("pipeline_prepare");
-            self.pipeline.prepare_frame(&mut self.graph, input)?;
-        }
         {
             puffin::profile_scope!("graph_execute");
             self.graph.execute(device, cmd, render_world, gpu_assets)?;
@@ -172,7 +165,7 @@ impl<P: RenderPipeline> DynRenderer for Renderer<P> {
         &mut self,
         ctx: &VulkanContext,
         render_world: &RenderWorld,
-        gpu_assets: &mut GpuAssetServer
+        gpu_assets: &mut GpuAssetServer,
     ) -> anyhow::Result<bool> {
         self.draw_frame(ctx, render_world, gpu_assets)
     }

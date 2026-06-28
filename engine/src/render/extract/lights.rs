@@ -1,13 +1,22 @@
+use crate::assets::upload::GpuUploadRequest;
+use crate::assets::CpuAssetServer;
 use crate::components::light::{DirectionalLightComponent, PointLightComponent};
 use crate::math::light_frustum::compute_light_view_proj;
 use crate::render::extract::ExtractSystem;
 use crate::render::world::{ExtractedLights, RenderWorld};
 use crate::vulkan::resources::light_buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
 use crate::GameWorld;
+use std::sync::mpsc::Sender;
 
 pub struct LightExtract;
 impl ExtractSystem for LightExtract {
-    fn extract(&self, world: &GameWorld, rw: &mut RenderWorld) {
+    fn extract(
+        &self,
+        world: &GameWorld,
+        rw: &mut RenderWorld,
+        _cpu_assets: &mut CpuAssetServer,
+        _upload_tx: &Sender<GpuUploadRequest>,
+    ) {
         let directional = match world.inner.query::<&DirectionalLightComponent>().iter().next() {
             Some(light) => DirectionalLight {
                 direction: [light.direction.x, light.direction.y, light.direction.z, 0.0],

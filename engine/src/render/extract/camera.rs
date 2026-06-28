@@ -1,11 +1,20 @@
+use crate::assets::upload::GpuUploadRequest;
+use crate::assets::CpuAssetServer;
 use crate::components::camera::{ActiveCamera, CameraComponent};
 use crate::render::extract::ExtractSystem;
 use crate::render::world::{ExtractedCamera, ExtractedRenderSettings, RenderWorld};
 use crate::GameWorld;
+use std::sync::mpsc::Sender;
 
 pub struct CameraExtract;
 impl ExtractSystem for CameraExtract {
-    fn extract(&self, world: &GameWorld, rw: &mut RenderWorld) {
+    fn extract(
+        &self,
+        world: &GameWorld,
+        rw: &mut RenderWorld,
+        _cpu_assets: &mut CpuAssetServer,
+        _upload_tx: &Sender<GpuUploadRequest>,
+    ) {
         let camera = world
             .inner
             .query::<(&CameraComponent, &ActiveCamera)>()

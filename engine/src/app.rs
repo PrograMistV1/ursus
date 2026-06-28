@@ -82,7 +82,7 @@ impl EngineContext {
         self.cpu_assets.flush_uploads_cpu(&self.upload_tx);
     }
 
-    pub(crate) fn publish_frame(&self, clear_color: [f32; 4]) {
+    pub(crate) fn publish_frame(&mut self, clear_color: [f32; 4]) {
         let write = self.triple_buf.write_slot();
         write.clear();
         write.insert(ExtractedRenderSettings {
@@ -91,7 +91,7 @@ impl EngineContext {
             fsr_sharpness: 0.2,
             exposure: 0.5,
         });
-        self.extract_schedule.run(&self.world, write);
+        self.extract_schedule.run(&self.world, write, &mut self.cpu_assets, &self.upload_tx);
         self.triple_buf.publish();
     }
 }
@@ -199,7 +199,7 @@ impl ApplicationHandler for EngineHandler {
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: winit::window::WindowId, event: WindowEvent) {
         if matches!(self.state, Some(EngineState::Waiting(_))) {
-            let waiting = match self.state.take().unwrap() {
+            let mut waiting = match self.state.take().unwrap() {
                 EngineState::Waiting(w) => w,
                 _ => unreachable!(),
             };

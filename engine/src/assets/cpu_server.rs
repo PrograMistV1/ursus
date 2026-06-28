@@ -1,6 +1,7 @@
 use crate::assets::loader_job::{BackgroundLoader, LoaderMessage, MeshSource};
 use crate::assets::mesh::{Aabb, CpuMesh};
 use crate::assets::shader_registry::TextureSlot;
+use crate::assets::text::{FontId, TextRenderer};
 use crate::assets::upload::GpuUploadRequest;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::components::transform::Transform;
@@ -8,6 +9,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
+
+const DEFAULT_FONT_BYTES: &[u8] = include_bytes!("../../../assets/fonts/RobotoMono.ttf");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextureHandle(pub u32);
@@ -41,14 +44,19 @@ pub struct CpuAssetServer {
     pub load_progress: LoadProgress,
 
     pending_uploads: Vec<GpuUploadRequest>,
-    next_texture_handle: u32,
+    pub(crate) next_texture_handle: u32,
 
     loader: BackgroundLoader,
     pending_paths: HashMap<PathBuf, ()>,
+
+    pub text_renderer: TextRenderer,
+    pub default_font: FontId,
 }
 
 impl CpuAssetServer {
     pub fn new() -> Self {
+        let mut text_renderer = TextRenderer::new();
+        let default_font = text_renderer.load_font(DEFAULT_FONT_BYTES);
         Self {
             cpu_meshes: Vec::new(),
             next_material_handle: 0,
@@ -58,6 +66,8 @@ impl CpuAssetServer {
             next_texture_handle: 1,
             loader: BackgroundLoader::new(),
             pending_paths: HashMap::new(),
+            text_renderer,
+            default_font,
         }
     }
 
@@ -195,6 +205,13 @@ impl CpuAssetServer {
         for req in self.pending_uploads.drain(..) {
             let _ = tx.send(req);
         }
+    }
+
+    pub fn flush_text_atlas(&mut self, upload_tx: &Sender<GpuUploadRequest>) {
+        self.text_renderer.flush_atlas_to_channel(
+            &mut self.next_texture_handle,
+            upload_tx,
+        );
     }
 
     pub fn get_mesh_instances(

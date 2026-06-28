@@ -1,5 +1,5 @@
 use crate::assets::gpu_server::GpuAssetServer;
-use crate::render::frame_pipeline::render_pipeline::{FrameInput, PipelineHandles, RenderPipeline};
+use crate::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use crate::render::graph::{pass, RenderGraph};
 use crate::vulkan::gfx_pipeline::builder::PipelineBuilder;
 use crate::vulkan::passes::ui::UiPass;
@@ -39,12 +39,7 @@ impl Default for LoadingPipeline {
     fn default() -> Self {
         let s =
             PENDING.with(|c| c.borrow_mut().take()).expect("LoadingPipeline::default() called without prior build()");
-        Self {
-            bg_pipeline: s.bg_pipeline,
-            bg_layout: s.bg_layout,
-            device: s.device,
-            _logo_texture: s.logo_texture,
-        }
+        Self { bg_pipeline: s.bg_pipeline, bg_layout: s.bg_layout, device: s.device, _logo_texture: s.logo_texture }
     }
 }
 
@@ -224,19 +219,10 @@ impl RenderPipeline for LoadingPipeline {
             .build(graph);
 
         PENDING.with(|c| {
-            *c.borrow_mut() = Some(PendingState {
-                bg_pipeline,
-                bg_layout,
-                device: device.clone(),
-                logo_texture,
-            });
+            *c.borrow_mut() = Some(PendingState { bg_pipeline, bg_layout, device: device.clone(), logo_texture });
         });
 
         Ok(PipelineHandles { swapchain: h_swapchain })
-    }
-
-    fn prepare_frame(&mut self, _graph: &mut RenderGraph, _input: FrameInput<'_>) -> anyhow::Result<()> {
-        Ok(())
     }
 
     fn on_resize(&mut self, _graph: &mut RenderGraph, _width: u32, _height: u32) -> anyhow::Result<()> {

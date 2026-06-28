@@ -1,13 +1,22 @@
 use crate::assets::mesh::Aabb;
+use crate::assets::upload::GpuUploadRequest;
+use crate::assets::CpuAssetServer;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::components::transform::Transform;
 use crate::render::extract::ExtractSystem;
 use crate::render::world::{ExtractedInstance, ExtractedMeshes, ExtractedShadowMeshes, RenderWorld};
 use crate::GameWorld;
+use std::sync::mpsc::Sender;
 
 pub struct MeshExtract;
 impl ExtractSystem for MeshExtract {
-    fn extract(&self, world: &GameWorld, rw: &mut RenderWorld) {
+    fn extract(
+        &self,
+        world: &GameWorld,
+        rw: &mut RenderWorld,
+        _cpu_assets: &mut CpuAssetServer,
+        _upload_tx: &Sender<GpuUploadRequest>,
+    ) {
         let mut meshes = ExtractedMeshes::default();
         let mut shadow_meshes = ExtractedShadowMeshes::default();
 

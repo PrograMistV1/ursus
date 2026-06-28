@@ -1,11 +1,13 @@
+use crate::assets::cpu_server::TextureHandle;
 use crate::assets::text::atlas::TextAtlas;
-use crate::vulkan::passes::ui::UiPass;
-use crate::vulkan::resources::bindless::BindlessSet;
-use crate::vulkan::GpuTexture;
+use crate::assets::text::atlas::ATLAS_SIZE;
+use crate::assets::upload::GpuUploadRequest;
+use crate::render::world::PreparedUiDrawList;
 use ash::vk;
-use cosmic_text::{fontdb, Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache, SwashContent};
+use cosmic_text::{fontdb, Attrs, Buffer, Family, FontSystem, LayoutGlyph, Metrics, Shaping, SwashCache, SwashContent};
 use glam::Vec2;
 use std::collections::{HashMap, HashSet};
+use std::sync::mpsc::Sender;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FontId(pub fontdb::ID);
@@ -13,37 +15,17 @@ pub struct FontId(pub fontdb::ID);
 pub struct TextRenderer {
     font_system: FontSystem,
     swash_cache: SwashCache,
-    atlas: TextAtlas,
+    pub atlas: TextAtlas,
     families: HashMap<FontId, String>,
-
-    page_textures: HashMap<u32, GpuTexture>,
-
-    device: ash::Device,
-    physical_device: vk::PhysicalDevice,
-    instance: ash::Instance,
-    command_pool: vk::CommandPool,
-    queue: vk::Queue,
 }
 
 impl TextRenderer {
-    pub fn new(
-        device: ash::Device,
-        physical_device: vk::PhysicalDevice,
-        instance: ash::Instance,
-        command_pool: vk::CommandPool,
-        queue: vk::Queue,
-    ) -> Self {
+    pub fn new() -> Self {
         Self {
             font_system: FontSystem::new(),
             swash_cache: SwashCache::new(),
             atlas: TextAtlas::new(),
             families: HashMap::new(),
-            page_textures: HashMap::new(),
-            device,
-            physical_device,
-            instance,
-            command_pool,
-            queue,
         }
     }
 
@@ -71,16 +53,15 @@ impl TextRenderer {
 
     pub fn measure(&mut self, font: FontId, text: &str, px: f32) -> Vec2 {
         let metrics = Metrics::new(px, px * 1.2);
-        let family_name: Option<String> = self.families.get(&font).cloned();
+        let family_name = self.families.get(&font).cloned();
         let attrs = match &family_name {
             Some(name) => Attrs::new().family(Family::Name(name)),
             None => Attrs::new(),
         };
-
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         buffer.set_text(text, &attrs, Shaping::Advanced, None);
         buffer.set_size(None, None);
-        buffer.shape_until_scroll(&mut self.font_system,false);
+        buffer.shape_until_scroll(&mut self.font_system, false);
 
         let mut width = 0.0f32;
         let mut lines = 0usize;
@@ -95,22 +76,18 @@ impl TextRenderer {
         px * 1.2
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn draw_text(
+    pub fn prepare_text(
         &mut self,
-        device: &ash::Device,
-        cmd: vk::CommandBuffer,
-        ui_pass: &UiPass,
         font: FontId,
         text: &str,
         px: f32,
         origin: Vec2,
         color: [f32; 4],
         max_width: Option<f32>,
-        screen_size: [f32; 2],
+        out: &mut PreparedUiDrawList,
     ) {
         let metrics = Metrics::new(px, px * 1.2);
-        let family_name: Option<String> = self.families.get(&font).cloned();
+        let family_name = self.families.get(&font).cloned();
         let attrs = match &family_name {
             Some(name) => Attrs::new().family(Family::Name(name)),
             None => Attrs::new(),
@@ -119,10 +96,9 @@ impl TextRenderer {
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         buffer.set_text(text, &attrs, Shaping::Advanced, None);
         buffer.set_size(max_width, None);
-        buffer.shape_until_scroll(&mut self.font_system,false);
+        buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let runs: Vec<(f32, Vec<cosmic_text::LayoutGlyph>)> =
-            buffer.layout_runs().map(|r| (r.line_y, r.glyphs.to_vec())).collect();
+        let runs: Vec<(f32, Vec<LayoutGlyph>)> = buffer.layout_runs().map(|r| (r.line_y, r.glyphs.to_vec())).collect();
 
         for (line_y, glyphs) in &runs {
             for glyph in glyphs {
@@ -132,11 +108,6 @@ impl TextRenderer {
                     continue;
                 };
 
-                let width = image.placement.width;
-                let height = image.placement.height;
-                let left = image.placement.left;
-                let top = image.placement.top;
-
                 let coverage: Vec<u8> = match image.content {
                     SwashContent::Mask => image.data.clone(),
                     SwashContent::SubpixelMask => {
@@ -145,58 +116,74 @@ impl TextRenderer {
                     SwashContent::Color => image.data.chunks(4).map(|c| c[3]).collect(),
                 };
 
-                let Some(uv) = self.atlas.get_or_rasterize(physical.cache_key, width, height, left, top, &coverage)
-                else {
+                let Some(uv) = self.atlas.get_or_rasterize(
+                    physical.cache_key,
+                    image.placement.width,
+                    image.placement.height,
+                    image.placement.left,
+                    image.placement.top,
+                    &coverage,
+                ) else {
                     continue;
                 };
 
-                let slot = self.bindless_slot_for_page(uv.page);
+                if uv.width == 0 || uv.height == 0 {
+                    continue;
+                }
+
+                let bindless_slot =
+                    self.atlas.pages.get(uv.page as usize).and_then(|p| p.texture_handle).map(|h| h.0).unwrap_or(0);
+
                 let pos = Vec2::new(
                     origin.x + physical.x as f32 + uv.left as f32,
-                    origin.y + *line_y + physical.y as f32 - uv.top as f32,
+                    origin.y + line_y + physical.y as f32 - uv.top as f32,
                 );
-                ui_pass.draw_glyph(device, cmd, screen_size, pos, &uv, slot, color);
+
+                out.push_glyph(
+                    pos,
+                    Vec2::new(uv.width as f32, uv.height as f32),
+                    color,
+                    bindless_slot,
+                    [uv.u0, uv.v0, uv.u1, uv.v1],
+                );
             }
         }
     }
 
-    fn bindless_slot_for_page(&self, page: u32) -> u32 {
-        self.atlas.pages.get(page as usize).and_then(|p| p.bindless_slot).unwrap_or(0)
-    }
-
-    pub fn flush_atlas(&mut self, bindless: &mut BindlessSet) -> anyhow::Result<()> {
+    pub fn flush_atlas_to_channel(&mut self, next_texture_handle: &mut u32, upload_tx: &Sender<GpuUploadRequest>) {
         for (idx, page) in self.atlas.pages.iter_mut().enumerate() {
             if !page.dirty {
                 continue;
             }
 
-            let tex = GpuTexture::upload_no_mip(
-                &self.device,
-                self.physical_device,
-                &self.instance,
-                self.command_pool,
-                self.queue,
-                &page.pixels,
-                crate::assets::text::atlas::ATLAS_SIZE as u32,
-                crate::assets::text::atlas::ATLAS_SIZE as u32,
-                vk::Format::R8_UNORM,
-                &format!("text_atlas_{idx}"),
-            )?;
-
-            match page.bindless_slot {
-                Some(slot) => {
-                    bindless.update_slot(slot, tex.view);
-                    self.page_textures.insert(idx as u32, tex);
-                }
+            let handle = match page.texture_handle {
+                Some(h) => h,
                 None => {
-                    let slot = bindless.alloc_slot(tex.view);
-                    page.bindless_slot = Some(slot);
-                    self.page_textures.insert(idx as u32, tex);
+                    let h = TextureHandle(*next_texture_handle);
+                    *next_texture_handle += 1;
+                    page.texture_handle = Some(h);
+                    h
                 }
-            }
+            };
+
+            upload_tx
+                .send(GpuUploadRequest::Texture {
+                    handle,
+                    pixels: page.pixels.clone(),
+                    width: ATLAS_SIZE as u32,
+                    height: ATLAS_SIZE as u32,
+                    format: vk::Format::R8_UNORM,
+                    name: format!("text_atlas_{idx}"),
+                })
+                .ok();
 
             page.dirty = false;
         }
-        Ok(())
+    }
+}
+
+impl Default for TextRenderer {
+    fn default() -> Self {
+        Self::new()
     }
 }

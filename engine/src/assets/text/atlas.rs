@@ -1,6 +1,7 @@
 use cosmic_text::CacheKey;
 use etagere::{size2, AtlasAllocator, Rectangle};
 use std::collections::HashMap;
+use crate::assets::TextureHandle;
 
 pub const ATLAS_SIZE: i32 = 2048;
 
@@ -21,7 +22,7 @@ pub struct AtlasPage {
     allocator: AtlasAllocator,
     pub pixels: Vec<u8>,
     pub dirty: bool,
-    pub bindless_slot: Option<u32>,
+    pub texture_handle: Option<TextureHandle>,
 }
 
 impl AtlasPage {
@@ -30,7 +31,7 @@ impl AtlasPage {
             allocator: AtlasAllocator::new(size2(ATLAS_SIZE, ATLAS_SIZE)),
             pixels: vec![0u8; (ATLAS_SIZE * ATLAS_SIZE) as usize],
             dirty: true,
-            bindless_slot: None,
+            texture_handle: None,
         }
     }
 }

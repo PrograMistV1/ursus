@@ -1,3 +1,5 @@
+use crate::assets::upload::GpuUploadRequest;
+use crate::assets::CpuAssetServer;
 use crate::components::ui::{UiLayout, UiRect, UiText};
 use crate::render::extract::ExtractSystem;
 use crate::render::world::{
@@ -5,10 +7,17 @@ use crate::render::world::{
 };
 use crate::GameWorld;
 use glam::Vec2;
+use std::sync::mpsc::Sender;
 
 pub struct UiExtract;
 impl ExtractSystem for UiExtract {
-    fn extract(&self, world: &GameWorld, rw: &mut RenderWorld) {
+    fn extract(
+        &self,
+        world: &GameWorld,
+        rw: &mut RenderWorld,
+        _cpu_assets: &mut CpuAssetServer,
+        _upload_tx: &Sender<GpuUploadRequest>,
+    ) {
         let (screen_w, screen_h) =
             rw.get::<ExtractedRenderSettings>().map(|s| s.output_size).unwrap_or((1280.0, 720.0));
 

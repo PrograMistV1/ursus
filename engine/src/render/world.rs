@@ -89,6 +89,48 @@ impl Default for ExtractedLights {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum UiPrimitive {
+    Rect {
+        pos: Vec2,
+        size: Vec2,
+        color: [f32; 4],
+        border_radius: f32,
+    },
+    TexturedRect {
+        pos: Vec2,
+        size: Vec2,
+        color: [f32; 4],
+        bindless_slot: u32,
+        uv: [f32; 4],
+    },
+    GlyphRect {
+        pos: Vec2,
+        size: Vec2,
+        color: [f32; 4],
+        bindless_slot: u32,
+        uv: [f32; 4],
+    },
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PreparedUiDrawList {
+    pub primitives: Vec<UiPrimitive>,
+}
+
+impl PreparedUiDrawList {
+    pub fn push_rect(&mut self, pos: Vec2, size: Vec2, color: [f32; 4], border_radius: f32) {
+        self.primitives.push(UiPrimitive::Rect { pos, size, color, border_radius });
+    }
+    pub fn push_textured_rect(&mut self, pos: Vec2, size: Vec2, color: [f32; 4], bindless_slot: u32, uv: [f32; 4]) {
+        self.primitives.push(UiPrimitive::TexturedRect { pos, size, color, bindless_slot, uv });
+    }
+
+    pub fn push_glyph(&mut self, pos: Vec2, size: Vec2, color: [f32; 4], bindless_slot: u32, uv: [f32; 4]) {
+        self.primitives.push(UiPrimitive::GlyphRect { pos, size, color, bindless_slot, uv });
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct ExtractedUiRects {
     pub rects: Vec<ExtractedUiRect>,
