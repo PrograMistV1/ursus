@@ -1,4 +1,3 @@
-use crate::assets::text::atlas::GlyphUv;
 use crate::assets::ShaderRegistry;
 use crate::vulkan::gfx_pipeline::builder::{cmd, PipelineBuilder};
 use ash::vk;

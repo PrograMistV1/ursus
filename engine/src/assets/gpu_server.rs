@@ -41,7 +41,7 @@ impl GpuAssetServer {
         command_pool: vk::CommandPool,
         queue: vk::Queue,
     ) -> anyhow::Result<Self> {
-        let mut bindless = BindlessSet::new(&device, physical_device, &instance, command_pool, queue)?;
+        let bindless = BindlessSet::new(&device, physical_device, &instance, command_pool, queue)?;
         assert_eq!(bindless.next_slot(), 1, "slot 0 must be white fallback");
 
         let material_buffer = MaterialBuffer::new(&device, physical_device, &instance)?;
