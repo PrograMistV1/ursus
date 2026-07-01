@@ -28,8 +28,8 @@ impl Instance {
             vec![]
         };
 
-        let app_name = c"engine";
-        let engine_name = c"engine";
+        let app_name = c"engine-core";
+        let engine_name = c"engine-core";
 
         let app_info = vk::ApplicationInfo::default()
             .application_name(app_name)

@@ -8,7 +8,7 @@ name = "engine-template"
 path = "src/main.rs"
 
 [dependencies]
-engine = { path = "../engine" }
+engine-core = { path = "../engine-core" }
 anyhow = "1"
 log = "0.4"
 glam = "0.33.0"

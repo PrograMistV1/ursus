@@ -158,7 +158,7 @@ impl ApplicationHandler for EngineHandler {
         let window = event_loop
             .create_window(
                 WindowAttributes::default()
-                    .with_title("engine")
+                    .with_title("engine-core")
                     .with_inner_size(winit::dpi::LogicalSize::new(1280u32, 720u32))
                     .with_visible(false),
             )

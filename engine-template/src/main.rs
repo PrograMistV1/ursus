@@ -1,8 +1,8 @@
-use engine::components::camera::{ActiveCamera, CameraComponent};
-use engine::components::light::DirectionalLightComponent;
-use engine::components::ui::{UiLayout, UiText};
-use engine::render::frame_pipeline::DefaultPipeline;
-use engine::{App, AsyncMeshHandle, Engine, EngineContext};
+use engine_core::components::camera::{ActiveCamera, CameraComponent};
+use engine_core::components::light::DirectionalLightComponent;
+use engine_core::components::ui::{UiLayout, UiText};
+use engine_core::render::frame_pipeline::DefaultPipeline;
+use engine_core::{App, AsyncMeshHandle, Engine, EngineContext};
 use glam::{Vec2, Vec3};
 
 struct MyApp {
