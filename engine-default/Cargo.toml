@@ -1,0 +1,12 @@
+[package]
+name = "engine-default"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+ash = "0.38"
+anyhow = "1"
+log = "0.4"
+glam = "0.33.0"
+resvg = "0.47.0"

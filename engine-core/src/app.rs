@@ -14,7 +14,6 @@ use crate::assets::upload::GpuUploadRequest;
 use crate::ecs::GameWorld;
 use crate::render::extract::{default_extract_schedule, ExtractSchedule};
 use crate::render::frame_pipeline::render_pipeline::RenderPipeline;
-use crate::render::frame_pipeline::LoadingPipeline;
 use crate::render::thread::command::{PipelineFactory, RenderCommand};
 use crate::render::thread::{render_thread_main, WindowHandles};
 use crate::render::triple_buffer::TripleBuffer;
@@ -26,9 +25,8 @@ pub trait App {
     where
         Self: Sized,
     {
-        PipelineFactory::of::<LoadingPipeline>()
+        PipelineFactory::empty()
     }
-
     fn on_start(&mut self, ctx: &mut EngineContext);
     fn on_update(&mut self, ctx: &mut EngineContext, dt: f32);
     fn on_render(&mut self, ctx: &mut EngineContext);

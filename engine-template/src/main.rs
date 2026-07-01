@@ -1,8 +1,9 @@
 use engine_core::components::camera::{ActiveCamera, CameraComponent};
 use engine_core::components::light::DirectionalLightComponent;
 use engine_core::components::ui::{UiLayout, UiText};
-use engine_core::render::frame_pipeline::DefaultPipeline;
+use engine_core::render::thread::command::PipelineFactory;
 use engine_core::{App, AsyncMeshHandle, Engine, EngineContext};
+use engine_default::{DefaultPipeline, LoadingPipeline};
 use glam::{Vec2, Vec3};
 
 struct MyApp {
@@ -18,6 +19,13 @@ impl MyApp {
 }
 
 impl App for MyApp {
+    fn initial_pipeline() -> PipelineFactory
+    where
+        Self: Sized,
+    {
+        PipelineFactory::of::<LoadingPipeline>()
+    }
+
     fn on_start(&mut self, ctx: &mut EngineContext) {
         self.sponza = Some(ctx.cpu_assets.load_mesh_async("assets/sponza/glTF/Sponza.gltf"));
 

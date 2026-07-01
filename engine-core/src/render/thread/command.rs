@@ -1,4 +1,5 @@
 use crate::assets::gpu_server::GpuAssetServer;
+use crate::render::frame_pipeline::render_pipeline::{NoopPipeline, RenderPipeline};
 use crate::vulkan::renderer::{build_dyn_renderer, DynRenderer};
 use crate::vulkan::VulkanContext;
 
@@ -10,7 +11,7 @@ pub struct PipelineFactory {
 impl PipelineFactory {
     pub fn of<P>() -> Self
     where
-        P: crate::render::frame_pipeline::render_pipeline::RenderPipeline + Default + 'static,
+        P: RenderPipeline + Default + 'static,
     {
         Self {
             build: Box::new(|ctx, gpu_assets, exposure, fsr_sharpness| {
@@ -27,6 +28,10 @@ impl PipelineFactory {
         prev_fsr_sharpness: f32,
     ) -> anyhow::Result<Box<dyn DynRenderer>> {
         (self.build)(ctx, gpu_assets, prev_exposure, prev_fsr_sharpness)
+    }
+
+    pub fn empty() -> Self {
+        Self::of::<NoopPipeline>()
     }
 }
 

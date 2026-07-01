@@ -706,9 +706,20 @@ dependencies = [
  "puffin",
  "puffin_http",
  "raw-window-handle",
- "resvg",
  "tobj",
  "winit",
+]
+
+[[package]]
+name = "engine-default"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ash",
+ "engine-core",
+ "glam",
+ "log",
+ "resvg",
 ]
 
 [[package]]
@@ -717,6 +728,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "engine-core",
+ "engine-default",
  "glam",
  "log",
 ]

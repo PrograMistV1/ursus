@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 engine-core = { path = "../engine-core" }
+engine-default = { path = "../engine-default" }
 anyhow = "1"
 log = "0.4"
 glam = "0.33.0"
