@@ -131,8 +131,9 @@ impl TextRenderer {
                     continue;
                 }
 
-                let bindless_slot =
-                    self.atlas.pages.get(uv.page as usize).and_then(|p| p.texture_handle).map(|h| h.0).unwrap_or(0);
+                let Some(texture_handle) = self.atlas.page_texture_handle(uv.page) else {
+                    continue;
+                };
 
                 let pos = Vec2::new(
                     origin.x + physical.x as f32 + uv.left as f32,
@@ -143,7 +144,7 @@ impl TextRenderer {
                     pos,
                     Vec2::new(uv.width as f32, uv.height as f32),
                     color,
-                    bindless_slot,
+                    texture_handle,
                     [uv.u0, uv.v0, uv.u1, uv.v1],
                 );
             }

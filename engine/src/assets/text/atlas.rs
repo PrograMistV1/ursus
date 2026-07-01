@@ -1,7 +1,7 @@
+use crate::assets::TextureHandle;
 use cosmic_text::CacheKey;
 use etagere::{size2, AtlasAllocator, Rectangle};
 use std::collections::HashMap;
-use crate::assets::TextureHandle;
 
 pub const ATLAS_SIZE: i32 = 2048;
 
@@ -58,28 +58,27 @@ impl TextAtlas {
         if let Some(&cached) = self.cache.get(&key) {
             return cached;
         }
-
-        let uv = if width == 0 || height == 0 { None } else { self.pack(width, height, left, top, coverage) };
-
+        let uv = if width == 0 || height == 0 {
+            None
+        } else {
+            self.pack(width, height, left, top, coverage)
+        };
         self.cache.insert(key, uv);
         uv
     }
 
     fn pack(&mut self, width: u32, height: u32, left: i32, top: i32, coverage: &[u8]) -> Option<GlyphUv> {
         let size = size2(width as i32, height as i32);
-
         for (page_idx, page) in self.pages.iter_mut().enumerate() {
             if let Some(alloc) = page.allocator.allocate(size) {
                 blit(page, alloc.rectangle, width, height, coverage);
                 return Some(make_uv(page_idx as u32, alloc.rectangle, width, height, left, top));
             }
         }
-
         if width as i32 > ATLAS_SIZE || height as i32 > ATLAS_SIZE {
             log::error!("TextAtlas: глиф {}x{} слишком велик для атласа", width, height);
             return None;
         }
-
         let mut page = AtlasPage::new();
         let alloc = page.allocator.allocate(size)?;
         blit(&mut page, alloc.rectangle, width, height, coverage);
@@ -87,6 +86,13 @@ impl TextAtlas {
         let uv = make_uv(page_idx, alloc.rectangle, width, height, left, top);
         self.pages.push(page);
         Some(uv)
+    }
+
+    /// Текстурный хендл страницы, к которой относится этот UV.
+    /// Разрешается отдельно от GlyphUv, т.к. handle страницы может
+    /// назначаться позже (при первой аплоадке), а не в момент пакинга глифа.
+    pub fn page_texture_handle(&self, page: u32) -> Option<TextureHandle> {
+        self.pages.get(page as usize).and_then(|p| p.texture_handle)
     }
 }
 

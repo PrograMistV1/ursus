@@ -314,17 +314,9 @@ impl RenderPipeline for DefaultPipeline {
                                 *uv,
                             );
                         }
-                        UiPrimitive::GlyphRect { pos, size, color, bindless_slot, uv } => {
-                            ui_pass.draw_glyph_rect(
-                                gpu.device(),
-                                cmd,
-                                screen,
-                                *pos,
-                                *size,
-                                *color,
-                                *bindless_slot,
-                                *uv,
-                            );
+                        UiPrimitive::GlyphRect { pos, size, color, texture_handle, uv } => {
+                            let slot = gpu.texture_slot(*texture_handle);
+                            ui_pass.draw_glyph_rect(gpu.device(), cmd, screen, *pos, *size, *color, slot, *uv);
                         }
                     }
                 }

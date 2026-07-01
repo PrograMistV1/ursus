@@ -2,6 +2,7 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 
 use crate::assets::mesh::Aabb;
+use crate::assets::TextureHandle;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::vulkan::resources::light_buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
 use glam::{Mat4, Vec2, Vec3};
@@ -108,7 +109,7 @@ pub enum UiPrimitive {
         pos: Vec2,
         size: Vec2,
         color: [f32; 4],
-        bindless_slot: u32,
+        texture_handle: TextureHandle,
         uv: [f32; 4],
     },
 }
@@ -126,8 +127,8 @@ impl PreparedUiDrawList {
         self.primitives.push(UiPrimitive::TexturedRect { pos, size, color, bindless_slot, uv });
     }
 
-    pub fn push_glyph(&mut self, pos: Vec2, size: Vec2, color: [f32; 4], bindless_slot: u32, uv: [f32; 4]) {
-        self.primitives.push(UiPrimitive::GlyphRect { pos, size, color, bindless_slot, uv });
+    pub fn push_glyph(&mut self, pos: Vec2, size: Vec2, color: [f32; 4], texture_handle: TextureHandle, uv: [f32; 4]) {
+        self.primitives.push(UiPrimitive::GlyphRect { pos, size, color, texture_handle, uv });
     }
 }
 
