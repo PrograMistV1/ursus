@@ -3,7 +3,7 @@ use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::vulkan::gfx_pipeline::builder::PipelineBuilder;
-use engine_core::vulkan::passes::ui::UiPass;
+use crate::passes::ui::UiPass;
 use engine_core::vulkan::{GpuTexture, VulkanContext};
 use glam::Vec2;
 use std::sync::Arc;

@@ -719,6 +719,7 @@ dependencies = [
  "engine-core",
  "glam",
  "log",
+ "puffin",
  "resvg",
 ]
 

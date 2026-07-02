@@ -1,13 +1,13 @@
-use crate::assets::gpu_server::GpuAssetServer;
-use crate::assets::shader_registry::ShaderHandle;
-use crate::assets::{GpuMesh, ShaderRegistry};
-use crate::components::mesh::MaterialHandle;
-use crate::render::resource::GpuImage;
-use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
-use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
-use crate::vulkan::Pipeline;
 use ash::ext::debug_utils::Device;
 use ash::vk;
+use engine_core::assets::gpu_server::GpuAssetServer;
+use engine_core::assets::{GpuMesh, ShaderRegistry};
+use engine_core::assets::{ShaderHandle, Vertex};
+use engine_core::components::mesh::MaterialHandle;
+use engine_core::render::resource::GpuImage;
+use engine_core::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
+use engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
+use engine_core::vulkan::Pipeline;
 use glam::Mat4;
 use std::collections::HashMap;
 
@@ -59,11 +59,24 @@ impl GeometryPass {
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.unwrap().to_vec();
         let set_layouts = [self.bindless_layout, self.material_layout];
-        let pipeline = Pipeline::new(
-            device,
-            &PipelineDesc::with_depth_equal(&vert_spv, &frag_spv, &self.color_formats),
-            &set_layouts,
-        )?;
+
+        let binding = Vertex::binding_description();
+        let attributes = Vertex::attribute_descriptions();
+        let push_range = vk::PushConstantRange::default()
+            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
+            .offset(0)
+            .size(size_of::<MeshPushConstants>() as u32);
+
+        let desc = PipelineDesc::with_depth_equal(
+            &vert_spv,
+            &frag_spv,
+            &self.color_formats,
+            std::slice::from_ref(&binding),
+            &attributes,
+            std::slice::from_ref(&push_range),
+        );
+
+        let pipeline = Pipeline::new(device, &desc, &set_layouts)?;
         self.pipelines.insert(shader, pipeline);
         Ok(&self.pipelines[&shader])
     }

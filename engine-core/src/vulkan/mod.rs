@@ -1,6 +1,5 @@
 pub mod core;
 pub mod gfx_pipeline;
-pub mod passes;
 pub mod renderer;
 pub mod resources;
 pub mod timestamps;
@@ -11,7 +10,6 @@ pub use core::instance::Instance;
 pub use core::swapchain::Swapchain;
 pub use gfx_pipeline::material_buffer::MaterialBuffer;
 pub use gfx_pipeline::Pipeline;
-pub use passes::geometry::DrawCall;
 pub use renderer::{build_dyn_renderer, DynRenderer, Renderer};
 pub use resources::bindless::BindlessSet;
 pub use resources::depth::DepthBuffer;

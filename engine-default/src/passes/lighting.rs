@@ -1,7 +1,7 @@
-use crate::assets::ShaderRegistry;
-use crate::render::resource::GpuImage;
-use crate::vulkan::gfx_pipeline::builder::{cmd, descriptor, PipelineBuilder};
-use crate::vulkan::resources::light_buffer::{LightBuffer, LightingUbo};
+use engine_core::assets::ShaderRegistry;
+use engine_core::render::resource::GpuImage;
+use engine_core::vulkan::gfx_pipeline::builder::{cmd, descriptor, PipelineBuilder};
+use engine_core::vulkan::resources::light_buffer::{LightBuffer, LightingUbo};
 use ash::vk;
 use cmd::begin_rendering_discard;
 use descriptor::alloc_single_set;

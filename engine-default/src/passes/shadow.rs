@@ -1,33 +1,38 @@
-use crate::assets::mesh::Vertex;
-use crate::assets::{GpuMesh, ShaderRegistry};
-use crate::render::resource::GpuImage;
-use crate::vulkan::gfx_pipeline::builder::{cmd, PipelineBuilder};
+use engine_core::assets::Vertex;
+use engine_core::assets::{GpuMesh, ShaderRegistry};
+use engine_core::render::resource::GpuImage;
+use engine_core::vulkan::gfx_pipeline::builder::{cmd, PipelineBuilder};
+use engine_core::vulkan::resources::shadow_map::SHADOW_MAP_SIZE;
 use ash::vk;
 use glam::Mat4;
 
 #[repr(C)]
-struct DepthPrepassPC {
-    mvp: [[f32; 4]; 4],
+pub struct ShadowPC {
+    pub light_space_mvp: [[f32; 4]; 4],
 }
 
-pub struct DepthPrepassDrawCall<'a> {
+pub struct ShadowDrawCall<'a> {
     pub gpu_mesh: &'a GpuMesh,
     pub model: Mat4,
 }
-pub struct DepthPrepass {
+
+pub struct ShadowPass {
     pub pipeline: vk::Pipeline,
     pub layout: vk::PipelineLayout,
     device: ash::Device,
 }
 
-impl DepthPrepass {
+impl ShadowPass {
     pub fn new(device: &ash::Device, registry: &mut ShaderRegistry) -> anyhow::Result<Self> {
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX)
             .offset(0)
-            .size(size_of::<DepthPrepassPC>() as u32);
+            .size(size_of::<ShadowPC>() as u32);
 
-        let binding = Vertex::binding_description();
+        let binding = vk::VertexInputBindingDescription::default()
+            .binding(0)
+            .stride(size_of::<Vertex>() as u32)
+            .input_rate(vk::VertexInputRate::VERTEX);
 
         let attributes = [vk::VertexInputAttributeDescription::default()
             .binding(0)
@@ -35,15 +40,16 @@ impl DepthPrepass {
             .format(vk::Format::R32G32B32_SFLOAT)
             .offset(0)];
 
-        let handle = registry.by_name("depth_prepass").expect("шейдер 'depth_prepass' не зарегистрирован");
+        let handle = registry.by_name("shadow").expect("шейдер 'shadow' не зарегистрирован");
         let (vert_spv, _) = registry.load_spv(handle)?;
         let vert_spv = vert_spv.to_vec();
 
         let (pipeline, layout) = PipelineBuilder::depth_only(&vert_spv, std::slice::from_ref(&binding), &attributes)
+            .depth_bias(2.0, 1.5)
             .push_constants(std::slice::from_ref(&push_range))
             .build(device)?;
 
-        log::debug!("DepthPrepass создан");
+        log::debug!("ShadowPass создан");
         Ok(Self { pipeline, layout, device: device.clone() })
     }
 
@@ -51,22 +57,21 @@ impl DepthPrepass {
         &self,
         device: &ash::Device,
         cmd_buf: vk::CommandBuffer,
-        depth: &impl GpuImage,
-        view_proj: Mat4,
-        draw_calls: &[DepthPrepassDrawCall<'_>],
+        shadow_map: &impl GpuImage,
+        light_view_proj: Mat4,
+        draw_calls: &[ShadowDrawCall<'_>],
     ) {
-        let extent = depth.extent();
+        let extent = vk::Extent2D { width: SHADOW_MAP_SIZE, height: SHADOW_MAP_SIZE };
 
-        cmd::begin_rendering_depth_only(device, cmd_buf, depth.view(), extent);
+        cmd::begin_rendering_depth_only(device, cmd_buf, shadow_map.view(), extent);
 
         unsafe {
             device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
 
             for dc in draw_calls {
-                let mvp = view_proj * dc.model;
-                let pc = DepthPrepassPC { mvp: mvp.to_cols_array_2d() };
-                let pc_bytes =
-                    std::slice::from_raw_parts(&pc as *const DepthPrepassPC as *const u8, size_of::<DepthPrepassPC>());
+                let mvp = light_view_proj * dc.model;
+                let pc = ShadowPC { light_space_mvp: mvp.to_cols_array_2d() };
+                let pc_bytes = std::slice::from_raw_parts(&pc as *const ShadowPC as *const u8, size_of::<ShadowPC>());
                 device.cmd_push_constants(cmd_buf, self.layout, vk::ShaderStageFlags::VERTEX, 0, pc_bytes);
                 device.cmd_bind_vertex_buffers(cmd_buf, 0, &[dc.gpu_mesh.vertex_buffer], &[0]);
                 device.cmd_bind_index_buffer(cmd_buf, dc.gpu_mesh.index_buffer, 0, vk::IndexType::UINT32);
@@ -78,12 +83,11 @@ impl DepthPrepass {
     }
 }
 
-impl Drop for DepthPrepass {
+impl Drop for ShadowPass {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_pipeline(self.pipeline, None);
             self.device.destroy_pipeline_layout(self.layout, None);
         }
-        log::debug!("DepthPrepass уничтожен");
     }
 }
