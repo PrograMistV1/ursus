@@ -1,8 +1,10 @@
 use ash::vk;
 use cmd::begin_rendering_discard;
 use descriptor::alloc_single_set;
+use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::ShaderRegistry;
-use engine_core::render::resource::GpuImage;
+use engine_core::render::resource::{GpuImage, ResourceHandle, ResourcePool};
+use engine_core::render::world::{ExtractedCamera, ExtractedLights, RenderWorld};
 use engine_core::vulkan::gfx_pipeline::builder::{cmd, descriptor, PipelineBuilder};
 use engine_core::vulkan::resources::light_buffer::{LightBuffer, LightingUbo};
 use glam::Mat4;
@@ -131,7 +133,39 @@ impl LightingPass {
         self.light_buffer.upload(data);
     }
 
-    pub fn record(&self, device: &ash::Device, cmd: vk::CommandBuffer, hdr: &impl GpuImage, view: Mat4, proj: Mat4) {
+    pub fn record(
+        &self,
+        cmd: vk::CommandBuffer,
+        pool: &ResourcePool,
+        rw: &RenderWorld,
+        gpu: &GpuAssetServer,
+        hdr: ResourceHandle,
+    ) -> anyhow::Result<()> {
+        let camera = rw.get::<ExtractedCamera>().cloned().unwrap_or_default();
+        let lights = rw.get::<ExtractedLights>().cloned().unwrap_or_default();
+        let hdr = pool.image(hdr);
+
+        let ubo = LightingUbo {
+            directional: lights.directional,
+            point_lights: lights.point_lights,
+            point_light_count: lights.point_light_count,
+            _pad: [0; 3],
+            light_space_matrix: lights.light_view_proj.to_cols_array_2d(),
+        };
+        self.upload_lights(&ubo);
+
+        self.record_draws(gpu.device(), cmd, &hdr, camera.view, camera.proj);
+        Ok(())
+    }
+
+    pub fn record_draws(
+        &self,
+        device: &ash::Device,
+        cmd: vk::CommandBuffer,
+        hdr: &impl GpuImage,
+        view: Mat4,
+        proj: Mat4,
+    ) {
         let extent = hdr.extent();
 
         begin_rendering_discard(device, cmd, hdr.view(), extent);

@@ -1,7 +1,9 @@
 use ash::vk;
 use descriptor::alloc_single_set;
+use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::ShaderRegistry;
-use engine_core::render::resource::GpuImage;
+use engine_core::render::resource::{GpuImage, ResourceHandle, ResourcePool};
+use engine_core::render::world::{ExtractedRenderSettings, RenderWorld};
 use engine_core::vulkan::core::sampler;
 use engine_core::vulkan::gfx_pipeline::builder::{cmd, descriptor, PipelineBuilder};
 
@@ -74,7 +76,21 @@ impl PostProcessPass {
         })
     }
 
-    pub fn record_to_target(
+    pub fn record(
+        &self,
+        cmd: vk::CommandBuffer,
+        pool: &ResourcePool,
+        rw: &RenderWorld,
+        gpu: &GpuAssetServer,
+        ldr: ResourceHandle,
+    ) -> anyhow::Result<()> {
+        let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
+        let ldr = pool.image(ldr);
+        self.record_draws(gpu.device(), cmd, &ldr, settings.exposure);
+        Ok(())
+    }
+
+    pub fn record_draws(
         &self,
         device: &ash::Device,
         cmd_buf: vk::CommandBuffer,

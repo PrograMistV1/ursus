@@ -1,7 +1,9 @@
 use ash::vk;
+use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::Vertex;
 use engine_core::assets::{GpuMesh, ShaderRegistry};
-use engine_core::render::resource::GpuImage;
+use engine_core::render::resource::{GpuImage, ResourceHandle, ResourcePool};
+use engine_core::render::world::{ExtractedCamera, ExtractedMeshes, RenderWorld};
 use engine_core::vulkan::gfx_pipeline::builder::{cmd, PipelineBuilder};
 use glam::Mat4;
 
@@ -48,6 +50,27 @@ impl DepthPrepass {
     }
 
     pub fn record(
+        &self,
+        cmd: vk::CommandBuffer,
+        pool: &ResourcePool,
+        rw: &RenderWorld,
+        gpu: &GpuAssetServer,
+        depth: ResourceHandle,
+    ) -> anyhow::Result<()> {
+        let depth = pool.image(depth);
+        let camera = rw.get::<ExtractedCamera>().cloned().unwrap_or_default();
+        let meshes = rw.get::<ExtractedMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
+
+        let calls: Vec<DepthPrepassDrawCall> = meshes
+            .iter()
+            .filter_map(|inst| Some(DepthPrepassDrawCall { gpu_mesh: gpu.get_gpu_mesh(inst.mesh)?, model: inst.model }))
+            .collect();
+
+        self.record_draws(gpu.device(), cmd, &depth, camera.view_proj, &calls);
+        Ok(())
+    }
+
+    fn record_draws(
         &self,
         device: &ash::Device,
         cmd_buf: vk::CommandBuffer,

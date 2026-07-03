@@ -4,7 +4,8 @@ use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::{GpuMesh, ShaderRegistry};
 use engine_core::assets::{ShaderHandle, Vertex};
 use engine_core::components::mesh::MaterialHandle;
-use engine_core::render::resource::GpuImage;
+use engine_core::render::resource::{GpuImage, ResourceHandle, ResourcePool};
+use engine_core::render::world::{ExtractedCamera, ExtractedMeshes, ExtractedRenderSettings, RenderWorld};
 use engine_core::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
 use engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use engine_core::vulkan::Pipeline;
@@ -82,6 +83,52 @@ impl GeometryPass {
     }
 
     pub fn record(
+        &mut self,
+        cmd: vk::CommandBuffer,
+        pool: &ResourcePool,
+        rw: &RenderWorld,
+        gpu: &GpuAssetServer,
+        albedo: ResourceHandle,
+        normal: ResourceHandle,
+        depth: ResourceHandle,
+        debug_utils: Option<&Device>,
+    ) -> anyhow::Result<()> {
+        let albedo = pool.image(albedo);
+        let normal = pool.image(normal);
+        let depth = pool.image(depth);
+        let camera = rw.get::<ExtractedCamera>().cloned().unwrap_or_default();
+        let meshes = rw.get::<ExtractedMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
+        let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
+
+        let default_shader = gpu.shaders.by_name("diffuse").unwrap();
+        let draw_calls: Vec<DrawCall> = meshes
+            .iter()
+            .filter_map(|inst| {
+                Some(DrawCall {
+                    gpu_mesh: gpu.get_gpu_mesh(inst.mesh)?,
+                    model: inst.model,
+                    material: inst.material,
+                    shader: default_shader,
+                })
+            })
+            .collect();
+
+        self.record_draws(
+            gpu.device(),
+            cmd,
+            &albedo,
+            &normal,
+            &depth,
+            settings.clear_color,
+            camera.view_proj,
+            &draw_calls,
+            gpu,
+            debug_utils,
+        );
+        Ok(())
+    }
+
+    fn record_draws(
         &mut self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,

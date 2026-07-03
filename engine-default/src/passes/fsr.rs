@@ -1,8 +1,10 @@
 use ash::vk;
 use cmd::begin_rendering_discard;
 use descriptor::alloc_sets;
+use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::ShaderRegistry;
-use engine_core::render::resource::GpuImage;
+use engine_core::render::resource::{GpuImage, ResourceHandle, ResourcePool};
+use engine_core::render::world::{ExtractedRenderSettings, RenderWorld};
 use engine_core::vulkan::core::sampler;
 use engine_core::vulkan::gfx_pipeline::builder::{cmd, descriptor, PipelineBuilder};
 
@@ -74,6 +76,38 @@ impl FsrPass {
             descriptor_pool,
             device: device.clone(),
         })
+    }
+
+    pub fn record_easu_pass(
+        &self,
+        cmd: vk::CommandBuffer,
+        pool: &ResourcePool,
+        rw: &RenderWorld,
+        gpu: &GpuAssetServer,
+        dst: ResourceHandle,
+    ) -> anyhow::Result<()> {
+        let dst_img = pool.image(dst);
+        let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
+        let (iw, ih) = (dst_img.extent.width, dst_img.extent.height);
+        let (ow, oh) = settings.output_size;
+        let pc = compute_easu_con((iw as f32, ih as f32), (iw as f32, ih as f32), (ow, oh));
+        self.record_easu(gpu.device(), cmd, &dst_img, &pc);
+        Ok(())
+    }
+
+    pub fn record_rcas_pass(
+        &self,
+        cmd: vk::CommandBuffer,
+        pool: &ResourcePool,
+        rw: &RenderWorld,
+        gpu: &GpuAssetServer,
+        dst: ResourceHandle,
+    ) -> anyhow::Result<()> {
+        let dst_img = pool.image(dst);
+        let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
+        let pc = compute_rcas_con(settings.fsr_sharpness);
+        self.record_rcas(gpu.device(), cmd, &dst_img, &pc);
+        Ok(())
     }
 
     pub fn record_easu(&self, device: &ash::Device, cmd: vk::CommandBuffer, dst: &impl GpuImage, easu_pc: &EasuPC) {

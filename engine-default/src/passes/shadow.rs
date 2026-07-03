@@ -1,7 +1,9 @@
 use ash::vk;
+use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::Vertex;
 use engine_core::assets::{GpuMesh, ShaderRegistry};
-use engine_core::render::resource::GpuImage;
+use engine_core::render::resource::{GpuImage, ResourceHandle, ResourcePool};
+use engine_core::render::world::{ExtractedLights, ExtractedShadowMeshes, RenderWorld};
 use engine_core::vulkan::gfx_pipeline::builder::{cmd, PipelineBuilder};
 use engine_core::vulkan::resources::shadow_map::SHADOW_MAP_SIZE;
 use glam::Mat4;
@@ -54,6 +56,27 @@ impl ShadowPass {
     }
 
     pub fn record(
+        &self,
+        cmd: vk::CommandBuffer,
+        pool: &ResourcePool,
+        rw: &RenderWorld,
+        gpu: &GpuAssetServer,
+        shadow_map: ResourceHandle,
+    ) -> anyhow::Result<()> {
+        let sm = pool.image(shadow_map);
+        let lights = rw.get::<ExtractedLights>().cloned().unwrap_or_default();
+        let meshes = rw.get::<ExtractedShadowMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
+
+        let calls: Vec<ShadowDrawCall> = meshes
+            .iter()
+            .filter_map(|inst| Some(ShadowDrawCall { gpu_mesh: gpu.get_gpu_mesh(inst.mesh)?, model: inst.model }))
+            .collect();
+
+        self.record_draws(gpu.device(), cmd, &sm, lights.light_view_proj, &calls);
+        Ok(())
+    }
+
+    fn record_draws(
         &self,
         device: &ash::Device,
         cmd_buf: vk::CommandBuffer,

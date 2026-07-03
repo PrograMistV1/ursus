@@ -1,5 +1,8 @@
 use ash::vk;
+use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::ShaderRegistry;
+use engine_core::render::resource::{ResourceHandle, ResourcePool};
+use engine_core::render::world::{PreparedUiDrawList, RenderWorld, UiPrimitive};
 use engine_core::vulkan::gfx_pipeline::builder::{cmd, PipelineBuilder};
 use glam::Vec2;
 
@@ -59,6 +62,39 @@ impl UiPass {
 
         log::debug!("UiPass created");
         Ok(Self { pipeline, layout, device: device.clone() })
+    }
+
+    pub fn record(
+        &self,
+        cmd: vk::CommandBuffer,
+        pool: &ResourcePool,
+        rw: &RenderWorld,
+        gpu: &GpuAssetServer,
+        swapchain: ResourceHandle,
+    ) -> anyhow::Result<()> {
+        let Some(draw_list) = rw.get::<PreparedUiDrawList>() else {
+            return Ok(());
+        };
+        let sc = pool.image(swapchain);
+        let screen = [sc.extent.width as f32, sc.extent.height as f32];
+
+        self.begin(gpu.device(), cmd, sc.view, sc.extent, gpu.bindless.set);
+        for primitive in &draw_list.primitives {
+            match primitive {
+                UiPrimitive::Rect { pos, size, color, .. } => {
+                    self.draw_rect(gpu.device(), cmd, screen, *pos, *size, *color)
+                }
+                UiPrimitive::TexturedRect { pos, size, color, bindless_slot, uv } => {
+                    self.draw_textured_rect_uv(gpu.device(), cmd, screen, *pos, *size, *color, *bindless_slot, *uv)
+                }
+                UiPrimitive::GlyphRect { pos, size, color, texture_handle, uv } => {
+                    let slot = gpu.texture_slot(*texture_handle);
+                    self.draw_glyph_rect(gpu.device(), cmd, screen, *pos, *size, *color, slot, *uv)
+                }
+            }
+        }
+        self.end(gpu.device(), cmd);
+        Ok(())
     }
 
     pub fn begin(
