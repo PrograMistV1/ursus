@@ -1,6 +1,10 @@
 <div align="center">
 
-<img src="assets/ursus.svg" width="240" alt="ursus logo" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/ursus-light.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/ursus.svg">
+  <img src="assets/ursus.svg" width="240" alt="ursus logo">
+</picture>
 
 # URSUS
 
