@@ -1,4 +1,3 @@
-pub mod builtin_shaders;
 pub mod cpu_server;
 pub mod gpu_server;
 pub mod loader_job;

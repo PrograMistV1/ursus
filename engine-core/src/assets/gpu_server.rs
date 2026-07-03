@@ -2,7 +2,7 @@ use crate::assets::cpu_server::TextureHandle;
 use crate::assets::material::MaterialData;
 use crate::assets::mesh::{CpuMesh, GpuMesh};
 use crate::assets::shader_registry::TextureSlot;
-use crate::assets::{builtin_shaders, ShaderRegistry};
+use crate::assets::ShaderRegistry;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::render::world::RenderWorld;
 use crate::vulkan::{BindlessSet, GpuTexture, MaterialBuffer};
@@ -46,8 +46,7 @@ impl GpuAssetServer {
 
         let material_buffer = MaterialBuffer::new(&device, physical_device, &instance)?;
 
-        let mut shaders = ShaderRegistry::empty();
-        builtin_shaders::register_builtin(&mut shaders);
+        let shaders = ShaderRegistry::empty();
 
         log::info!("GpuAssetServer: white=slot0, text_renderer готов, next_slot={}", bindless.next_slot());
 

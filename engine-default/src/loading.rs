@@ -95,6 +95,8 @@ impl RenderPipeline for LoadingPipeline {
     where
         Self: Sized,
     {
+        crate::builtin_shaders::register_builtin(&mut gpu_assets.shaders);
+
         let swapchain = ctx.swapchain.as_ref().unwrap();
         let device = &ctx.device.handle;
 

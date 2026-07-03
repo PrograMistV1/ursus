@@ -96,6 +96,13 @@ impl ShaderRegistry {
         handle
     }
 
+    pub fn register_if_absent(&mut self, def: ShaderDef) -> ShaderHandle {
+        if let Some(h) = self.by_name(&def.name) {
+            return h;
+        }
+        self.register(def)
+    }
+
     pub fn load_spv(&mut self, handle: ShaderHandle) -> anyhow::Result<(&[u8], Option<&[u8]>)> {
         if !self.compiled.contains_key(&handle) {
             let def = self
