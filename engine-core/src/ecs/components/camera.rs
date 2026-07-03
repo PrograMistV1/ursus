@@ -1,3 +1,5 @@
+use glam::camera::rh::proj::directx::perspective;
+use glam::camera::rh::view::look_at_mat4;
 use glam::{Mat4, Vec3};
 
 #[derive(Debug, Clone, Copy)]
@@ -15,8 +17,8 @@ pub struct CameraComponent {
 
 impl CameraComponent {
     pub fn view_proj(&self, aspect: f32) -> Mat4 {
-        let view = Mat4::look_at_rh(self.eye, self.target, self.up);
-        let mut proj = Mat4::perspective_rh(self.fov_y, aspect, self.z_near, self.z_far);
+        let view = look_at_mat4(self.eye, self.target, self.up);
+        let mut proj = perspective(self.fov_y, aspect, self.z_near, self.z_far);
         proj.y_axis.y *= -1.0;
         proj * view
     }
