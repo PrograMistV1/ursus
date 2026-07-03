@@ -32,29 +32,29 @@ engine-default/    a batteries-included deferred renderer + built-in shaders, bu
 engine-template/   minimal example application showing how to use the engine
 ```
 
-`engine-core` has no opinion about *how* you render things — it gives you the plumbing (device/swapchain setup, render
+`engine-core` has no opinion about *how* you render things - it gives you the plumbing (device/swapchain setup, render
 graph, resource pool, asset loading, ECS). `engine-default` is one opinionated pipeline built on top of that plumbing.
 You could write your own pipeline crate instead and skip `engine-default` entirely.
 
 ## ⭐ Features
 
-- **Render graph** (`engine-core/src/render/graph.rs`) — passes declare read/write access to resources; the graph
+- **Render graph** (`engine-core/src/render/graph.rs`) - passes declare read/write access to resources; the graph
   topologically sorts them and inserts image layout barriers automatically. See [Render graph](#-render-graph) below.
-- **Deferred pipeline** (`engine-default`) — shadow pass → depth prepass → GBuffer (albedo/normal) → lighting →
-  tonemap/post-process → FSR1 (EASU + RCAS) upscale → UI overlay.
-- **Bindless textures** — a single descriptor set with `update_after_bind` + `PARTIALLY_BOUND`, indexed via
+- **Deferred pipeline** (`engine-default`) - shadow pass -> depth prepass -> GBuffer (albedo/normal) -> lighting ->
+  tonemap/post-process -> FSR1 (EASU + RCAS) upscale -> UI overlay.
+- **Bindless textures** - a single descriptor set with `update_after_bind` + `PARTIALLY_BOUND`, indexed via
   `nonuniformEXT` in shaders. No per-draw descriptor churn.
-- **Threaded renderer** — game logic and rendering run on separate threads, synchronized via a lock-free triple buffer (
+- **Threaded renderer** - game logic and rendering run on separate threads, synchronized via a lock-free triple buffer (
   `render/triple_buffer.rs`). The render thread never blocks on game logic.
-- **Async asset loading** — a background thread loads `.obj`/`.gltf`/`.glb` off the hot path; results flow back through
+- **Async asset loading** - a background thread loads `.obj`/`.gltf`/`.glb` off the hot path; results flow back through
   a channel and get GPU-uploaded when ready.
-- **Text rendering** — `cosmic-text` for shaping + a custom glyph atlas (`etagere`-backed packer) for rasterized text.
-- **GPU profiling** — per-pass timestamp queries (`vulkan/timestamps.rs`) feeding into `puffin` for frame-time
+- **Text rendering** - `cosmic-text` for shaping + a custom glyph atlas (`etagere`-backed packer) for rasterized text.
+- **GPU profiling** - per-pass timestamp queries (`vulkan/timestamps.rs`) feeding into `puffin` for frame-time
   breakdowns.
 
 ## 🕸️ Render graph
 
-Passes are built declaratively and don't know about each other directly — dependencies are inferred from resource
+Passes are built declaratively and don't know about each other directly - dependencies are inferred from resource
 access:
 
 ```rust
@@ -71,8 +71,8 @@ pass("lighting")
 `RenderGraph::compile()` builds a dependency graph from these read/write accesses, topologically sorts the passes, and
 precomputes the minimal set of `VkImageMemoryBarrier2`s needed between them. Resources are either:
 
-- **Transient** — sized relative to internal or output resolution, allocated/resized by the graph (`ResourcePool`)
-- **External** — swapchain images, whose layout is managed at frame boundaries
+- **Transient** - sized relative to internal or output resolution, allocated/resized by the graph (`ResourcePool`)
+- **External** - swapchain images, whose layout is managed at frame boundaries
 
 Current pipeline order in `engine-default`:
 
@@ -86,11 +86,11 @@ depth_prepass --+                                  v
 ```
 
 (`depth_prepass` and `shadow` have no dependency on each other and could run in parallel on hardware/APIs that support
-it — the graph doesn't currently exploit that, it just orders them consistently.)
+it - the graph doesn't currently exploit that, it just orders them consistently.)
 
 ## 🛠️ Building
 
-Requires the **Vulkan SDK** installed with `glslc` on your `PATH` — shaders are compiled to SPIR-V at build time via
+Requires the **Vulkan SDK** installed with `glslc` on your `PATH` - shaders are compiled to SPIR-V at build time via
 `build.rs` (`engine-default/build.rs`), there's no runtime shader compilation.
 
 ```bash
@@ -131,8 +131,26 @@ relevant ECS state into a `RenderWorld` snapshot, which is published to the rend
 ## 🚧 Status / known rough edges
 
 - Single discrete-GPU assumption in device selection (falls back to first suitable device if none found).
-- No parallelism exploited in the render graph yet — passes execute sequentially even when independent.
+- No parallelism exploited in the render graph yet - passes execute sequentially even when independent.
 - Some internal log/error strings are in Russian; not yet standardized to one language throughout.
+
+## 🗺️ Roadmap
+
+Engine architecture (`engine-core`):
+
+- [ ] **Multithreaded command recording** - record passes in parallel into secondary command buffers via a job system
+- [ ] **Draw call batching / instancing** - GPU instancing for identical meshes instead of one draw call per instance
+- [ ] **Resource aliasing in the render graph** - reuse memory across transient resources with non-overlapping lifetimes
+- [ ] **Runtime debug UI** - GPU timings, G-buffer view, live-tweaking of render parameters
+
+Rendering backlog (`engine-default`):
+
+- [ ] PBR lighting (specular/GGX, metallic)
+- [ ] Point light shadows
+- [ ] Cascaded shadow maps
+- [ ] IBL / ambient
+- [ ] Wire up frustum culling (already implemented in `math/frustum.rs`, currently unused)
+- [ ] Alpha blending pass
 
 ## 📄 License
 
