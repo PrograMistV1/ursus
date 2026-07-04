@@ -129,7 +129,7 @@ impl RenderPipeline for DefaultPipeline {
             .read(h_ldr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .write(h_fsr_easu, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .bind_sampled(h_ldr, fsr_easu_set, 0, fsr_sampler)
-            .record(move |enc, rw, gpu| fsr_easu.record_easu_pass(enc, rw, gpu, h_fsr_easu))
+            .record(move |enc, rw, gpu| fsr_easu.record_easu_pass(enc, rw, gpu, h_ldr, h_fsr_easu))
             .build(graph);
 
         pass("fsr_rcas")

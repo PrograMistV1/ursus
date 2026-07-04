@@ -74,12 +74,13 @@ impl FsrPass {
         enc: &mut CommandEncoder,
         rw: &RenderWorld,
         _gpu: &GpuAssetServer,
+        src: ResourceHandle,
         dst: ResourceHandle,
     ) -> anyhow::Result<()> {
         let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
-        let extent = enc.extent_of(dst);
+        let input_extent = enc.extent_of(src);
         let (ow, oh) = settings.output_size;
-        let pc = compute_easu_con((extent[0], extent[1]), (extent[0], extent[1]), (ow, oh));
+        let pc = compute_easu_con((input_extent[0], input_extent[1]), (input_extent[0], input_extent[1]), (ow, oh));
 
         enc.begin_rendering_discard(dst);
         enc.bind_pipeline(self.easu_pipeline);
