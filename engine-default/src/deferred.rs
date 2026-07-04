@@ -69,53 +69,35 @@ impl RenderPipeline for DefaultPipeline {
         );
         let h_swapchain = graph.pool.register_swapchain_external(swapchain.format);
 
-        let shadow_pass = ShadowPass::new(&ctx.device.handle, &mut gpu_assets.shaders)?;
-        let depth_prepass = DepthPrepass::new(&ctx.device.handle, &mut gpu_assets.shaders)?;
+        let shadow_pass = ShadowPass::new(gpu_assets)?;
+        let depth_prepass = DepthPrepass::new(gpu_assets)?;
 
-        let mut geometry_pass = GeometryPass::new(
-            &ctx.device.handle,
-            GBuffer::color_formats(),
-            gpu_assets.bindless.layout,
-            gpu_assets.material_buffer.layout,
-            &mut gpu_assets.shaders,
-        )?;
+        let mut geometry_pass = GeometryPass::new(gpu_assets, GBuffer::color_formats())?;
 
         let lighting_pass = LightingPass::new(
+            gpu_assets,
             &ctx.device.handle,
             ctx.device.physical,
             &ctx.instance.handle,
             vk::Format::R16G16B16A16_SFLOAT,
-            &mut gpu_assets.shaders,
         )?;
-        let post_pass = PostProcessPass::new(&ctx.device.handle, LDR_FORMAT, &mut gpu_assets.shaders)?;
+        let post_pass = PostProcessPass::new(gpu_assets, &ctx.device.handle, LDR_FORMAT)?;
 
         pass("shadow")
             .write(h_shadow_map, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .record(move |cmd, pool, rw, gpu| shadow_pass.record(cmd, pool, rw, gpu, h_shadow_map))
+            .record(move |enc, rw, gpu| shadow_pass.record(enc, rw, gpu, h_shadow_map))
             .build(graph);
 
         pass("depth_prepass")
             .write(h_depth, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .record(move |cmd, pool, rw, gpu| depth_prepass.record(cmd, pool, rw, gpu, h_depth))
+            .record(move |enc, rw, gpu| depth_prepass.record(enc, rw, gpu, h_depth))
             .build(graph);
 
-        let debug_utils = ctx.debug_utils.clone();
         pass("geometry")
             .write(h_gbuffer_albedo, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .write(h_gbuffer_normal, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .read_write(h_depth, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .record(move |cmd, pool, rw, gpu| {
-                geometry_pass.record(
-                    cmd,
-                    pool,
-                    rw,
-                    gpu,
-                    h_gbuffer_albedo,
-                    h_gbuffer_normal,
-                    h_depth,
-                    debug_utils.as_deref(),
-                )
-            })
+            .record(move |enc, rw, gpu| geometry_pass.record(enc, rw, gpu, h_gbuffer_albedo, h_gbuffer_normal, h_depth))
             .build(graph);
 
         pass("lighting")
@@ -128,17 +110,17 @@ impl RenderPipeline for DefaultPipeline {
             .bind_sampled(h_gbuffer_normal, lighting_pass.descriptor_set, 1, lighting_pass.sampler)
             .bind_sampled(h_depth, lighting_pass.descriptor_set, 2, lighting_pass.sampler)
             .bind_sampled(h_shadow_map, lighting_pass.descriptor_set, 4, lighting_pass.shadow_sampler)
-            .record(move |cmd, pool, rw, gpu| lighting_pass.record(cmd, pool, rw, gpu, h_hdr))
+            .record(move |enc, rw, gpu| lighting_pass.record(enc, rw, gpu, h_hdr))
             .build(graph);
 
         pass("post_process")
             .read(h_hdr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .write(h_ldr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .bind_sampled(h_hdr, post_pass.descriptor_set, 0, post_pass.sampler)
-            .record(move |cmd, pool, rw, gpu| post_pass.record(cmd, pool, rw, gpu, h_ldr))
+            .record(move |enc, rw, gpu| post_pass.record(enc, rw, gpu, h_ldr))
             .build(graph);
 
-        let fsr_pass = Arc::new(FsrPass::new(&ctx.device.handle, LDR_FORMAT, &mut gpu_assets.shaders)?);
+        let fsr_pass = Arc::new(FsrPass::new(gpu_assets, &ctx.device.handle, LDR_FORMAT)?);
         let (fsr_easu_set, fsr_rcas_set, fsr_sampler) =
             (fsr_pass.easu_descriptor_set, fsr_pass.rcas_descriptor_set, fsr_pass.sampler);
         let (fsr_easu, fsr_rcas) = (Arc::clone(&fsr_pass), Arc::clone(&fsr_pass));
@@ -147,66 +129,31 @@ impl RenderPipeline for DefaultPipeline {
             .read(h_ldr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .write(h_fsr_easu, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .bind_sampled(h_ldr, fsr_easu_set, 0, fsr_sampler)
-            .record(move |cmd, pool, rw, gpu| fsr_easu.record_easu_pass(cmd, pool, rw, gpu, h_fsr_easu))
+            .record(move |enc, rw, gpu| fsr_easu.record_easu_pass(enc, rw, gpu, h_fsr_easu))
             .build(graph);
 
         pass("fsr_rcas")
             .read(h_fsr_easu, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .write(h_fsr_rcas, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .bind_sampled(h_fsr_easu, fsr_rcas_set, 0, fsr_sampler)
-            .record(move |cmd, pool, rw, gpu| fsr_rcas.record_rcas_pass(cmd, pool, rw, gpu, h_fsr_rcas))
+            .record(move |enc, rw, gpu| fsr_rcas.record_rcas_pass(enc, rw, gpu, h_fsr_rcas))
             .build(graph);
 
         let blit_handle = pass("blit_to_swapchain")
             .read(h_fsr_rcas, vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
             .write(h_swapchain, vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .record(move |cmd, pool, _rw, gpu| {
-                let src = pool.image(h_fsr_rcas);
-                let dst = pool.image(h_swapchain);
-                let blit = vk::ImageBlit2::default()
-                    .src_subresource(vk::ImageSubresourceLayers {
-                        aspect_mask: vk::ImageAspectFlags::COLOR,
-                        mip_level: 0,
-                        base_array_layer: 0,
-                        layer_count: 1,
-                    })
-                    .src_offsets([
-                        vk::Offset3D::default(),
-                        vk::Offset3D { x: src.extent.width as i32, y: src.extent.height as i32, z: 1 },
-                    ])
-                    .dst_subresource(vk::ImageSubresourceLayers {
-                        aspect_mask: vk::ImageAspectFlags::COLOR,
-                        mip_level: 0,
-                        base_array_layer: 0,
-                        layer_count: 1,
-                    })
-                    .dst_offsets([
-                        vk::Offset3D::default(),
-                        vk::Offset3D { x: dst.extent.width as i32, y: dst.extent.height as i32, z: 1 },
-                    ]);
-                unsafe {
-                    gpu.device().cmd_blit_image2(
-                        cmd,
-                        &vk::BlitImageInfo2::default()
-                            .src_image(src.image)
-                            .src_image_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-                            .dst_image(dst.image)
-                            .dst_image_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                            .regions(std::slice::from_ref(&blit))
-                            .filter(vk::Filter::LINEAR),
-                    );
-                }
+            .record(move |enc, _rw, _gpu| {
+                enc.blit_to_swapchain(h_fsr_rcas, h_swapchain);
                 Ok(())
             })
             .build(graph);
 
-        let ui_pass =
-            UiPass::new(&ctx.device.handle, swapchain.format, gpu_assets.bindless.layout, &mut gpu_assets.shaders)?;
+        let ui_pass = UiPass::new(gpu_assets, swapchain.format)?;
 
         pass("ui")
             .after(blit_handle)
             .read_write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .record(move |cmd, pool, rw, gpu| ui_pass.record(cmd, pool, rw, gpu, h_swapchain))
+            .record(move |enc, rw, gpu| ui_pass.record(enc, rw, gpu, h_swapchain))
             .build(graph);
 
         Ok(PipelineHandles { swapchain: h_swapchain })

@@ -1,14 +1,13 @@
 use ash::vk;
-use cmd::begin_rendering_discard;
-use descriptor::alloc_sets;
 use engine_core::assets::gpu_server::GpuAssetServer;
-use engine_core::assets::ShaderRegistry;
-use engine_core::render::resource::{GpuImage, ResourceHandle, ResourcePool};
+use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
+use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedRenderSettings, RenderWorld};
 use engine_core::vulkan::core::sampler;
-use engine_core::vulkan::gfx_pipeline::builder::{cmd, descriptor, PipelineBuilder};
+use engine_core::vulkan::gfx_pipeline::builder::descriptor::alloc_sets;
 
 #[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct EasuPC {
     pub con0: [u32; 4],
     pub con1: [u32; 4],
@@ -17,28 +16,26 @@ pub struct EasuPC {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct RcasPC {
     pub con0: [u32; 4],
 }
 
 pub struct FsrPass {
-    pub easu_pipeline: vk::Pipeline,
-    pub easu_layout: vk::PipelineLayout,
+    easu_pipeline: PipelineId,
     pub easu_descriptor_set_layout: vk::DescriptorSetLayout,
     pub easu_descriptor_set: vk::DescriptorSet,
 
-    pub rcas_pipeline: vk::Pipeline,
-    pub rcas_layout: vk::PipelineLayout,
+    rcas_pipeline: PipelineId,
     pub rcas_descriptor_set: vk::DescriptorSet,
 
     pub sampler: vk::Sampler,
     descriptor_pool: vk::DescriptorPool,
-
     device: ash::Device,
 }
 
 impl FsrPass {
-    pub fn new(device: &ash::Device, output_format: vk::Format, registry: &mut ShaderRegistry) -> anyhow::Result<Self> {
+    pub fn new(gpu: &mut GpuAssetServer, device: &ash::Device, output_format: vk::Format) -> anyhow::Result<Self> {
         let sampler = sampler::create_linear_clamp_sampler(device)?;
 
         let pool_sizes =
@@ -57,20 +54,14 @@ impl FsrPass {
             .offset(0)
             .size(size_of::<RcasPC>() as u32);
 
-        let (easu_pipeline, easu_layout) =
-            build_fsr_stage_pipeline(device, registry, "fsr_easu", dsl, easu_push, output_format)?;
-        let (rcas_pipeline, rcas_layout) =
-            build_fsr_stage_pipeline(device, registry, "fsr_rcas", dsl, rcas_push, output_format)?;
-
-        log::debug!("FsrPass создан");
+        let easu_pipeline = build_stage_pipeline(gpu, "fsr_easu", dsl, easu_push, output_format)?;
+        let rcas_pipeline = build_stage_pipeline(gpu, "fsr_rcas", dsl, rcas_push, output_format)?;
 
         Ok(Self {
             easu_pipeline,
-            easu_layout,
             easu_descriptor_set_layout: dsl,
             easu_descriptor_set,
             rcas_pipeline,
-            rcas_layout,
             rcas_descriptor_set,
             sampler,
             descriptor_pool,
@@ -80,115 +71,76 @@ impl FsrPass {
 
     pub fn record_easu_pass(
         &self,
-        cmd: vk::CommandBuffer,
-        pool: &ResourcePool,
+        enc: &mut CommandEncoder,
         rw: &RenderWorld,
-        gpu: &GpuAssetServer,
+        _gpu: &GpuAssetServer,
         dst: ResourceHandle,
     ) -> anyhow::Result<()> {
-        let dst_img = pool.image(dst);
         let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
-        let (iw, ih) = (dst_img.extent.width, dst_img.extent.height);
+        let extent = enc.extent_of(dst);
         let (ow, oh) = settings.output_size;
-        let pc = compute_easu_con((iw as f32, ih as f32), (iw as f32, ih as f32), (ow, oh));
-        self.record_easu(gpu.device(), cmd, &dst_img, &pc);
+        let pc = compute_easu_con((extent[0], extent[1]), (extent[0], extent[1]), (ow, oh));
+
+        enc.begin_rendering_discard(dst);
+        enc.bind_pipeline(self.easu_pipeline);
+        enc.bind_descriptor_sets(self.easu_pipeline, &[self.easu_descriptor_set]);
+        enc.push_constants(self.easu_pipeline, ShaderStage::Fragment, &pc);
+        enc.draw(3);
+        enc.end_rendering();
         Ok(())
     }
 
     pub fn record_rcas_pass(
         &self,
-        cmd: vk::CommandBuffer,
-        pool: &ResourcePool,
+        enc: &mut CommandEncoder,
         rw: &RenderWorld,
-        gpu: &GpuAssetServer,
+        _gpu: &GpuAssetServer,
         dst: ResourceHandle,
     ) -> anyhow::Result<()> {
-        let dst_img = pool.image(dst);
         let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
         let pc = compute_rcas_con(settings.fsr_sharpness);
-        self.record_rcas(gpu.device(), cmd, &dst_img, &pc);
+
+        enc.begin_rendering_discard(dst);
+        enc.bind_pipeline(self.rcas_pipeline);
+        enc.bind_descriptor_sets(self.rcas_pipeline, &[self.rcas_descriptor_set]);
+        enc.push_constants(self.rcas_pipeline, ShaderStage::Fragment, &pc);
+        enc.draw(3);
+        enc.end_rendering();
         Ok(())
     }
-
-    pub fn record_easu(&self, device: &ash::Device, cmd: vk::CommandBuffer, dst: &impl GpuImage, easu_pc: &EasuPC) {
-        self.record_fullscreen_pass(
-            device,
-            cmd,
-            dst,
-            self.easu_pipeline,
-            self.easu_layout,
-            self.easu_descriptor_set,
-            unsafe { std::slice::from_raw_parts(easu_pc as *const EasuPC as *const u8, size_of::<EasuPC>()) },
-        );
-    }
-
-    pub fn record_rcas(&self, device: &ash::Device, cmd: vk::CommandBuffer, dst: &impl GpuImage, rcas_pc: &RcasPC) {
-        self.record_fullscreen_pass(
-            device,
-            cmd,
-            dst,
-            self.rcas_pipeline,
-            self.rcas_layout,
-            self.rcas_descriptor_set,
-            unsafe { std::slice::from_raw_parts(rcas_pc as *const RcasPC as *const u8, size_of::<RcasPC>()) },
-        );
-    }
-
-    fn record_fullscreen_pass(
-        &self,
-        device: &ash::Device,
-        cmd: vk::CommandBuffer,
-        dst: &impl GpuImage,
-        pipeline: vk::Pipeline,
-        layout: vk::PipelineLayout,
-        set: vk::DescriptorSet,
-        pc_bytes: &[u8],
-    ) {
-        let extent = dst.extent();
-
-        begin_rendering_discard(device, cmd, dst.view(), extent);
-
-        unsafe {
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
-            device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, layout, 0, &[set], &[]);
-            device.cmd_push_constants(cmd, layout, vk::ShaderStageFlags::FRAGMENT, 0, pc_bytes);
-            device.cmd_draw(cmd, 3, 1, 0, 0);
-            device.cmd_end_rendering(cmd);
-        }
-    }
-}
-
-fn build_fsr_stage_pipeline(
-    device: &ash::Device,
-    registry: &mut ShaderRegistry,
-    shader_name: &str,
-    dsl: vk::DescriptorSetLayout,
-    push_range: vk::PushConstantRange,
-    output_format: vk::Format,
-) -> anyhow::Result<(vk::Pipeline, vk::PipelineLayout)> {
-    let handle = registry.by_name(shader_name).unwrap_or_else(|| panic!("шейдер '{shader_name}' не зарегистрирован"));
-    let (vert, frag) = registry.load_spv(handle)?;
-    let vert = vert.to_vec();
-    let frag = frag.expect("FSR-шейдер должен иметь frag").to_vec();
-
-    PipelineBuilder::fullscreen(&vert, &frag, std::slice::from_ref(&output_format))
-        .set_layouts(std::slice::from_ref(&dsl))
-        .push_constants(std::slice::from_ref(&push_range))
-        .build(device)
 }
 
 impl Drop for FsrPass {
     fn drop(&mut self) {
         unsafe {
-            self.device.destroy_pipeline(self.easu_pipeline, None);
-            self.device.destroy_pipeline_layout(self.easu_layout, None);
-            self.device.destroy_pipeline(self.rcas_pipeline, None);
-            self.device.destroy_pipeline_layout(self.rcas_layout, None);
             self.device.destroy_descriptor_set_layout(self.easu_descriptor_set_layout, None);
             self.device.destroy_descriptor_pool(self.descriptor_pool, None);
             self.device.destroy_sampler(self.sampler, None);
         }
     }
+}
+
+fn build_stage_pipeline(
+    gpu: &mut GpuAssetServer,
+    shader_name: &str,
+    dsl: vk::DescriptorSetLayout,
+    push_range: vk::PushConstantRange,
+    output_format: vk::Format,
+) -> anyhow::Result<PipelineId> {
+    let handle =
+        gpu.shaders.by_name(shader_name).unwrap_or_else(|| panic!("шейдер '{shader_name}' не зарегистрирован"));
+    let (vert, frag) = gpu.shaders.load_spv(handle)?;
+    let vert = vert.to_vec();
+    let frag = frag.expect("FSR-шейдер должен иметь frag").to_vec();
+
+    gpu.create_fullscreen_pipeline(
+        &vert,
+        &frag,
+        std::slice::from_ref(&output_format),
+        std::slice::from_ref(&dsl),
+        std::slice::from_ref(&push_range),
+        None,
+    )
 }
 
 fn create_sampled_image_dsl(device: &ash::Device) -> anyhow::Result<vk::DescriptorSetLayout> {
@@ -197,7 +149,6 @@ fn create_sampled_image_dsl(device: &ash::Device) -> anyhow::Result<vk::Descript
         .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
         .descriptor_count(1)
         .stage_flags(vk::ShaderStageFlags::FRAGMENT);
-
     Ok(unsafe {
         device.create_descriptor_set_layout(
             &vk::DescriptorSetLayoutCreateInfo::default().bindings(std::slice::from_ref(&binding)),
@@ -210,7 +161,6 @@ pub fn compute_easu_con(input_viewport: (f32, f32), input_size: (f32, f32), outp
     let (ivw, ivh) = input_viewport;
     let (isw, ish) = input_size;
     let (osw, osh) = output_size;
-
     EasuPC {
         con0: [
             f32_to_bits(ivw / osw),
@@ -235,8 +185,7 @@ pub fn compute_easu_con(input_viewport: (f32, f32), input_size: (f32, f32), outp
 }
 
 pub fn compute_rcas_con(sharpness: f32) -> RcasPC {
-    let sharpness_stop = sharpness.exp2();
-    RcasPC { con0: [f32_to_bits(sharpness_stop), 0, 0, 0] }
+    RcasPC { con0: [f32_to_bits(sharpness.exp2()), 0, 0, 0] }
 }
 
 #[inline]

@@ -8,7 +8,7 @@ use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::upload::GpuUploadRequest;
 use crate::render::triple_buffer::TripleBuffer;
-use crate::render::world::{RenderWorld};
+use crate::render::world::RenderWorld;
 use crate::vulkan::VulkanContext;
 
 use self::command::{PipelineFactory, RenderCommand};

@@ -1,15 +1,13 @@
 use ash::vk;
-use cmd::begin_rendering_discard;
-use descriptor::alloc_single_set;
 use engine_core::assets::gpu_server::GpuAssetServer;
-use engine_core::assets::ShaderRegistry;
-use engine_core::render::resource::{GpuImage, ResourceHandle, ResourcePool};
+use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
+use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedCamera, ExtractedLights, RenderWorld};
-use engine_core::vulkan::gfx_pipeline::builder::{cmd, descriptor, PipelineBuilder};
+use engine_core::vulkan::gfx_pipeline::builder::descriptor::alloc_single_set;
 use engine_core::vulkan::resources::light_buffer::{LightBuffer, LightingUbo};
-use glam::Mat4;
 
 #[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct LightingPC {
     inv_proj: [[f32; 4]; 4],
     inv_view: [[f32; 4]; 4],
@@ -18,8 +16,7 @@ struct LightingPC {
 }
 
 pub struct LightingPass {
-    pub pipeline: vk::Pipeline,
-    pub layout: vk::PipelineLayout,
+    pipeline: PipelineId,
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_set: vk::DescriptorSet,
@@ -31,11 +28,11 @@ pub struct LightingPass {
 
 impl LightingPass {
     pub fn new(
+        gpu: &mut GpuAssetServer,
         device: &ash::Device,
         physical_device: vk::PhysicalDevice,
         instance: &ash::Instance,
         hdr_format: vk::Format,
-        registry: &mut ShaderRegistry,
     ) -> anyhow::Result<Self> {
         let light_buffer = LightBuffer::new(device, physical_device, instance)?;
 
@@ -65,15 +62,15 @@ impl LightingPass {
         };
 
         let bindings = [
-            make_image_binding(0), // albedo
-            make_image_binding(1), // normal
-            make_image_binding(2), // depth
+            make_image_binding(0),
+            make_image_binding(1),
+            make_image_binding(2),
             vk::DescriptorSetLayoutBinding::default()
                 .binding(3)
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                 .descriptor_count(1)
                 .stage_flags(vk::ShaderStageFlags::FRAGMENT),
-            make_image_binding(4), // shadow map
+            make_image_binding(4),
         ];
 
         let descriptor_set_layout = unsafe {
@@ -105,20 +102,22 @@ impl LightingPass {
             .offset(0)
             .size(size_of::<LightingPC>() as u32);
 
-        let handle = registry.by_name("lighting").expect("шейдер 'lighting' не зарегистрирован");
-        let (vert_spv, frag_spv) = registry.load_spv(handle)?;
+        let handle = gpu.shaders.by_name("lighting").expect("шейдер 'lighting' не зарегистрирован");
+        let (vert_spv, frag_spv) = gpu.shaders.load_spv(handle)?;
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.expect("'lighting' должен иметь frag").to_vec();
 
-        let (pipeline, layout) = PipelineBuilder::fullscreen(&vert_spv, &frag_spv, std::slice::from_ref(&hdr_format))
-            .set_layouts(std::slice::from_ref(&descriptor_set_layout))
-            .push_constants(std::slice::from_ref(&push_range))
-            .build(device)?;
+        let pipeline = gpu.create_fullscreen_pipeline(
+            &vert_spv,
+            &frag_spv,
+            std::slice::from_ref(&hdr_format),
+            std::slice::from_ref(&descriptor_set_layout),
+            std::slice::from_ref(&push_range),
+            None,
+        )?;
 
-        log::debug!("LightingPass создан");
         Ok(Self {
             pipeline,
-            layout,
             descriptor_pool,
             descriptor_set_layout,
             descriptor_set,
@@ -129,21 +128,15 @@ impl LightingPass {
         })
     }
 
-    pub fn upload_lights(&self, data: &LightingUbo) {
-        self.light_buffer.upload(data);
-    }
-
     pub fn record(
         &self,
-        cmd: vk::CommandBuffer,
-        pool: &ResourcePool,
+        enc: &mut CommandEncoder,
         rw: &RenderWorld,
-        gpu: &GpuAssetServer,
+        _gpu: &GpuAssetServer,
         hdr: ResourceHandle,
     ) -> anyhow::Result<()> {
         let camera = rw.get::<ExtractedCamera>().cloned().unwrap_or_default();
         let lights = rw.get::<ExtractedLights>().cloned().unwrap_or_default();
-        let hdr = pool.image(hdr);
 
         let ubo = LightingUbo {
             directional: lights.directional,
@@ -152,55 +145,28 @@ impl LightingPass {
             _pad: [0; 3],
             light_space_matrix: lights.light_view_proj.to_cols_array_2d(),
         };
-        self.upload_lights(&ubo);
+        self.light_buffer.upload(&ubo);
 
-        self.record_draws(gpu.device(), cmd, &hdr, camera.view, camera.proj);
+        enc.begin_rendering_discard(hdr);
+        enc.bind_pipeline(self.pipeline);
+        enc.bind_descriptor_sets(self.pipeline, &[self.descriptor_set]);
+
+        let pc = LightingPC {
+            inv_proj: camera.proj.inverse().to_cols_array_2d(),
+            inv_view: camera.view.inverse().to_cols_array_2d(),
+            viewport: enc.extent_of(hdr),
+            _pad: [0.0; 2],
+        };
+        enc.push_constants(self.pipeline, ShaderStage::Fragment, &pc);
+        enc.draw(3);
+        enc.end_rendering();
         Ok(())
-    }
-
-    pub fn record_draws(
-        &self,
-        device: &ash::Device,
-        cmd: vk::CommandBuffer,
-        hdr: &impl GpuImage,
-        view: Mat4,
-        proj: Mat4,
-    ) {
-        let extent = hdr.extent();
-
-        begin_rendering_discard(device, cmd, hdr.view(), extent);
-
-        unsafe {
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
-            device.cmd_bind_descriptor_sets(
-                cmd,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.layout,
-                0,
-                &[self.descriptor_set],
-                &[],
-            );
-
-            let pc = LightingPC {
-                inv_proj: proj.inverse().to_cols_array_2d(),
-                inv_view: view.inverse().to_cols_array_2d(),
-                viewport: [extent.width as f32, extent.height as f32],
-                _pad: [0.0; 2],
-            };
-            let pc_bytes = std::slice::from_raw_parts(&pc as *const LightingPC as *const u8, size_of::<LightingPC>());
-            device.cmd_push_constants(cmd, self.layout, vk::ShaderStageFlags::FRAGMENT, 0, pc_bytes);
-
-            device.cmd_draw(cmd, 3, 1, 0, 0);
-            device.cmd_end_rendering(cmd);
-        }
     }
 }
 
 impl Drop for LightingPass {
     fn drop(&mut self) {
         unsafe {
-            self.device.destroy_pipeline(self.pipeline, None);
-            self.device.destroy_pipeline_layout(self.layout, None);
             self.device.destroy_descriptor_pool(self.descriptor_pool, None);
             self.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             self.device.destroy_sampler(self.sampler, None);

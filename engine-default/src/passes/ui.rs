@@ -1,12 +1,12 @@
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
-use engine_core::assets::ShaderRegistry;
-use engine_core::render::resource::{ResourceHandle, ResourcePool};
+use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
+use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{PreparedUiDrawList, RenderWorld, UiPrimitive};
-use engine_core::vulkan::gfx_pipeline::builder::{cmd, PipelineBuilder};
 use glam::Vec2;
 
 #[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct UiPC {
     pub screen_size: [f32; 2],
     pub pos: [f32; 2],
@@ -21,25 +21,18 @@ pub struct UiPC {
 }
 
 pub struct UiPass {
-    pipeline: vk::Pipeline,
-    layout: vk::PipelineLayout,
-    device: ash::Device,
+    pipeline: PipelineId,
 }
 
 impl UiPass {
-    pub fn new(
-        device: &ash::Device,
-        swapchain_format: vk::Format,
-        bindless_layout: vk::DescriptorSetLayout,
-        registry: &mut ShaderRegistry,
-    ) -> anyhow::Result<Self> {
+    pub fn new(gpu: &mut GpuAssetServer, swapchain_format: vk::Format) -> anyhow::Result<Self> {
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
             .offset(0)
             .size(size_of::<UiPC>() as u32);
 
-        let handle = registry.by_name("ui").expect("shader 'ui' not registered");
-        let (vert_spv, frag_spv) = registry.load_spv(handle)?;
+        let handle = gpu.shaders.by_name("ui").expect("shader 'ui' not registered");
+        let (vert_spv, frag_spv) = gpu.shaders.load_spv(handle)?;
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.expect("'ui' must have frag").to_vec();
 
@@ -53,21 +46,23 @@ impl UiPass {
             .alpha_blend_op(vk::BlendOp::ADD)
             .color_write_mask(vk::ColorComponentFlags::RGBA)];
 
-        let (pipeline, layout) =
-            PipelineBuilder::fullscreen(&vert_spv, &frag_spv, std::slice::from_ref(&swapchain_format))
-                .set_layouts(std::slice::from_ref(&bindless_layout))
-                .push_constants(std::slice::from_ref(&push_range))
-                .blend_attachments(&blend)
-                .build(device)?;
+        let bindless_layout = gpu.bindless.layout;
 
-        log::debug!("UiPass created");
-        Ok(Self { pipeline, layout, device: device.clone() })
+        let pipeline = gpu.create_fullscreen_pipeline(
+            &vert_spv,
+            &frag_spv,
+            std::slice::from_ref(&swapchain_format),
+            std::slice::from_ref(&bindless_layout),
+            std::slice::from_ref(&push_range),
+            Some(&blend),
+        )?;
+
+        Ok(Self { pipeline })
     }
 
     pub fn record(
         &self,
-        cmd: vk::CommandBuffer,
-        pool: &ResourcePool,
+        enc: &mut CommandEncoder,
         rw: &RenderWorld,
         gpu: &GpuAssetServer,
         swapchain: ResourceHandle,
@@ -75,163 +70,54 @@ impl UiPass {
         let Some(draw_list) = rw.get::<PreparedUiDrawList>() else {
             return Ok(());
         };
-        let sc = pool.image(swapchain);
-        let screen = [sc.extent.width as f32, sc.extent.height as f32];
+        let screen = enc.extent_of(swapchain);
 
-        self.begin(gpu.device(), cmd, sc.view, sc.extent, gpu.bindless.set);
+        enc.begin_rendering_load(swapchain);
+        enc.bind_pipeline(self.pipeline);
+        enc.bind_descriptor_sets(self.pipeline, &[gpu.bindless.set]);
+
         for primitive in &draw_list.primitives {
-            match primitive {
+            let pc = match primitive {
                 UiPrimitive::Rect { pos, size, color, .. } => {
-                    self.draw_rect(gpu.device(), cmd, screen, *pos, *size, *color)
+                    self.make_pc(screen, *pos, *size, *color, [0.0, 0.0, 1.0, 1.0], 0, 0)
                 }
                 UiPrimitive::TexturedRect { pos, size, color, bindless_slot, uv } => {
-                    self.draw_textured_rect_uv(gpu.device(), cmd, screen, *pos, *size, *color, *bindless_slot, *uv)
+                    self.make_pc(screen, *pos, *size, *color, *uv, *bindless_slot, 2)
                 }
                 UiPrimitive::GlyphRect { pos, size, color, texture_handle, uv } => {
                     let slot = gpu.texture_slot(*texture_handle);
-                    self.draw_glyph_rect(gpu.device(), cmd, screen, *pos, *size, *color, slot, *uv)
+                    self.make_pc(screen, *pos, *size, *color, *uv, slot, 1)
                 }
-            }
+            };
+            enc.push_constants(self.pipeline, ShaderStage::VertexFragment, &pc);
+            enc.draw(6);
         }
-        self.end(gpu.device(), cmd);
+
+        enc.end_rendering();
         Ok(())
     }
 
-    pub fn begin(
+    fn make_pc(
         &self,
-        device: &ash::Device,
-        cmd_buf: vk::CommandBuffer,
-        swapchain_view: vk::ImageView,
-        extent: vk::Extent2D,
-        bindless_set: vk::DescriptorSet,
-    ) {
-        cmd::begin_rendering_load(device, cmd_buf, swapchain_view, extent);
-        unsafe {
-            device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
-            device.cmd_bind_descriptor_sets(
-                cmd_buf,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.layout,
-                0,
-                &[bindless_set],
-                &[],
-            );
-        }
-    }
-
-    pub fn end(&self, device: &ash::Device, cmd_buf: vk::CommandBuffer) {
-        unsafe { device.cmd_end_rendering(cmd_buf) };
-    }
-
-    pub fn draw_rect(
-        &self,
-        device: &ash::Device,
-        cmd_buf: vk::CommandBuffer,
-        screen_size: [f32; 2],
+        screen: [f32; 2],
         pos: Vec2,
         size: Vec2,
         color: [f32; 4],
-    ) {
-        let pc = UiPC {
-            screen_size,
-            pos: pos.into(),
-            size: size.into(),
-            _pad0: [0.0; 2],
-            color,
-            uv_rect: [0.0, 0.0, 1.0, 1.0],
-            tex_index: 0,
-            use_texture: 0,
-            sdf_mode: 0,
-            _pad1: 0,
-        };
-        self.push_and_draw(device, cmd_buf, &pc);
-    }
-
-    pub fn draw_textured_rect_uv(
-        &self,
-        device: &ash::Device,
-        cmd_buf: vk::CommandBuffer,
-        screen_size: [f32; 2],
-        pos: Vec2,
-        size: Vec2,
-        color: [f32; 4],
-        tex_index: u32,
         uv: [f32; 4],
-    ) {
-        let pc = UiPC {
-            screen_size,
+        tex_index: u32,
+        use_texture: u32,
+    ) -> UiPC {
+        UiPC {
+            screen_size: screen,
             pos: pos.into(),
             size: size.into(),
             _pad0: [0.0; 2],
             color,
             uv_rect: uv,
             tex_index,
-            use_texture: 2,
+            use_texture,
             sdf_mode: 0,
             _pad1: 0,
-        };
-        self.push_and_draw(device, cmd_buf, &pc);
-    }
-
-    pub fn draw_glyph_rect(
-        &self,
-        device: &ash::Device,
-        cmd_buf: vk::CommandBuffer,
-        screen_size: [f32; 2],
-        pos: Vec2,
-        size: Vec2,
-        color: [f32; 4],
-        tex_index: u32,
-        uv: [f32; 4],
-    ) {
-        let pc = UiPC {
-            screen_size,
-            pos: pos.into(),
-            size: size.into(),
-            _pad0: [0.0; 2],
-            color,
-            uv_rect: uv,
-            tex_index,
-            use_texture: 1,
-            sdf_mode: 0,
-            _pad1: 0,
-        };
-        self.push_and_draw(device, cmd_buf, &pc);
-    }
-
-    pub fn draw_textured_rect(
-        &self,
-        device: &ash::Device,
-        cmd_buf: vk::CommandBuffer,
-        screen_size: [f32; 2],
-        pos: Vec2,
-        size: Vec2,
-        color: [f32; 4],
-        tex_index: u32,
-    ) {
-        self.draw_textured_rect_uv(device, cmd_buf, screen_size, pos, size, color, tex_index, [0.0, 0.0, 1.0, 1.0]);
-    }
-
-    fn push_and_draw(&self, device: &ash::Device, cmd_buf: vk::CommandBuffer, pc: &UiPC) {
-        unsafe {
-            let bytes = std::slice::from_raw_parts(pc as *const UiPC as *const u8, size_of::<UiPC>());
-            device.cmd_push_constants(
-                cmd_buf,
-                self.layout,
-                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                0,
-                bytes,
-            );
-            device.cmd_draw(cmd_buf, 6, 1, 0, 0);
-        }
-    }
-}
-
-impl Drop for UiPass {
-    fn drop(&mut self) {
-        unsafe {
-            self.device.destroy_pipeline(self.pipeline, None);
-            self.device.destroy_pipeline_layout(self.layout, None);
         }
     }
 }

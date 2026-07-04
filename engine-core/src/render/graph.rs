@@ -1,4 +1,5 @@
 use crate::assets::gpu_server::GpuAssetServer;
+use crate::render::gfx::CommandEncoder;
 use crate::render::resource::{
     make_barrier, DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, LayoutTracker, ResourceHandle,
     ResourcePool,
@@ -38,9 +39,7 @@ impl PassAccess {
         Self { handle, access: AccessType::ReadWrite, layout }
     }
 }
-
-pub type RecordFn =
-    Box<dyn FnMut(vk::CommandBuffer, &ResourcePool, &RenderWorld, &GpuAssetServer) -> anyhow::Result<()> + Send>;
+pub type RecordFn = Box<dyn FnMut(&mut CommandEncoder<'_>, &RenderWorld, &GpuAssetServer) -> anyhow::Result<()> + Send>;
 
 pub struct PassNode {
     pub name: String,
@@ -319,7 +318,10 @@ impl RenderGraph {
                 ts.begin_pass(cmd, self.current_frame, order_idx);
             }
 
-            (node.record)(cmd, &self.pool, rw, gpu_assets)?;
+            {
+                let mut encoder = CommandEncoder::new(device, cmd, &self.pool, gpu_assets.pipeline_cache());
+                (node.record)(&mut encoder, rw, gpu_assets)?;
+            }
 
             if let Some(ts) = &self.timestamps {
                 ts.end_pass(cmd, self.current_frame, order_idx);
@@ -546,9 +548,7 @@ impl PassBuilder {
 
     pub fn record<F>(self, f: F) -> PassNodeReady
     where
-        F: FnMut(vk::CommandBuffer, &ResourcePool, &RenderWorld, &GpuAssetServer) -> anyhow::Result<()>
-            + Send
-            + 'static,
+        F: FnMut(&mut CommandEncoder<'_>, &RenderWorld, &GpuAssetServer) -> anyhow::Result<()> + Send + 'static,
     {
         PassNodeReady {
             node: PassNode { depends_on: self.explicit_deps, ..PassNode::new(self.name, self.accesses, Box::new(f)) },

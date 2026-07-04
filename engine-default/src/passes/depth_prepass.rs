@@ -1,112 +1,73 @@
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::Vertex;
-use engine_core::assets::{GpuMesh, ShaderRegistry};
-use engine_core::render::resource::{GpuImage, ResourceHandle, ResourcePool};
+use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
+use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedCamera, ExtractedMeshes, RenderWorld};
-use engine_core::vulkan::gfx_pipeline::builder::{cmd, PipelineBuilder};
-use glam::Mat4;
 
 #[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct DepthPrepassPC {
     mvp: [[f32; 4]; 4],
 }
 
-pub struct DepthPrepassDrawCall<'a> {
-    pub gpu_mesh: &'a GpuMesh,
-    pub model: Mat4,
-}
 pub struct DepthPrepass {
-    pub pipeline: vk::Pipeline,
-    pub layout: vk::PipelineLayout,
-    device: ash::Device,
+    pipeline: PipelineId,
 }
 
 impl DepthPrepass {
-    pub fn new(device: &ash::Device, registry: &mut ShaderRegistry) -> anyhow::Result<Self> {
-        let push_range = vk::PushConstantRange::default()
-            .stage_flags(vk::ShaderStageFlags::VERTEX)
-            .offset(0)
-            .size(size_of::<DepthPrepassPC>() as u32);
-
+    pub fn new(gpu: &mut GpuAssetServer) -> anyhow::Result<Self> {
         let binding = Vertex::binding_description();
-
         let attributes = [vk::VertexInputAttributeDescription::default()
             .binding(0)
             .location(0)
             .format(vk::Format::R32G32B32_SFLOAT)
             .offset(0)];
 
-        let handle = registry.by_name("depth_prepass").expect("шейдер 'depth_prepass' не зарегистрирован");
-        let (vert_spv, _) = registry.load_spv(handle)?;
+        let handle = gpu.shaders.by_name("depth_prepass").expect("шейдер 'depth_prepass' не зарегистрирован");
+        let (vert_spv, _) = gpu.shaders.load_spv(handle)?;
         let vert_spv = vert_spv.to_vec();
 
-        let (pipeline, layout) = PipelineBuilder::depth_only(&vert_spv, std::slice::from_ref(&binding), &attributes)
-            .push_constants(std::slice::from_ref(&push_range))
-            .build(device)?;
+        let push_range = vk::PushConstantRange::default()
+            .stage_flags(vk::ShaderStageFlags::VERTEX)
+            .offset(0)
+            .size(size_of::<DepthPrepassPC>() as u32);
 
-        log::debug!("DepthPrepass создан");
-        Ok(Self { pipeline, layout, device: device.clone() })
+        let pipeline = gpu.create_depth_only_pipeline(
+            &vert_spv,
+            std::slice::from_ref(&binding),
+            &attributes,
+            std::slice::from_ref(&push_range),
+            None,
+        )?;
+
+        Ok(Self { pipeline })
     }
 
     pub fn record(
         &self,
-        cmd: vk::CommandBuffer,
-        pool: &ResourcePool,
+        enc: &mut CommandEncoder,
         rw: &RenderWorld,
         gpu: &GpuAssetServer,
         depth: ResourceHandle,
     ) -> anyhow::Result<()> {
-        let depth = pool.image(depth);
         let camera = rw.get::<ExtractedCamera>().cloned().unwrap_or_default();
         let meshes = rw.get::<ExtractedMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
 
-        let calls: Vec<DepthPrepassDrawCall> = meshes
-            .iter()
-            .filter_map(|inst| Some(DepthPrepassDrawCall { gpu_mesh: gpu.get_gpu_mesh(inst.mesh)?, model: inst.model }))
-            .collect();
+        enc.begin_rendering_depth_only(depth);
+        enc.bind_pipeline(self.pipeline);
 
-        self.record_draws(gpu.device(), cmd, &depth, camera.view_proj, &calls);
+        for inst in meshes {
+            let Some(mesh) = gpu.get_gpu_mesh(inst.mesh) else {
+                continue;
+            };
+            let mvp = camera.view_proj * inst.model;
+            enc.push_constants(self.pipeline, ShaderStage::Vertex, &DepthPrepassPC { mvp: mvp.to_cols_array_2d() });
+            enc.bind_mesh(mesh);
+            enc.draw_indexed(mesh.index_count);
+        }
+
+        enc.end_rendering();
         Ok(())
-    }
-
-    fn record_draws(
-        &self,
-        device: &ash::Device,
-        cmd_buf: vk::CommandBuffer,
-        depth: &impl GpuImage,
-        view_proj: Mat4,
-        draw_calls: &[DepthPrepassDrawCall<'_>],
-    ) {
-        let extent = depth.extent();
-
-        cmd::begin_rendering_depth_only(device, cmd_buf, depth.view(), extent);
-
-        unsafe {
-            device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
-
-            for dc in draw_calls {
-                let mvp = view_proj * dc.model;
-                let pc = DepthPrepassPC { mvp: mvp.to_cols_array_2d() };
-                let pc_bytes =
-                    std::slice::from_raw_parts(&pc as *const DepthPrepassPC as *const u8, size_of::<DepthPrepassPC>());
-                device.cmd_push_constants(cmd_buf, self.layout, vk::ShaderStageFlags::VERTEX, 0, pc_bytes);
-                device.cmd_bind_vertex_buffers(cmd_buf, 0, &[dc.gpu_mesh.vertex_buffer], &[0]);
-                device.cmd_bind_index_buffer(cmd_buf, dc.gpu_mesh.index_buffer, 0, vk::IndexType::UINT32);
-                device.cmd_draw_indexed(cmd_buf, dc.gpu_mesh.index_count, 1, 0, 0, 0);
-            }
-
-            device.cmd_end_rendering(cmd_buf);
-        }
-    }
-}
-
-impl Drop for DepthPrepass {
-    fn drop(&mut self) {
-        unsafe {
-            self.device.destroy_pipeline(self.pipeline, None);
-            self.device.destroy_pipeline_layout(self.layout, None);
-        }
-        log::debug!("DepthPrepass уничтожен");
     }
 }

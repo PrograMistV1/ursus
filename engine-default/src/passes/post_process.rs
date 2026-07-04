@@ -1,13 +1,13 @@
 use ash::vk;
-use descriptor::alloc_single_set;
 use engine_core::assets::gpu_server::GpuAssetServer;
-use engine_core::assets::ShaderRegistry;
-use engine_core::render::resource::{GpuImage, ResourceHandle, ResourcePool};
+use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
+use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedRenderSettings, RenderWorld};
 use engine_core::vulkan::core::sampler;
-use engine_core::vulkan::gfx_pipeline::builder::{cmd, descriptor, PipelineBuilder};
+use engine_core::vulkan::gfx_pipeline::builder::descriptor::alloc_single_set;
 
 #[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct PostProcessPC {
     texel_size: [f32; 2],
     exposure: f32,
@@ -15,8 +15,7 @@ struct PostProcessPC {
 }
 
 pub struct PostProcessPass {
-    pub pipeline: vk::Pipeline,
-    pub layout: vk::PipelineLayout,
+    pipeline: PipelineId,
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_set: vk::DescriptorSet,
@@ -25,11 +24,7 @@ pub struct PostProcessPass {
 }
 
 impl PostProcessPass {
-    pub fn new(
-        device: &ash::Device,
-        swapchain_format: vk::Format,
-        registry: &mut ShaderRegistry,
-    ) -> anyhow::Result<Self> {
+    pub fn new(gpu: &mut GpuAssetServer, device: &ash::Device, swapchain_format: vk::Format) -> anyhow::Result<Self> {
         let sampler = sampler::create_linear_clamp_sampler(device)?;
 
         let binding = vk::DescriptorSetLayoutBinding::default()
@@ -53,85 +48,49 @@ impl PostProcessPass {
             .offset(0)
             .size(size_of::<PostProcessPC>() as u32);
 
-        let handle = registry.by_name("post_process").expect("шейдер 'post_process' не зарегистрирован");
-        let (vert_spv, frag_spv) = registry.load_spv(handle)?;
+        let handle = gpu.shaders.by_name("post_process").expect("шейдер 'post_process' не зарегистрирован");
+        let (vert_spv, frag_spv) = gpu.shaders.load_spv(handle)?;
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.expect("'post_process' должен иметь frag").to_vec();
 
-        let color_formats = [swapchain_format];
-        let (pipeline, layout) = PipelineBuilder::fullscreen(&vert_spv, &frag_spv, &color_formats)
-            .set_layouts(std::slice::from_ref(&descriptor_set_layout))
-            .push_constants(std::slice::from_ref(&push_range))
-            .build(device)?;
+        let pipeline = gpu.create_fullscreen_pipeline(
+            &vert_spv,
+            &frag_spv,
+            std::slice::from_ref(&swapchain_format),
+            std::slice::from_ref(&descriptor_set_layout),
+            std::slice::from_ref(&push_range),
+            None,
+        )?;
 
-        log::debug!("PostProcessPass создан");
-        Ok(Self {
-            pipeline,
-            layout,
-            descriptor_pool,
-            descriptor_set_layout,
-            descriptor_set,
-            sampler,
-            device: device.clone(),
-        })
+        Ok(Self { pipeline, descriptor_pool, descriptor_set_layout, descriptor_set, sampler, device: device.clone() })
     }
 
     pub fn record(
         &self,
-        cmd: vk::CommandBuffer,
-        pool: &ResourcePool,
+        enc: &mut CommandEncoder,
         rw: &RenderWorld,
-        gpu: &GpuAssetServer,
+        _gpu: &GpuAssetServer,
         ldr: ResourceHandle,
     ) -> anyhow::Result<()> {
         let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
-        let ldr = pool.image(ldr);
-        self.record_draws(gpu.device(), cmd, &ldr, settings.exposure);
+        let extent = enc.extent_of(ldr);
+
+        enc.begin_rendering_discard(ldr);
+        enc.bind_pipeline(self.pipeline);
+        enc.bind_descriptor_sets(self.pipeline, &[self.descriptor_set]);
+
+        let pc =
+            PostProcessPC { texel_size: [1.0 / extent[0], 1.0 / extent[1]], exposure: settings.exposure, flags: 0 };
+        enc.push_constants(self.pipeline, ShaderStage::Fragment, &pc);
+        enc.draw(3);
+        enc.end_rendering();
         Ok(())
-    }
-
-    pub fn record_draws(
-        &self,
-        device: &ash::Device,
-        cmd_buf: vk::CommandBuffer,
-        target: &impl GpuImage,
-        exposure: f32,
-    ) {
-        let extent = target.extent();
-
-        cmd::begin_rendering_discard(device, cmd_buf, target.view(), extent);
-
-        unsafe {
-            device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
-            device.cmd_bind_descriptor_sets(
-                cmd_buf,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.layout,
-                0,
-                &[self.descriptor_set],
-                &[],
-            );
-
-            let pc = PostProcessPC {
-                texel_size: [1.0 / extent.width as f32, 1.0 / extent.height as f32],
-                exposure,
-                flags: 0,
-            };
-            let pc_bytes =
-                std::slice::from_raw_parts(&pc as *const PostProcessPC as *const u8, size_of::<PostProcessPC>());
-            device.cmd_push_constants(cmd_buf, self.layout, vk::ShaderStageFlags::FRAGMENT, 0, pc_bytes);
-
-            device.cmd_draw(cmd_buf, 3, 1, 0, 0);
-            device.cmd_end_rendering(cmd_buf);
-        }
     }
 }
 
 impl Drop for PostProcessPass {
     fn drop(&mut self) {
         unsafe {
-            self.device.destroy_pipeline(self.pipeline, None);
-            self.device.destroy_pipeline_layout(self.layout, None);
             self.device.destroy_descriptor_pool(self.descriptor_pool, None);
             self.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             self.device.destroy_sampler(self.sampler, None);

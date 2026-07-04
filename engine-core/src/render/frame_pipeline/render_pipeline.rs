@@ -1,4 +1,5 @@
 use crate::assets::gpu_server::GpuAssetServer;
+use crate::render::gfx::CommandEncoder;
 use crate::render::graph::{pass, RenderGraph};
 use crate::render::resource::ResourceHandle;
 use crate::render::world::RenderWorld;
@@ -47,25 +48,9 @@ impl RenderPipeline for NoopPipeline {
 
         pass("noop_clear")
             .write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .record(move |cmd, pool, _rw, gpu| {
-                let sc = pool.image(h_swapchain);
-                let attachment = vk::RenderingAttachmentInfo::default()
-                    .image_view(sc.view)
-                    .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                    .load_op(vk::AttachmentLoadOp::CLEAR)
-                    .store_op(vk::AttachmentStoreOp::STORE)
-                    .clear_value(vk::ClearValue { color: vk::ClearColorValue { float32: [0.0, 0.0, 0.0, 1.0] } });
-
-                unsafe {
-                    gpu.device().cmd_begin_rendering(
-                        cmd,
-                        &vk::RenderingInfo::default()
-                            .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent: sc.extent })
-                            .layer_count(1)
-                            .color_attachments(std::slice::from_ref(&attachment)),
-                    );
-                    gpu.device().cmd_end_rendering(cmd);
-                }
+            .record(move |enc: &mut CommandEncoder, _rw, _gpu| {
+                enc.begin_rendering_clear(h_swapchain, [0.0, 0.0, 0.0, 1.0]);
+                enc.end_rendering();
                 Ok(())
             })
             .build(graph);

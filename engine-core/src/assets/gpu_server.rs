@@ -4,6 +4,7 @@ use crate::assets::mesh::{CpuMesh, GpuMesh};
 use crate::assets::shader_registry::TextureSlot;
 use crate::assets::ShaderRegistry;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
+use crate::render::gfx::{PipelineCache, PipelineId};
 use crate::render::world::RenderWorld;
 use crate::vulkan::{BindlessSet, GpuTexture, MaterialBuffer};
 use ash::vk;
@@ -25,6 +26,7 @@ pub struct GpuAssetServer {
     pub shaders: ShaderRegistry,
     pub material_buffer: MaterialBuffer,
     pub bindless: BindlessSet,
+    pipeline_cache: PipelineCache,
 
     device: ash::Device,
     physical_device: vk::PhysicalDevice,
@@ -45,8 +47,8 @@ impl GpuAssetServer {
         assert_eq!(bindless.next_slot(), 1, "slot 0 must be white fallback");
 
         let material_buffer = MaterialBuffer::new(&device, physical_device, &instance)?;
-
         let shaders = ShaderRegistry::empty();
+        let pipeline_cache = PipelineCache::new(device.clone());
 
         log::info!("GpuAssetServer: white=slot0, text_renderer готов, next_slot={}", bindless.next_slot());
 
@@ -58,12 +60,59 @@ impl GpuAssetServer {
             shaders,
             material_buffer,
             bindless,
+            pipeline_cache,
             device,
             physical_device,
             instance,
             command_pool,
             queue,
         })
+    }
+
+    pub fn create_graphics_pipeline(
+        &mut self,
+        desc: &crate::vulkan::gfx_pipeline::pipeline::PipelineDesc,
+        set_layouts: &[vk::DescriptorSetLayout],
+    ) -> anyhow::Result<PipelineId> {
+        self.pipeline_cache.create_graphics_pipeline(&self.device, desc, set_layouts)
+    }
+
+    pub fn create_fullscreen_pipeline(
+        &mut self,
+        vert_spv: &[u8],
+        frag_spv: &[u8],
+        color_formats: &[vk::Format],
+        set_layouts: &[vk::DescriptorSetLayout],
+        push_constant_ranges: &[vk::PushConstantRange],
+        blend_attachments: Option<&[vk::PipelineColorBlendAttachmentState]>,
+    ) -> anyhow::Result<PipelineId> {
+        self.pipeline_cache.create_fullscreen_pipeline(
+            &self.device,
+            vert_spv,
+            frag_spv,
+            color_formats,
+            set_layouts,
+            push_constant_ranges,
+            blend_attachments,
+        )
+    }
+
+    pub fn create_depth_only_pipeline(
+        &mut self,
+        vert_spv: &[u8],
+        vertex_bindings: &[vk::VertexInputBindingDescription],
+        vertex_attributes: &[vk::VertexInputAttributeDescription],
+        push_constant_ranges: &[vk::PushConstantRange],
+        depth_bias: Option<(f32, f32)>,
+    ) -> anyhow::Result<PipelineId> {
+        self.pipeline_cache.create_depth_only_pipeline(
+            &self.device,
+            vert_spv,
+            vertex_bindings,
+            vertex_attributes,
+            push_constant_ranges,
+            depth_bias,
+        )
     }
 
     pub fn upload_mesh(&mut self, handle: MeshHandle, cpu_mesh: &CpuMesh) -> anyhow::Result<()> {
@@ -163,6 +212,10 @@ impl GpuAssetServer {
             GpuMeshState::Ready(gpu) => Some(gpu),
             GpuMeshState::Failed => None,
         }
+    }
+
+    pub fn pipeline_cache(&self) -> &PipelineCache {
+        &self.pipeline_cache
     }
 
     pub fn device(&self) -> &ash::Device {
