@@ -69,6 +69,7 @@ impl<'a> CommandEncoder<'a> {
             self.cmd,
             &[(albedo_img.view, clear_color), (normal_img.view, [0.0; 4])],
             depth_img.view,
+            vk::AttachmentLoadOp::LOAD,
             albedo_img.extent,
         );
     }

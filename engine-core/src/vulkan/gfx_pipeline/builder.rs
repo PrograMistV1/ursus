@@ -287,12 +287,19 @@ pub mod cmd {
         cmd: vk::CommandBuffer,
         color_views: &[(vk::ImageView, [f32; 4])],
         depth_view: vk::ImageView,
+        depth_load_op: vk::AttachmentLoadOp,
         extent: vk::Extent2D,
     ) {
         let color_attachments: Vec<_> =
             color_views.iter().map(|&(view, clear)| color_attachment_clear(view, clear)).collect();
 
-        let depth_attachment = depth_attachment_clear(depth_view);
+        let depth_attachment = vk::RenderingAttachmentInfo::default()
+            .image_view(depth_view)
+            .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
+            .load_op(depth_load_op)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .clear_value(vk::ClearValue { depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 } });
+
         begin_rendering_impl(device, cmd, &color_attachments, Some(depth_attachment), extent);
     }
 

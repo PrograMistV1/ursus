@@ -70,6 +70,16 @@ impl UiPass {
         let Some(draw_list) = rw.get::<PreparedUiDrawList>() else {
             return Ok(());
         };
+        self.record_draw_list(enc, draw_list, gpu, swapchain)
+    }
+
+    pub fn record_draw_list(
+        &self,
+        enc: &mut CommandEncoder,
+        draw_list: &PreparedUiDrawList,
+        gpu: &GpuAssetServer,
+        swapchain: ResourceHandle,
+    ) -> anyhow::Result<()> {
         let screen = enc.extent_of(swapchain);
 
         enc.begin_rendering_load(swapchain);

@@ -5,6 +5,7 @@ use engine_core::components::mesh::MaterialHandle;
 use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedCamera, ExtractedMeshes, ExtractedRenderSettings, RenderWorld};
+use engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use glam::Mat4;
 use std::collections::HashMap;
 
@@ -59,7 +60,7 @@ impl GeometryPass {
 
         let set_layouts = [gpu.bindless.layout, gpu.material_buffer.layout];
 
-        let desc = engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc::with_depth_equal(
+        let desc = PipelineDesc::with_depth_equal(
             &vert_spv,
             &frag_spv,
             &self.color_formats,
