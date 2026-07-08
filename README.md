@@ -142,6 +142,7 @@ Engine architecture (`engine-core`):
 - [ ] **Draw call batching / instancing** - GPU instancing for identical meshes instead of one draw call per instance
 - [ ] **Resource aliasing in the render graph** - reuse memory across transient resources with non-overlapping lifetimes
 - [ ] **Runtime debug UI** - GPU timings, G-buffer view, live-tweaking of render parameters
+- [ ] **`vertex_format!` proc-macro** - derive `VertexFormat` (layout/offsets/stride) for custom vertex structs instead of a hand-written `impl`
 
 Rendering backlog (`engine-default`):
 

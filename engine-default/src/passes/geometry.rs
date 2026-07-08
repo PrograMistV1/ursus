@@ -1,9 +1,8 @@
-use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::{GpuMesh, ShaderHandle, Vertex};
 use engine_core::components::mesh::MaterialHandle;
 use engine_core::render::gfx::format::Format;
-use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
+use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage, VertexFormat};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedCamera, ExtractedMeshes, ExtractedRenderSettings, RenderWorld};
 use engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
@@ -52,10 +51,10 @@ impl GeometryPass {
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.unwrap().to_vec();
 
-        let binding = Vertex::binding_description();
-        let attributes = Vertex::attribute_descriptions();
-        let push_range = vk::PushConstantRange::default()
-            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
+        let layout = Vertex::layout();
+
+        let push_range = ash::vk::PushConstantRange::default()
+            .stage_flags(ash::vk::ShaderStageFlags::VERTEX | ash::vk::ShaderStageFlags::FRAGMENT)
             .offset(0)
             .size(size_of::<MeshPushConstants>() as u32);
 
@@ -65,8 +64,7 @@ impl GeometryPass {
             &vert_spv,
             &frag_spv,
             &self.color_formats,
-            std::slice::from_ref(&binding),
-            &attributes,
+            &layout,
             std::slice::from_ref(&push_range),
         );
 

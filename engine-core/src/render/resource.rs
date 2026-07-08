@@ -1,4 +1,4 @@
-use crate::render::gfx::format::Format;
+use crate::render::gfx::Format;
 use crate::vulkan::core::debug::set_object_name;
 use crate::vulkan::core::memory;
 use crate::vulkan::core::memory::destroy_image_resources;

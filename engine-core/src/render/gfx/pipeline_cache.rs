@@ -1,5 +1,5 @@
-use crate::render::gfx::format::Format;
 use crate::render::gfx::handles::PipelineId;
+use crate::render::gfx::{Format, VertexLayout};
 use crate::vulkan::gfx_pipeline::builder::PipelineBuilder;
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use ash::vk;
@@ -36,12 +36,15 @@ impl PipelineCache {
         desc: &PipelineDesc,
         set_layouts: &[vk::DescriptorSetLayout],
     ) -> anyhow::Result<PipelineId> {
+        let binding = desc.vertex_layout.to_vk_binding(0);
+        let attributes = desc.vertex_layout.to_vk_attributes(0);
+
         let (handle, layout) = PipelineBuilder::mesh(
             desc.vert_spv,
             desc.frag_spv,
             desc.color_formats,
-            desc.vertex_bindings,
-            desc.vertex_attributes,
+            std::slice::from_ref(&binding),
+            &attributes,
         )
         .cull_mode(desc.cull_mode)
         .depth_test(desc.depth_test, desc.depth_write)
@@ -80,12 +83,14 @@ impl PipelineCache {
         &mut self,
         device: &ash::Device,
         vert_spv: &[u8],
-        vertex_bindings: &[vk::VertexInputBindingDescription],
-        vertex_attributes: &[vk::VertexInputAttributeDescription],
+        vertex_layout: &VertexLayout,
         push_constant_ranges: &[vk::PushConstantRange],
         depth_bias: Option<(f32, f32)>,
     ) -> anyhow::Result<PipelineId> {
-        let mut builder = PipelineBuilder::depth_only(vert_spv, vertex_bindings, vertex_attributes)
+        let binding = vertex_layout.to_vk_binding(0);
+        let attributes = vertex_layout.to_vk_attributes(0);
+
+        let mut builder = PipelineBuilder::depth_only(vert_spv, std::slice::from_ref(&binding), &attributes)
             .push_constants(push_constant_ranges);
 
         if let Some((constant, slope)) = depth_bias {

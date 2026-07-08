@@ -1,3 +1,4 @@
+use crate::render::gfx::{Format, VertexAttribute, VertexFormat, VertexLayout};
 use crate::vulkan::core::memory::alloc_buffer;
 use ash::vk;
 use glam::{Vec2, Vec3};
@@ -9,6 +10,22 @@ pub struct Vertex {
     pub normal: [f32; 3],
     pub uv: [f32; 2],
     pub tangent: [f32; 4],
+}
+unsafe impl bytemuck::Pod for Vertex {}
+unsafe impl bytemuck::Zeroable for Vertex {}
+
+impl VertexFormat for Vertex {
+    fn layout() -> VertexLayout {
+        VertexLayout {
+            stride: size_of::<Self>() as u32,
+            attributes: vec![
+                VertexAttribute { location: 0, format: Format::Rgb32Float, offset: 0 }, // position
+                VertexAttribute { location: 1, format: Format::Rgb32Float, offset: 12 }, // normal
+                VertexAttribute { location: 2, format: Format::Rg32Float, offset: 24 }, // uv
+                VertexAttribute { location: 3, format: Format::Rgba32Float, offset: 32 }, // tangent
+            ],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -45,44 +62,9 @@ impl Aabb {
     }
 }
 
-unsafe impl bytemuck::Pod for Vertex {}
-unsafe impl bytemuck::Zeroable for Vertex {}
-
 impl Vertex {
     pub fn new(position: Vec3, normal: Vec3, uv: Vec2) -> Self {
         Self { position: position.into(), normal: normal.into(), uv: uv.into(), tangent: [1.0, 0.0, 0.0, 1.0] }
-    }
-
-    pub fn binding_description() -> vk::VertexInputBindingDescription {
-        vk::VertexInputBindingDescription::default()
-            .binding(0)
-            .stride(size_of::<Self>() as u32)
-            .input_rate(vk::VertexInputRate::VERTEX)
-    }
-
-    pub fn attribute_descriptions() -> [vk::VertexInputAttributeDescription; 4] {
-        [
-            vk::VertexInputAttributeDescription::default()
-                .binding(0)
-                .location(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(0),
-            vk::VertexInputAttributeDescription::default()
-                .binding(0)
-                .location(1)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(12),
-            vk::VertexInputAttributeDescription::default()
-                .binding(0)
-                .location(2)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(24),
-            vk::VertexInputAttributeDescription::default()
-                .binding(0)
-                .location(3)
-                .format(vk::Format::R32G32B32A32_SFLOAT)
-                .offset(32),
-        ]
     }
 }
 

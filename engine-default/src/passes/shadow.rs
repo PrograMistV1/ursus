@@ -1,7 +1,6 @@
-use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::Vertex;
-use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
+use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage, VertexFormat};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedLights, ExtractedShadowMeshes, RenderWorld};
 
@@ -17,29 +16,19 @@ pub struct ShadowPass {
 
 impl ShadowPass {
     pub fn new(gpu: &mut GpuAssetServer) -> anyhow::Result<Self> {
-        let binding = Vertex::binding_description();
-        let attributes = [vk::VertexInputAttributeDescription::default()
-            .binding(0)
-            .location(0)
-            .format(vk::Format::R32G32B32_SFLOAT)
-            .offset(0)];
+        let layout = Vertex::layout().only_locations(&[0]);
 
         let handle = gpu.shaders.by_name("shadow").expect("шейдер 'shadow' не зарегистрирован");
         let (vert_spv, _) = gpu.shaders.load_spv(handle)?;
         let vert_spv = vert_spv.to_vec();
 
-        let push_range = vk::PushConstantRange::default()
-            .stage_flags(vk::ShaderStageFlags::VERTEX)
+        let push_range = ash::vk::PushConstantRange::default()
+            .stage_flags(ash::vk::ShaderStageFlags::VERTEX)
             .offset(0)
             .size(size_of::<ShadowPC>() as u32);
 
-        let pipeline = gpu.create_depth_only_pipeline(
-            &vert_spv,
-            std::slice::from_ref(&binding),
-            &attributes,
-            std::slice::from_ref(&push_range),
-            Some((2.0, 1.5)),
-        )?;
+        let pipeline =
+            gpu.create_depth_only_pipeline(&vert_spv, &layout, std::slice::from_ref(&push_range), Some((2.0, 1.5)))?;
 
         Ok(Self { pipeline })
     }

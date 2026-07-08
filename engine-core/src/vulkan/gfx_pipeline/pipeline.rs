@@ -1,4 +1,4 @@
-use crate::render::gfx::format::Format;
+use crate::render::gfx::{Format, VertexLayout};
 use ash::vk;
 
 pub struct PipelineDesc<'a> {
@@ -10,8 +10,7 @@ pub struct PipelineDesc<'a> {
     pub depth_test: bool,
     pub depth_write: bool,
     pub depth_compare: vk::CompareOp,
-    pub vertex_bindings: &'a [vk::VertexInputBindingDescription],
-    pub vertex_attributes: &'a [vk::VertexInputAttributeDescription],
+    pub vertex_layout: &'a VertexLayout,
     pub push_constant_ranges: &'a [vk::PushConstantRange],
 }
 
@@ -20,8 +19,7 @@ impl<'a> PipelineDesc<'a> {
         vert_spv: &'a [u8],
         frag_spv: &'a [u8],
         color_formats: &'a [Format],
-        vertex_bindings: &'a [vk::VertexInputBindingDescription],
-        vertex_attributes: &'a [vk::VertexInputAttributeDescription],
+        vertex_layout: &'a VertexLayout,
         push_constant_ranges: &'a [vk::PushConstantRange],
     ) -> Self {
         Self {
@@ -33,8 +31,7 @@ impl<'a> PipelineDesc<'a> {
             depth_test: true,
             depth_write: true,
             depth_compare: vk::CompareOp::LESS,
-            vertex_bindings,
-            vertex_attributes,
+            vertex_layout,
             push_constant_ranges,
         }
     }
@@ -43,8 +40,7 @@ impl<'a> PipelineDesc<'a> {
         vert_spv: &'a [u8],
         frag_spv: &'a [u8],
         color_formats: &'a [Format],
-        vertex_bindings: &'a [vk::VertexInputBindingDescription],
-        vertex_attributes: &'a [vk::VertexInputAttributeDescription],
+        vertex_layout: &'a VertexLayout,
         push_constant_ranges: &'a [vk::PushConstantRange],
     ) -> Self {
         Self {
@@ -56,8 +52,7 @@ impl<'a> PipelineDesc<'a> {
             depth_test: true,
             depth_write: false,
             depth_compare: vk::CompareOp::EQUAL,
-            vertex_bindings,
-            vertex_attributes,
+            vertex_layout,
             push_constant_ranges,
         }
     }

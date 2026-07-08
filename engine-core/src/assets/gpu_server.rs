@@ -4,9 +4,10 @@ use crate::assets::mesh::{CpuMesh, GpuMesh};
 use crate::assets::shader_registry::TextureSlot;
 use crate::assets::ShaderRegistry;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
-use crate::render::gfx::format::Format;
+use crate::render::gfx::{Format, VertexLayout};
 use crate::render::gfx::{PipelineCache, PipelineId};
 use crate::render::world::RenderWorld;
+use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use crate::vulkan::{BindlessSet, GpuTexture, MaterialBuffer};
 use ash::vk;
 use std::collections::HashMap;
@@ -72,7 +73,7 @@ impl GpuAssetServer {
 
     pub fn create_graphics_pipeline(
         &mut self,
-        desc: &crate::vulkan::gfx_pipeline::pipeline::PipelineDesc,
+        desc: &PipelineDesc,
         set_layouts: &[vk::DescriptorSetLayout],
     ) -> anyhow::Result<PipelineId> {
         self.pipeline_cache.create_graphics_pipeline(&self.device, desc, set_layouts)
@@ -101,16 +102,14 @@ impl GpuAssetServer {
     pub fn create_depth_only_pipeline(
         &mut self,
         vert_spv: &[u8],
-        vertex_bindings: &[vk::VertexInputBindingDescription],
-        vertex_attributes: &[vk::VertexInputAttributeDescription],
+        vertex_layout: &VertexLayout,
         push_constant_ranges: &[vk::PushConstantRange],
         depth_bias: Option<(f32, f32)>,
     ) -> anyhow::Result<PipelineId> {
         self.pipeline_cache.create_depth_only_pipeline(
             &self.device,
             vert_spv,
-            vertex_bindings,
-            vertex_attributes,
+            vertex_layout,
             push_constant_ranges,
             depth_bias,
         )

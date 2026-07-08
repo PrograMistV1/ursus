@@ -1,4 +1,4 @@
-use crate::render::gfx::format::Format;
+use crate::render::gfx::Format;
 use crate::vulkan::core::memory::{alloc_image, destroy_image_resources, ImageDesc};
 use ash::vk;
 
