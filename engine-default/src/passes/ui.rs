@@ -1,5 +1,6 @@
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
+use engine_core::render::gfx::format::Format;
 use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{PreparedUiDrawList, RenderWorld, UiPrimitive};
@@ -25,7 +26,7 @@ pub struct UiPass {
 }
 
 impl UiPass {
-    pub fn new(gpu: &mut GpuAssetServer, swapchain_format: vk::Format) -> anyhow::Result<Self> {
+    pub fn new(gpu: &mut GpuAssetServer, swapchain_format: Format) -> anyhow::Result<Self> {
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
             .offset(0)

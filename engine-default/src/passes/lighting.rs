@@ -1,5 +1,6 @@
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
+use engine_core::render::gfx::format::Format;
 use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedCamera, ExtractedLights, RenderWorld};
@@ -32,7 +33,7 @@ impl LightingPass {
         device: &ash::Device,
         physical_device: vk::PhysicalDevice,
         instance: &ash::Instance,
-        hdr_format: vk::Format,
+        hdr_format: Format,
     ) -> anyhow::Result<Self> {
         let light_buffer = LightBuffer::new(device, physical_device, instance)?;
 

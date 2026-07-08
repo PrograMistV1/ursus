@@ -4,6 +4,7 @@ use crate::assets::mesh::{CpuMesh, GpuMesh};
 use crate::assets::shader_registry::TextureSlot;
 use crate::assets::ShaderRegistry;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
+use crate::render::gfx::format::Format;
 use crate::render::gfx::{PipelineCache, PipelineId};
 use crate::render::world::RenderWorld;
 use crate::vulkan::{BindlessSet, GpuTexture, MaterialBuffer};
@@ -81,7 +82,7 @@ impl GpuAssetServer {
         &mut self,
         vert_spv: &[u8],
         frag_spv: &[u8],
-        color_formats: &[vk::Format],
+        color_formats: &[Format],
         set_layouts: &[vk::DescriptorSetLayout],
         push_constant_ranges: &[vk::PushConstantRange],
         blend_attachments: Option<&[vk::PipelineColorBlendAttachmentState]>,

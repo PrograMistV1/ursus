@@ -1,3 +1,4 @@
+use crate::render::gfx::format::Format;
 use crate::vulkan::core::memory::{alloc_image, destroy_image_resources, ImageDesc};
 use ash::vk;
 
@@ -15,8 +16,8 @@ pub struct GBuffer {
 }
 
 impl GBuffer {
-    pub const ALBEDO_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
-    pub const NORMAL_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
+    pub const ALBEDO_FORMAT: Format = Format::Rgba8Unorm;
+    pub const NORMAL_FORMAT: Format = Format::Rgba16Float;
 
     pub fn new(
         device: &ash::Device,
@@ -32,13 +33,13 @@ impl GBuffer {
             device,
             physical_device,
             instance,
-            &ImageDesc::color(Self::ALBEDO_FORMAT, width, height, usage),
+            &ImageDesc::color(Self::ALBEDO_FORMAT.to_vk(), width, height, usage),
         )?;
         let normal = alloc_image(
             device,
             physical_device,
             instance,
-            &ImageDesc::color(Self::NORMAL_FORMAT, width, height, usage),
+            &ImageDesc::color(Self::NORMAL_FORMAT.to_vk(), width, height, usage),
         )?;
 
         log::debug!("GBuffer: {}x{}", width, height);
@@ -54,7 +55,7 @@ impl GBuffer {
         })
     }
 
-    pub fn color_formats() -> [vk::Format; 2] {
+    pub fn color_formats() -> [Format; 2] {
         [Self::ALBEDO_FORMAT, Self::NORMAL_FORMAT]
     }
 }

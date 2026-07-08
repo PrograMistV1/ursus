@@ -1,4 +1,5 @@
 pub mod encoder;
+pub mod format;
 pub mod handles;
 pub mod pipeline_cache;
 

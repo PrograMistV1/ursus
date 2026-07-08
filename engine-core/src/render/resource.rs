@@ -1,7 +1,10 @@
+use crate::render::gfx::format::Format;
 use crate::vulkan::core::debug::set_object_name;
+use crate::vulkan::core::memory;
 use crate::vulkan::core::memory::destroy_image_resources;
 use ash::ext::debug_utils;
 use ash::vk;
+use memory::ImageDesc;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -47,14 +50,14 @@ impl ResourceKind {
 #[derive(Debug, Clone)]
 pub struct ResourceDesc {
     pub name: String,
-    pub format: vk::Format,
+    pub format: Format,
     pub extent: ResourceExtent,
     pub kind: ResourceKind,
     pub usage: vk::ImageUsageFlags,
 }
 
 impl ResourceDesc {
-    pub fn color(name: impl Into<String>, format: vk::Format, extent: ResourceExtent) -> Self {
+    pub fn color(name: impl Into<String>, format: Format, extent: ResourceExtent) -> Self {
         Self {
             name: name.into(),
             format,
@@ -64,7 +67,7 @@ impl ResourceDesc {
         }
     }
 
-    pub fn depth(name: impl Into<String>, format: vk::Format, extent: ResourceExtent) -> Self {
+    pub fn depth(name: impl Into<String>, format: Format, extent: ResourceExtent) -> Self {
         Self {
             name: name.into(),
             format,
@@ -100,15 +103,15 @@ impl TransientImage {
         width: u32,
         height: u32,
     ) -> anyhow::Result<Self> {
-        let img_desc = crate::vulkan::core::memory::ImageDesc {
-            format: desc.format,
+        let img_desc = ImageDesc {
+            format: desc.format.to_vk(),
             width,
             height,
             usage: desc.usage,
             aspect_mask: desc.kind.aspect_mask(),
             mip_levels: 1,
         };
-        let img = crate::vulkan::core::memory::alloc_image(device, physical_device, instance, &img_desc)?;
+        let img = memory::alloc_image(device, physical_device, instance, &img_desc)?;
 
         log::debug!("TransientImage '{}': {}x{} {:?}", desc.name, width, height, desc.format);
 
@@ -116,7 +119,7 @@ impl TransientImage {
             image: img.image,
             view: img.view,
             memory: img.memory,
-            format: desc.format,
+            format: desc.format.to_vk(),
             extent: vk::Extent2D { width, height },
             kind: desc.kind,
             name: desc.name.clone(),
@@ -199,10 +202,10 @@ impl ResourcePool {
         handle
     }
 
-    pub fn register_swapchain_external(&mut self, format: vk::Format) -> ResourceHandle {
+    pub fn register_swapchain_external(&mut self, format: Format) -> ResourceHandle {
         self.register_external(ExternalImageDesc {
             name: "swapchain".into(),
-            format,
+            format: format.to_vk(),
             kind: ResourceKind::Color,
             initial_layout: vk::ImageLayout::UNDEFINED,
             final_layout: vk::ImageLayout::PRESENT_SRC_KHR,

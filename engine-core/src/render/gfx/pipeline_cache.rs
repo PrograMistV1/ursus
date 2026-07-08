@@ -1,4 +1,7 @@
+use crate::render::gfx::format::Format;
 use crate::render::gfx::handles::PipelineId;
+use crate::vulkan::gfx_pipeline::builder::PipelineBuilder;
+use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use ash::vk;
 
 pub(crate) struct StoredPipeline {
@@ -30,10 +33,10 @@ impl PipelineCache {
     pub fn create_graphics_pipeline(
         &mut self,
         device: &ash::Device,
-        desc: &crate::vulkan::gfx_pipeline::pipeline::PipelineDesc,
+        desc: &PipelineDesc,
         set_layouts: &[vk::DescriptorSetLayout],
     ) -> anyhow::Result<PipelineId> {
-        let (handle, layout) = crate::vulkan::gfx_pipeline::builder::PipelineBuilder::mesh(
+        let (handle, layout) = PipelineBuilder::mesh(
             desc.vert_spv,
             desc.frag_spv,
             desc.color_formats,
@@ -56,15 +59,14 @@ impl PipelineCache {
         device: &ash::Device,
         vert_spv: &[u8],
         frag_spv: &[u8],
-        color_formats: &[vk::Format],
+        color_formats: &[Format],
         set_layouts: &[vk::DescriptorSetLayout],
         push_constant_ranges: &[vk::PushConstantRange],
         blend_attachments: Option<&[vk::PipelineColorBlendAttachmentState]>,
     ) -> anyhow::Result<PipelineId> {
-        let mut builder =
-            crate::vulkan::gfx_pipeline::builder::PipelineBuilder::fullscreen(vert_spv, frag_spv, color_formats)
-                .set_layouts(set_layouts)
-                .push_constants(push_constant_ranges);
+        let mut builder = PipelineBuilder::fullscreen(vert_spv, frag_spv, color_formats)
+            .set_layouts(set_layouts)
+            .push_constants(push_constant_ranges);
 
         if let Some(blend) = blend_attachments {
             builder = builder.blend_attachments(blend);
@@ -83,12 +85,8 @@ impl PipelineCache {
         push_constant_ranges: &[vk::PushConstantRange],
         depth_bias: Option<(f32, f32)>,
     ) -> anyhow::Result<PipelineId> {
-        let mut builder = crate::vulkan::gfx_pipeline::builder::PipelineBuilder::depth_only(
-            vert_spv,
-            vertex_bindings,
-            vertex_attributes,
-        )
-        .push_constants(push_constant_ranges);
+        let mut builder = PipelineBuilder::depth_only(vert_spv, vertex_bindings, vertex_attributes)
+            .push_constants(push_constant_ranges);
 
         if let Some((constant, slope)) = depth_bias {
             builder = builder.depth_bias(constant, slope);

@@ -1,10 +1,11 @@
 use super::shader::ShaderModule;
+use crate::render::gfx::format::Format;
 use ash::vk;
 
 pub struct PipelineBuilder<'a> {
     vert_spv: &'a [u8],
     frag_spv: Option<&'a [u8]>,
-    color_formats: &'a [vk::Format],
+    color_formats: &'a [Format],
     depth_format: vk::Format,
     cull_mode: vk::CullModeFlags,
     depth_test: bool,
@@ -25,7 +26,7 @@ pub struct DepthBias {
 }
 
 impl<'a> PipelineBuilder<'a> {
-    pub fn fullscreen(vert_spv: &'a [u8], frag_spv: &'a [u8], color_formats: &'a [vk::Format]) -> Self {
+    pub fn fullscreen(vert_spv: &'a [u8], frag_spv: &'a [u8], color_formats: &'a [Format]) -> Self {
         Self {
             vert_spv,
             frag_spv: Some(frag_spv),
@@ -47,7 +48,7 @@ impl<'a> PipelineBuilder<'a> {
     pub fn mesh(
         vert_spv: &'a [u8],
         frag_spv: &'a [u8],
-        color_formats: &'a [vk::Format],
+        color_formats: &'a [Format],
         vertex_bindings: &'a [vk::VertexInputBindingDescription],
         vertex_attributes: &'a [vk::VertexInputAttributeDescription],
     ) -> Self {
@@ -210,8 +211,9 @@ impl<'a> PipelineBuilder<'a> {
             )?
         };
 
+        let vk_formats: Vec<vk::Format> = self.color_formats.iter().map(|format| format.to_vk()).collect();
         let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
-            .color_attachment_formats(self.color_formats)
+            .color_attachment_formats(vk_formats.as_slice())
             .depth_attachment_format(self.depth_format);
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::default()

@@ -8,6 +8,7 @@ use crate::passes::ui::UiPass;
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
+use engine_core::render::gfx::format::Format;
 use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::render::resource::{ResourceDesc, ResourceExtent};
 use engine_core::vulkan::resources::gbuffer::GBuffer;
@@ -15,7 +16,7 @@ use engine_core::vulkan::resources::shadow_map::SHADOW_MAP_SIZE;
 use engine_core::vulkan::VulkanContext;
 use std::sync::Arc;
 
-const LDR_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
+const LDR_FORMAT: Format = Format::Rgba8Unorm;
 
 pub struct DefaultPipeline;
 
@@ -37,7 +38,7 @@ impl RenderPipeline for DefaultPipeline {
 
         let h_shadow_map = graph.pool.register(ResourceDesc::depth(
             "shadow_map",
-            vk::Format::D32_SFLOAT,
+            Format::Depth32Float,
             ResourceExtent::Absolute(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE),
         ));
         let h_gbuffer_albedo = graph.pool.register(ResourceDesc::color(
@@ -50,16 +51,10 @@ impl RenderPipeline for DefaultPipeline {
             GBuffer::NORMAL_FORMAT,
             ResourceExtent::ScaleInternal(1.0),
         ));
-        let h_depth = graph.pool.register(ResourceDesc::depth(
-            "depth",
-            vk::Format::D32_SFLOAT,
-            ResourceExtent::ScaleInternal(1.0),
-        ));
-        let h_hdr = graph.pool.register(ResourceDesc::color(
-            "hdr",
-            vk::Format::R16G16B16A16_SFLOAT,
-            ResourceExtent::ScaleInternal(1.0),
-        ));
+        let h_depth =
+            graph.pool.register(ResourceDesc::depth("depth", Format::Depth32Float, ResourceExtent::ScaleInternal(1.0)));
+        let h_hdr =
+            graph.pool.register(ResourceDesc::color("hdr", Format::Rgba16Float, ResourceExtent::ScaleInternal(1.0)));
         let h_ldr = graph.pool.register(ResourceDesc::color("ldr", LDR_FORMAT, ResourceExtent::ScaleInternal(1.0)));
         let h_fsr_easu =
             graph.pool.register(ResourceDesc::color("fsr_easu", LDR_FORMAT, ResourceExtent::ScaleOutput(1.0)));
@@ -79,7 +74,7 @@ impl RenderPipeline for DefaultPipeline {
             &ctx.device.handle,
             ctx.device.physical,
             &ctx.instance.handle,
-            vk::Format::R16G16B16A16_SFLOAT,
+            Format::Rgba16Float,
         )?;
         let post_pass = PostProcessPass::new(gpu_assets, &ctx.device.handle, LDR_FORMAT)?;
 

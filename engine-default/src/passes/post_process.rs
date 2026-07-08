@@ -1,5 +1,6 @@
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
+use engine_core::render::gfx::format::Format;
 use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedRenderSettings, RenderWorld};
@@ -24,7 +25,7 @@ pub struct PostProcessPass {
 }
 
 impl PostProcessPass {
-    pub fn new(gpu: &mut GpuAssetServer, device: &ash::Device, swapchain_format: vk::Format) -> anyhow::Result<Self> {
+    pub fn new(gpu: &mut GpuAssetServer, device: &ash::Device, swapchain_format: Format) -> anyhow::Result<Self> {
         let sampler = sampler::create_linear_clamp_sampler(device)?;
 
         let binding = vk::DescriptorSetLayoutBinding::default()

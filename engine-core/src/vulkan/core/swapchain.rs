@@ -1,3 +1,4 @@
+use crate::render::gfx::format::Format;
 use crate::vulkan::{Device, Instance};
 use ash::vk;
 
@@ -5,7 +6,7 @@ pub struct Swapchain {
     pub handle: vk::SwapchainKHR,
     pub images: Vec<vk::Image>,
     pub image_views: Vec<vk::ImageView>,
-    pub format: vk::Format,
+    pub format: Format,
     pub extent: vk::Extent2D,
     loader: ash::khr::swapchain::Device,
     device: ash::Device,
@@ -117,7 +118,15 @@ impl Swapchain {
             present_mode
         );
 
-        Ok(Self { handle, images, image_views, format: format.format, extent, loader, device: device.handle.clone() })
+        Ok(Self {
+            handle,
+            images,
+            image_views,
+            format: Format::from_vk(format.format),
+            extent,
+            loader,
+            device: device.handle.clone(),
+        })
     }
 }
 

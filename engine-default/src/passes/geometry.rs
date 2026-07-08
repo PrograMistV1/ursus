@@ -2,6 +2,7 @@ use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::{GpuMesh, ShaderHandle, Vertex};
 use engine_core::components::mesh::MaterialHandle;
+use engine_core::render::gfx::format::Format;
 use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedCamera, ExtractedMeshes, ExtractedRenderSettings, RenderWorld};
@@ -27,11 +28,11 @@ pub struct DrawCall<'a> {
 
 pub struct GeometryPass {
     pipelines: HashMap<ShaderHandle, PipelineId>,
-    color_formats: [vk::Format; 2],
+    color_formats: [Format; 2],
 }
 
 impl GeometryPass {
-    pub fn new(gpu: &mut GpuAssetServer, color_formats: [vk::Format; 2]) -> anyhow::Result<Self> {
+    pub fn new(gpu: &mut GpuAssetServer, color_formats: [Format; 2]) -> anyhow::Result<Self> {
         let mut pass = Self { pipelines: HashMap::new(), color_formats };
         let default = gpu.shaders.by_name("diffuse").unwrap();
         pass.get_or_create_pipeline(gpu, default)?;

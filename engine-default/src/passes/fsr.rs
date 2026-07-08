@@ -1,5 +1,6 @@
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
+use engine_core::render::gfx::format::Format;
 use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedRenderSettings, RenderWorld};
@@ -35,7 +36,7 @@ pub struct FsrPass {
 }
 
 impl FsrPass {
-    pub fn new(gpu: &mut GpuAssetServer, device: &ash::Device, output_format: vk::Format) -> anyhow::Result<Self> {
+    pub fn new(gpu: &mut GpuAssetServer, device: &ash::Device, output_format: Format) -> anyhow::Result<Self> {
         let sampler = sampler::create_linear_clamp_sampler(device)?;
 
         let pool_sizes =
@@ -126,7 +127,7 @@ fn build_stage_pipeline(
     shader_name: &str,
     dsl: vk::DescriptorSetLayout,
     push_range: vk::PushConstantRange,
-    output_format: vk::Format,
+    output_format: Format,
 ) -> anyhow::Result<PipelineId> {
     let handle =
         gpu.shaders.by_name(shader_name).unwrap_or_else(|| panic!("шейдер '{shader_name}' не зарегистрирован"));
