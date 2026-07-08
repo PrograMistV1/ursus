@@ -2,6 +2,7 @@ use crate::passes::ui::UiPass;
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
+use engine_core::render::gfx::format::ImageLayout;
 use engine_core::render::gfx::CommandEncoder;
 use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::render::world::{PreparedUiDrawList, UiPrimitive};
@@ -142,7 +143,7 @@ impl RenderPipeline for LoadingPipeline {
 
         let start_time = std::time::Instant::now();
         pass("loading_background")
-            .write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .write(h_swapchain, ImageLayout::ColorAttachment)
             .record(move |enc: &mut CommandEncoder, _rw, gpu| {
                 enc.begin_rendering_clear(h_swapchain, [0.05, 0.05, 0.08, 1.0]);
 
@@ -176,7 +177,7 @@ impl RenderPipeline for LoadingPipeline {
         let ui_pass_cap = Arc::clone(&ui_pass);
 
         pass("loading_logo")
-            .read_write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .read_write(h_swapchain, ImageLayout::ColorAttachment)
             .record(move |enc: &mut CommandEncoder, _rw, gpu| {
                 let screen = enc.extent_of(h_swapchain);
 

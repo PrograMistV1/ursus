@@ -42,3 +42,24 @@ impl Format {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageLayout {
+    ColorAttachment,
+    DepthAttachment,
+    ShaderReadOnly,
+    TransferSrc,
+    TransferDst,
+}
+
+impl ImageLayout {
+    pub(crate) fn to_vk(self) -> vk::ImageLayout {
+        match self {
+            Self::ColorAttachment => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            Self::DepthAttachment => vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+            Self::ShaderReadOnly => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            Self::TransferSrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            Self::TransferDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        }
+    }
+}

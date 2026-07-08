@@ -1,10 +1,10 @@
 use crate::assets::gpu_server::GpuAssetServer;
+use crate::render::gfx::format::ImageLayout;
 use crate::render::gfx::CommandEncoder;
 use crate::render::graph::{pass, RenderGraph};
 use crate::render::resource::ResourceHandle;
 use crate::render::world::RenderWorld;
 use crate::vulkan::VulkanContext;
-use ash::vk;
 
 pub struct FrameInput<'a> {
     pub render_world: &'a RenderWorld,
@@ -47,7 +47,7 @@ impl RenderPipeline for NoopPipeline {
         let h_swapchain = graph.pool.register_swapchain_external(swapchain.format);
 
         pass("noop_clear")
-            .write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .write(h_swapchain, ImageLayout::ColorAttachment)
             .record(move |enc: &mut CommandEncoder, _rw, _gpu| {
                 enc.begin_rendering_clear(h_swapchain, [0.0, 0.0, 0.0, 1.0]);
                 enc.end_rendering();

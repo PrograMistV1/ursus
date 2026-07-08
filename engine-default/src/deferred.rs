@@ -8,7 +8,7 @@ use crate::passes::ui::UiPass;
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
-use engine_core::render::gfx::format::Format;
+use engine_core::render::gfx::format::{Format, ImageLayout};
 use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::render::resource::{ResourceDesc, ResourceExtent};
 use engine_core::vulkan::resources::gbuffer::GBuffer;
@@ -79,28 +79,28 @@ impl RenderPipeline for DefaultPipeline {
         let post_pass = PostProcessPass::new(gpu_assets, &ctx.device.handle, LDR_FORMAT)?;
 
         pass("shadow")
-            .write(h_shadow_map, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
+            .write(h_shadow_map, ImageLayout::DepthAttachment)
             .record(move |enc, rw, gpu| shadow_pass.record(enc, rw, gpu, h_shadow_map))
             .build(graph);
 
         pass("depth_prepass")
-            .write(h_depth, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
+            .write(h_depth, ImageLayout::DepthAttachment)
             .record(move |enc, rw, gpu| depth_prepass.record(enc, rw, gpu, h_depth))
             .build(graph);
 
         pass("geometry")
-            .write(h_gbuffer_albedo, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .write(h_gbuffer_normal, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .read_write(h_depth, vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
+            .write(h_gbuffer_albedo, ImageLayout::ColorAttachment)
+            .write(h_gbuffer_normal, ImageLayout::ColorAttachment)
+            .read_write(h_depth, ImageLayout::DepthAttachment)
             .record(move |enc, rw, gpu| geometry_pass.record(enc, rw, gpu, h_gbuffer_albedo, h_gbuffer_normal, h_depth))
             .build(graph);
 
         pass("lighting")
-            .read(h_gbuffer_albedo, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .read(h_gbuffer_normal, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .read(h_depth, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .read(h_shadow_map, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .write(h_hdr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .read(h_gbuffer_albedo, ImageLayout::ShaderReadOnly)
+            .read(h_gbuffer_normal, ImageLayout::ShaderReadOnly)
+            .read(h_depth, ImageLayout::ShaderReadOnly)
+            .read(h_shadow_map, ImageLayout::ShaderReadOnly)
+            .write(h_hdr, ImageLayout::ColorAttachment)
             .bind_sampled(h_gbuffer_albedo, lighting_pass.descriptor_set, 0, lighting_pass.sampler)
             .bind_sampled(h_gbuffer_normal, lighting_pass.descriptor_set, 1, lighting_pass.sampler)
             .bind_sampled(h_depth, lighting_pass.descriptor_set, 2, lighting_pass.sampler)
@@ -109,8 +109,8 @@ impl RenderPipeline for DefaultPipeline {
             .build(graph);
 
         pass("post_process")
-            .read(h_hdr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .write(h_ldr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .read(h_hdr, ImageLayout::ShaderReadOnly)
+            .write(h_ldr, ImageLayout::ColorAttachment)
             .bind_sampled(h_hdr, post_pass.descriptor_set, 0, post_pass.sampler)
             .record(move |enc, rw, gpu| post_pass.record(enc, rw, gpu, h_ldr))
             .build(graph);
@@ -121,22 +121,22 @@ impl RenderPipeline for DefaultPipeline {
         let (fsr_easu, fsr_rcas) = (Arc::clone(&fsr_pass), Arc::clone(&fsr_pass));
 
         pass("fsr_easu")
-            .read(h_ldr, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .write(h_fsr_easu, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .read(h_ldr, ImageLayout::ShaderReadOnly)
+            .write(h_fsr_easu, ImageLayout::ColorAttachment)
             .bind_sampled(h_ldr, fsr_easu_set, 0, fsr_sampler)
             .record(move |enc, rw, gpu| fsr_easu.record_easu_pass(enc, rw, gpu, h_ldr, h_fsr_easu))
             .build(graph);
 
         pass("fsr_rcas")
-            .read(h_fsr_easu, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .write(h_fsr_rcas, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .read(h_fsr_easu, ImageLayout::ShaderReadOnly)
+            .write(h_fsr_rcas, ImageLayout::ColorAttachment)
             .bind_sampled(h_fsr_easu, fsr_rcas_set, 0, fsr_sampler)
             .record(move |enc, rw, gpu| fsr_rcas.record_rcas_pass(enc, rw, gpu, h_fsr_rcas))
             .build(graph);
 
         let blit_handle = pass("blit_to_swapchain")
-            .read(h_fsr_rcas, vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-            .write(h_swapchain, vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .read(h_fsr_rcas, ImageLayout::TransferSrc)
+            .write(h_swapchain, ImageLayout::TransferDst)
             .record(move |enc, _rw, _gpu| {
                 enc.blit_to_swapchain(h_fsr_rcas, h_swapchain);
                 Ok(())
@@ -147,7 +147,7 @@ impl RenderPipeline for DefaultPipeline {
 
         pass("ui")
             .after(blit_handle)
-            .read_write(h_swapchain, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .read_write(h_swapchain, ImageLayout::ColorAttachment)
             .record(move |enc, rw, gpu| ui_pass.record(enc, rw, gpu, h_swapchain))
             .build(graph);
 

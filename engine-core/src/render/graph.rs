@@ -1,4 +1,5 @@
 use crate::assets::gpu_server::GpuAssetServer;
+use crate::render::gfx::format::ImageLayout;
 use crate::render::gfx::CommandEncoder;
 use crate::render::resource::{
     make_barrier, DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, LayoutTracker, ResourceHandle,
@@ -483,18 +484,18 @@ impl PassBuilder {
         Self { name: name.into(), accesses: Vec::new(), deferred_bindings: Vec::new(), explicit_deps: Vec::new() }
     }
 
-    pub fn read(mut self, handle: ResourceHandle, layout: vk::ImageLayout) -> Self {
-        self.accesses.push(PassAccess::read(handle, layout));
+    pub fn read(mut self, handle: ResourceHandle, layout: ImageLayout) -> Self {
+        self.accesses.push(PassAccess::read(handle, layout.to_vk()));
         self
     }
 
-    pub fn write(mut self, handle: ResourceHandle, layout: vk::ImageLayout) -> Self {
-        self.accesses.push(PassAccess::write(handle, layout));
+    pub fn write(mut self, handle: ResourceHandle, layout: ImageLayout) -> Self {
+        self.accesses.push(PassAccess::write(handle, layout.to_vk()));
         self
     }
 
-    pub fn read_write(mut self, handle: ResourceHandle, layout: vk::ImageLayout) -> Self {
-        self.accesses.push(PassAccess::read_write(handle, layout));
+    pub fn read_write(mut self, handle: ResourceHandle, layout: ImageLayout) -> Self {
+        self.accesses.push(PassAccess::read_write(handle, layout.to_vk()));
         self
     }
 
