@@ -1,6 +1,6 @@
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::Vertex;
-use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage, VertexFormat};
+use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage, VertexFormat};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedCamera, ExtractedMeshes, RenderWorld};
 
@@ -22,10 +22,7 @@ impl DepthPrepass {
         let (vert_spv, _) = gpu.shaders.load_spv(handle)?;
         let vert_spv = vert_spv.to_vec();
 
-        let push_range = ash::vk::PushConstantRange::default()
-            .stage_flags(ash::vk::ShaderStageFlags::VERTEX)
-            .offset(0)
-            .size(size_of::<DepthPrepassPC>() as u32);
+        let push_range = PushConstantRange::of::<DepthPrepassPC>(ShaderStage::Vertex);
 
         let pipeline = gpu.create_depth_only_pipeline(&vert_spv, &layout, std::slice::from_ref(&push_range), None)?;
 

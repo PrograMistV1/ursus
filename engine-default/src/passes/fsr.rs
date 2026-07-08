@@ -1,7 +1,7 @@
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::gfx::format::Format;
-use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
+use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedRenderSettings, RenderWorld};
 use engine_core::vulkan::core::sampler;
@@ -46,14 +46,8 @@ impl FsrPass {
         let easu_descriptor_set = sets[0];
         let rcas_descriptor_set = sets[1];
 
-        let easu_push = vk::PushConstantRange::default()
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-            .offset(0)
-            .size(size_of::<EasuPC>() as u32);
-        let rcas_push = vk::PushConstantRange::default()
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-            .offset(0)
-            .size(size_of::<RcasPC>() as u32);
+        let easu_push = PushConstantRange::of::<EasuPC>(ShaderStage::Fragment);
+        let rcas_push = PushConstantRange::of::<RcasPC>(ShaderStage::Fragment);
 
         let easu_pipeline = build_stage_pipeline(gpu, "fsr_easu", dsl, easu_push, output_format)?;
         let rcas_pipeline = build_stage_pipeline(gpu, "fsr_rcas", dsl, rcas_push, output_format)?;
@@ -126,7 +120,7 @@ fn build_stage_pipeline(
     gpu: &mut GpuAssetServer,
     shader_name: &str,
     dsl: vk::DescriptorSetLayout,
-    push_range: vk::PushConstantRange,
+    push_range: PushConstantRange,
     output_format: Format,
 ) -> anyhow::Result<PipelineId> {
     let handle =

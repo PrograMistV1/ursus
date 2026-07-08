@@ -6,6 +6,6 @@ pub mod vertex;
 
 pub use encoder::CommandEncoder;
 pub use format::Format;
-pub use handles::{DescriptorSetId, PipelineId, SamplerId, ShaderStage};
+pub use handles::{DescriptorSetId, PipelineId, PushConstantRange, SamplerId, ShaderStage};
 pub use pipeline_cache::PipelineCache;
 pub use vertex::{VertexAttribute, VertexFormat, VertexLayout};

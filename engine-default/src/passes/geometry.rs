@@ -2,7 +2,7 @@ use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::{GpuMesh, ShaderHandle, Vertex};
 use engine_core::components::mesh::MaterialHandle;
 use engine_core::render::gfx::format::Format;
-use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage, VertexFormat};
+use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage, VertexFormat};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedCamera, ExtractedMeshes, ExtractedRenderSettings, RenderWorld};
 use engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
@@ -52,11 +52,7 @@ impl GeometryPass {
         let frag_spv = frag_spv.unwrap().to_vec();
 
         let layout = Vertex::layout();
-
-        let push_range = ash::vk::PushConstantRange::default()
-            .stage_flags(ash::vk::ShaderStageFlags::VERTEX | ash::vk::ShaderStageFlags::FRAGMENT)
-            .offset(0)
-            .size(size_of::<MeshPushConstants>() as u32);
+        let push_range = PushConstantRange::of::<MeshPushConstants>(ShaderStage::VertexFragment);
 
         let set_layouts = [gpu.bindless.layout, gpu.material_buffer.layout];
 

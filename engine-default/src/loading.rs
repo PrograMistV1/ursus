@@ -3,7 +3,7 @@ use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use engine_core::render::gfx::format::ImageLayout;
-use engine_core::render::gfx::CommandEncoder;
+use engine_core::render::gfx::{CommandEncoder, PushConstantRange, ShaderStage};
 use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::render::world::{PreparedUiDrawList, UiPrimitive};
 use engine_core::vulkan::gfx_pipeline::builder::PipelineBuilder;
@@ -106,10 +106,7 @@ impl RenderPipeline for LoadingPipeline {
 
         let h_swapchain = graph.pool.register_swapchain_external(swapchain.format);
 
-        let push_range = vk::PushConstantRange::default()
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-            .offset(0)
-            .size(size_of::<LoadingPC>() as u32);
+        let push_range = PushConstantRange::of::<LoadingPC>(ShaderStage::Fragment);
 
         let handle = gpu_assets.shaders.by_name("loading").expect("shader 'loading' not registered");
         let (vert_spv, frag_spv) = gpu_assets.shaders.load_spv(handle)?;

@@ -1,5 +1,5 @@
 use super::shader::ShaderModule;
-use crate::render::gfx::Format;
+use crate::render::gfx::{Format, PushConstantRange};
 use ash::vk;
 
 pub struct PipelineBuilder<'a> {
@@ -15,7 +15,7 @@ pub struct PipelineBuilder<'a> {
     vertex_bindings: &'a [vk::VertexInputBindingDescription],
     vertex_attributes: &'a [vk::VertexInputAttributeDescription],
     set_layouts: &'a [vk::DescriptorSetLayout],
-    push_constant_ranges: &'a [vk::PushConstantRange],
+    push_constant_ranges: &'a [PushConstantRange],
     blend_attachments: Option<&'a [vk::PipelineColorBlendAttachmentState]>,
 }
 
@@ -124,7 +124,7 @@ impl<'a> PipelineBuilder<'a> {
         self
     }
 
-    pub fn push_constants(mut self, ranges: &'a [vk::PushConstantRange]) -> Self {
+    pub fn push_constants(mut self, ranges: &'a [PushConstantRange]) -> Self {
         self.push_constant_ranges = ranges;
         self
     }
@@ -202,11 +202,11 @@ impl<'a> PipelineBuilder<'a> {
             .depth_bounds_test_enable(false)
             .stencil_test_enable(false);
 
+        let vk_ranges: Vec<vk::PushConstantRange> = self.push_constant_ranges.iter().map(|r| r.to_vk()).collect();
+
         let layout = unsafe {
             device.create_pipeline_layout(
-                &vk::PipelineLayoutCreateInfo::default()
-                    .set_layouts(self.set_layouts)
-                    .push_constant_ranges(self.push_constant_ranges),
+                &vk::PipelineLayoutCreateInfo::default().set_layouts(self.set_layouts).push_constant_ranges(&vk_ranges),
                 None,
             )?
         };

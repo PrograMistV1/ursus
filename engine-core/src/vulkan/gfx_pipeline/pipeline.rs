@@ -1,4 +1,4 @@
-use crate::render::gfx::{Format, VertexLayout};
+use crate::render::gfx::{Format, PushConstantRange, VertexLayout};
 use ash::vk;
 
 pub struct PipelineDesc<'a> {
@@ -11,7 +11,7 @@ pub struct PipelineDesc<'a> {
     pub depth_write: bool,
     pub depth_compare: vk::CompareOp,
     pub vertex_layout: &'a VertexLayout,
-    pub push_constant_ranges: &'a [vk::PushConstantRange],
+    pub push_constant_ranges: &'a [PushConstantRange],
 }
 
 impl<'a> PipelineDesc<'a> {
@@ -20,7 +20,7 @@ impl<'a> PipelineDesc<'a> {
         frag_spv: &'a [u8],
         color_formats: &'a [Format],
         vertex_layout: &'a VertexLayout,
-        push_constant_ranges: &'a [vk::PushConstantRange],
+        push_constant_ranges: &'a [PushConstantRange],
     ) -> Self {
         Self {
             vert_spv,
@@ -41,7 +41,7 @@ impl<'a> PipelineDesc<'a> {
         frag_spv: &'a [u8],
         color_formats: &'a [Format],
         vertex_layout: &'a VertexLayout,
-        push_constant_ranges: &'a [vk::PushConstantRange],
+        push_constant_ranges: &'a [PushConstantRange],
     ) -> Self {
         Self {
             vert_spv,

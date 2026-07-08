@@ -1,5 +1,5 @@
 use crate::render::gfx::handles::PipelineId;
-use crate::render::gfx::{Format, VertexLayout};
+use crate::render::gfx::{Format, PushConstantRange, VertexLayout};
 use crate::vulkan::gfx_pipeline::builder::PipelineBuilder;
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use ash::vk;
@@ -64,7 +64,7 @@ impl PipelineCache {
         frag_spv: &[u8],
         color_formats: &[Format],
         set_layouts: &[vk::DescriptorSetLayout],
-        push_constant_ranges: &[vk::PushConstantRange],
+        push_constant_ranges: &[PushConstantRange],
         blend_attachments: Option<&[vk::PipelineColorBlendAttachmentState]>,
     ) -> anyhow::Result<PipelineId> {
         let mut builder = PipelineBuilder::fullscreen(vert_spv, frag_spv, color_formats)
@@ -84,7 +84,7 @@ impl PipelineCache {
         device: &ash::Device,
         vert_spv: &[u8],
         vertex_layout: &VertexLayout,
-        push_constant_ranges: &[vk::PushConstantRange],
+        push_constant_ranges: &[PushConstantRange],
         depth_bias: Option<(f32, f32)>,
     ) -> anyhow::Result<PipelineId> {
         let binding = vertex_layout.to_vk_binding(0);

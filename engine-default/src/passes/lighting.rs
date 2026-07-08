@@ -1,7 +1,7 @@
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::gfx::format::Format;
-use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
+use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedCamera, ExtractedLights, RenderWorld};
 use engine_core::vulkan::gfx_pipeline::builder::descriptor::alloc_single_set;
@@ -98,10 +98,7 @@ impl LightingPass {
 
         unsafe { device.update_descriptor_sets(&[ubo_write], &[]) };
 
-        let push_range = vk::PushConstantRange::default()
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-            .offset(0)
-            .size(size_of::<LightingPC>() as u32);
+        let push_range = PushConstantRange::of::<LightingPC>(ShaderStage::Fragment);
 
         let handle = gpu.shaders.by_name("lighting").expect("шейдер 'lighting' не зарегистрирован");
         let (vert_spv, frag_spv) = gpu.shaders.load_spv(handle)?;

@@ -4,7 +4,7 @@ use crate::assets::mesh::{CpuMesh, GpuMesh};
 use crate::assets::shader_registry::TextureSlot;
 use crate::assets::ShaderRegistry;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
-use crate::render::gfx::{Format, VertexLayout};
+use crate::render::gfx::{Format, PushConstantRange, VertexLayout};
 use crate::render::gfx::{PipelineCache, PipelineId};
 use crate::render::world::RenderWorld;
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
@@ -85,7 +85,7 @@ impl GpuAssetServer {
         frag_spv: &[u8],
         color_formats: &[Format],
         set_layouts: &[vk::DescriptorSetLayout],
-        push_constant_ranges: &[vk::PushConstantRange],
+        push_constant_ranges: &[PushConstantRange],
         blend_attachments: Option<&[vk::PipelineColorBlendAttachmentState]>,
     ) -> anyhow::Result<PipelineId> {
         self.pipeline_cache.create_fullscreen_pipeline(
@@ -103,7 +103,7 @@ impl GpuAssetServer {
         &mut self,
         vert_spv: &[u8],
         vertex_layout: &VertexLayout,
-        push_constant_ranges: &[vk::PushConstantRange],
+        push_constant_ranges: &[PushConstantRange],
         depth_bias: Option<(f32, f32)>,
     ) -> anyhow::Result<PipelineId> {
         self.pipeline_cache.create_depth_only_pipeline(

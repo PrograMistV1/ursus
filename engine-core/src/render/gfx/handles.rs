@@ -25,3 +25,19 @@ impl ShaderStage {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct PushConstantRange {
+    pub stage: ShaderStage,
+    pub size: u32,
+}
+
+impl PushConstantRange {
+    pub fn of<T: bytemuck::Pod>(stage: ShaderStage) -> Self {
+        Self { stage, size: size_of::<T>() as u32 }
+    }
+
+    pub(crate) fn to_vk(self) -> vk::PushConstantRange {
+        vk::PushConstantRange::default().stage_flags(self.stage.to_vk()).offset(0).size(self.size)
+    }
+}

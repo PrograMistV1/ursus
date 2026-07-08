@@ -1,7 +1,7 @@
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::gfx::format::Format;
-use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
+use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{PreparedUiDrawList, RenderWorld, UiPrimitive};
 use glam::Vec2;
@@ -27,10 +27,7 @@ pub struct UiPass {
 
 impl UiPass {
     pub fn new(gpu: &mut GpuAssetServer, swapchain_format: Format) -> anyhow::Result<Self> {
-        let push_range = vk::PushConstantRange::default()
-            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
-            .offset(0)
-            .size(size_of::<UiPC>() as u32);
+        let push_range = PushConstantRange::of::<UiPC>(ShaderStage::VertexFragment);
 
         let handle = gpu.shaders.by_name("ui").expect("shader 'ui' not registered");
         let (vert_spv, frag_spv) = gpu.shaders.load_spv(handle)?;

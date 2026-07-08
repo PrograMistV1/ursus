@@ -1,7 +1,7 @@
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::gfx::format::Format;
-use engine_core::render::gfx::{CommandEncoder, PipelineId, ShaderStage};
+use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedRenderSettings, RenderWorld};
 use engine_core::vulkan::core::sampler;
@@ -44,10 +44,7 @@ impl PostProcessPass {
         let pool_size = vk::DescriptorPoolSize { ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER, descriptor_count: 1 };
         let (descriptor_pool, descriptor_set) = alloc_single_set(device, descriptor_set_layout, &[pool_size])?;
 
-        let push_range = vk::PushConstantRange::default()
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-            .offset(0)
-            .size(size_of::<PostProcessPC>() as u32);
+        let push_range = PushConstantRange::of::<PostProcessPC>(ShaderStage::Fragment);
 
         let handle = gpu.shaders.by_name("post_process").expect("шейдер 'post_process' не зарегистрирован");
         let (vert_spv, frag_spv) = gpu.shaders.load_spv(handle)?;
