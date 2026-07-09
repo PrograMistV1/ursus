@@ -149,7 +149,7 @@ impl GpuAssetServer {
         self.descriptor_sets[id.0 as usize].layout
     }
 
-    pub(crate) fn descriptor_set_handle(&self, id: DescriptorSetId) -> vk::DescriptorSet {
+    pub fn descriptor_set_handle(&self, id: DescriptorSetId) -> vk::DescriptorSet {
         self.descriptor_sets[id.0 as usize].set
     }
 

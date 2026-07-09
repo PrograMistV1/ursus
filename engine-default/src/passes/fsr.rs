@@ -1,11 +1,12 @@
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::gfx::format::Format;
-use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage};
+use engine_core::render::gfx::{
+    CommandEncoder, DescriptorSetDesc, DescriptorSetId, PipelineId, PushConstantRange, SamplerDesc, SamplerId,
+    ShaderStage,
+};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedRenderSettings, RenderWorld};
-use engine_core::vulkan::core::sampler;
-use engine_core::vulkan::gfx_pipeline::builder::descriptor::alloc_sets;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -24,43 +25,37 @@ pub struct RcasPC {
 
 pub struct FsrPass {
     easu_pipeline: PipelineId,
-    pub easu_descriptor_set_layout: vk::DescriptorSetLayout,
-    pub easu_descriptor_set: vk::DescriptorSet,
+    pub easu_descriptor_set: DescriptorSetId,
 
     rcas_pipeline: PipelineId,
-    pub rcas_descriptor_set: vk::DescriptorSet,
+    pub rcas_descriptor_set: DescriptorSetId,
 
-    pub sampler: vk::Sampler,
-    descriptor_pool: vk::DescriptorPool,
-    device: ash::Device,
+    pub sampler: SamplerId,
 }
 
 impl FsrPass {
-    pub fn new(gpu: &mut GpuAssetServer, device: &ash::Device, output_format: Format) -> anyhow::Result<Self> {
-        let sampler = sampler::create_linear_clamp_sampler(device)?;
+    pub fn new(gpu: &mut GpuAssetServer, output_format: Format) -> anyhow::Result<Self> {
+        let sampler_id = gpu.create_sampler(SamplerDesc::linear_clamp())?;
 
-        let pool_sizes =
-            [vk::DescriptorPoolSize { ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER, descriptor_count: 2 }];
-        let dsl = create_sampled_image_dsl(device)?;
-        let (descriptor_pool, sets) = alloc_sets(device, dsl, &pool_sizes, 2)?;
-        let easu_descriptor_set = sets[0];
-        let rcas_descriptor_set = sets[1];
+        let easu_descriptor_set_id =
+            gpu.create_descriptor_set(DescriptorSetDesc::new().with_sampled_image(0, ShaderStage::Fragment))?;
+        let rcas_descriptor_set_id =
+            gpu.create_descriptor_set(DescriptorSetDesc::new().with_sampled_image(0, ShaderStage::Fragment))?;
 
         let easu_push = PushConstantRange::of::<EasuPC>(ShaderStage::Fragment);
         let rcas_push = PushConstantRange::of::<RcasPC>(ShaderStage::Fragment);
 
-        let easu_pipeline = build_stage_pipeline(gpu, "fsr_easu", dsl, easu_push, output_format)?;
-        let rcas_pipeline = build_stage_pipeline(gpu, "fsr_rcas", dsl, rcas_push, output_format)?;
+        let easu_dsl = gpu.descriptor_set_layout(easu_descriptor_set_id);
+        let rcas_dsl = gpu.descriptor_set_layout(easu_descriptor_set_id);
+        let easu_pipeline = build_stage_pipeline(gpu, "fsr_easu", easu_dsl, easu_push, output_format)?;
+        let rcas_pipeline = build_stage_pipeline(gpu, "fsr_rcas", rcas_dsl, rcas_push, output_format)?;
 
         Ok(Self {
             easu_pipeline,
-            easu_descriptor_set_layout: dsl,
-            easu_descriptor_set,
+            easu_descriptor_set: easu_descriptor_set_id,
             rcas_pipeline,
-            rcas_descriptor_set,
-            sampler,
-            descriptor_pool,
-            device: device.clone(),
+            rcas_descriptor_set: rcas_descriptor_set_id,
+            sampler: sampler_id,
         })
     }
 
@@ -68,7 +63,7 @@ impl FsrPass {
         &self,
         enc: &mut CommandEncoder,
         rw: &RenderWorld,
-        _gpu: &GpuAssetServer,
+        gpu: &GpuAssetServer,
         src: ResourceHandle,
         dst: ResourceHandle,
     ) -> anyhow::Result<()> {
@@ -79,7 +74,7 @@ impl FsrPass {
 
         enc.begin_rendering_discard(dst);
         enc.bind_pipeline(self.easu_pipeline);
-        enc.bind_descriptor_sets(self.easu_pipeline, &[self.easu_descriptor_set]);
+        enc.bind_descriptor_sets(self.easu_pipeline, &[gpu.descriptor_set_handle(self.easu_descriptor_set)]);
         enc.push_constants(self.easu_pipeline, ShaderStage::Fragment, &pc);
         enc.draw(3);
         enc.end_rendering();
@@ -90,7 +85,7 @@ impl FsrPass {
         &self,
         enc: &mut CommandEncoder,
         rw: &RenderWorld,
-        _gpu: &GpuAssetServer,
+        gpu: &GpuAssetServer,
         dst: ResourceHandle,
     ) -> anyhow::Result<()> {
         let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
@@ -98,21 +93,11 @@ impl FsrPass {
 
         enc.begin_rendering_discard(dst);
         enc.bind_pipeline(self.rcas_pipeline);
-        enc.bind_descriptor_sets(self.rcas_pipeline, &[self.rcas_descriptor_set]);
+        enc.bind_descriptor_sets(self.rcas_pipeline, &[gpu.descriptor_set_handle(self.rcas_descriptor_set)]);
         enc.push_constants(self.rcas_pipeline, ShaderStage::Fragment, &pc);
         enc.draw(3);
         enc.end_rendering();
         Ok(())
-    }
-}
-
-impl Drop for FsrPass {
-    fn drop(&mut self) {
-        unsafe {
-            self.device.destroy_descriptor_set_layout(self.easu_descriptor_set_layout, None);
-            self.device.destroy_descriptor_pool(self.descriptor_pool, None);
-            self.device.destroy_sampler(self.sampler, None);
-        }
     }
 }
 
@@ -137,20 +122,6 @@ fn build_stage_pipeline(
         std::slice::from_ref(&push_range),
         None,
     )
-}
-
-fn create_sampled_image_dsl(device: &ash::Device) -> anyhow::Result<vk::DescriptorSetLayout> {
-    let binding = vk::DescriptorSetLayoutBinding::default()
-        .binding(0)
-        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-        .descriptor_count(1)
-        .stage_flags(vk::ShaderStageFlags::FRAGMENT);
-    Ok(unsafe {
-        device.create_descriptor_set_layout(
-            &vk::DescriptorSetLayoutCreateInfo::default().bindings(std::slice::from_ref(&binding)),
-            None,
-        )?
-    })
 }
 
 pub fn compute_easu_con(input_viewport: (f32, f32), input_size: (f32, f32), output_size: (f32, f32)) -> EasuPC {

@@ -168,7 +168,7 @@ impl RenderPipeline for LoadingPipeline {
                 enc.end_rendering();
                 Ok(())
             })
-            .build(graph);
+            .build(graph, &gpu_assets);
 
         let ui_pass = Arc::new(UiPass::new(gpu_assets, swapchain.format)?);
         let ui_pass_cap = Arc::clone(&ui_pass);
@@ -194,7 +194,7 @@ impl RenderPipeline for LoadingPipeline {
 
                 ui_pass_cap.record_draw_list(enc, &draw_list, gpu, h_swapchain)
             })
-            .build(graph);
+            .build(graph, &gpu_assets);
 
         PENDING.with(|c| {
             *c.borrow_mut() = Some(PendingState { bg_pipeline, bg_layout, device: device.clone(), logo_texture });

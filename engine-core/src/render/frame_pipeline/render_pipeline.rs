@@ -37,7 +37,7 @@ pub struct NoopPipeline;
 impl RenderPipeline for NoopPipeline {
     fn build(
         ctx: &VulkanContext,
-        _gpu_assets: &mut GpuAssetServer,
+        gpu_assets: &mut GpuAssetServer,
         graph: &mut RenderGraph,
     ) -> anyhow::Result<PipelineHandles>
     where
@@ -53,7 +53,7 @@ impl RenderPipeline for NoopPipeline {
                 enc.end_rendering();
                 Ok(())
             })
-            .build(graph);
+            .build(graph, gpu_assets);
 
         Ok(PipelineHandles { swapchain: h_swapchain })
     }

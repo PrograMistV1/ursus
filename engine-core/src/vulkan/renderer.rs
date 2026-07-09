@@ -20,8 +20,8 @@ pub trait DynRenderer: Send {
         gpu_assets: &mut GpuAssetServer,
     ) -> anyhow::Result<bool>;
 
-    fn resize_output(&mut self, w: u32, h: u32) -> anyhow::Result<()>;
-    fn resize_internal(&mut self, w: u32, h: u32) -> anyhow::Result<()>;
+    fn resize_output(&mut self, w: u32, h: u32, gpu: &GpuAssetServer) -> anyhow::Result<()>;
+    fn resize_internal(&mut self, w: u32, h: u32, gpu: &GpuAssetServer) -> anyhow::Result<()>;
 
     fn last_frame_times(&self) -> Option<&GpuFrameTimes>;
 
@@ -147,15 +147,15 @@ impl<P: RenderPipeline> Renderer<P> {
         Ok(needs_recreate || suboptimal)
     }
 
-    pub fn resize_output(&mut self, new_w: u32, new_h: u32) -> anyhow::Result<()> {
+    pub fn resize_output(&mut self, new_w: u32, new_h: u32, gpu: &GpuAssetServer) -> anyhow::Result<()> {
         unsafe { self.device.handle.device_wait_idle()? };
-        self.graph.resize_output((new_w, new_h))?;
+        self.graph.resize_output((new_w, new_h), gpu)?;
         self.pipeline.on_resize(&mut self.graph, new_w, new_h)
     }
 
-    pub fn resize_internal(&mut self, new_w: u32, new_h: u32) -> anyhow::Result<()> {
+    pub fn resize_internal(&mut self, new_w: u32, new_h: u32, gpu: &GpuAssetServer) -> anyhow::Result<()> {
         unsafe { self.device.handle.device_wait_idle()? };
-        self.graph.resize_internal((new_w, new_h))?;
+        self.graph.resize_internal((new_w, new_h), gpu)?;
         self.pipeline.on_resize_internal(&mut self.graph, new_w, new_h)
     }
 }
@@ -170,12 +170,12 @@ impl<P: RenderPipeline> DynRenderer for Renderer<P> {
         self.draw_frame(ctx, render_world, gpu_assets)
     }
 
-    fn resize_output(&mut self, w: u32, h: u32) -> anyhow::Result<()> {
-        self.resize_output(w, h)
+    fn resize_output(&mut self, w: u32, h: u32, gpu: &GpuAssetServer) -> anyhow::Result<()> {
+        self.resize_output(w, h, gpu)
     }
 
-    fn resize_internal(&mut self, w: u32, h: u32) -> anyhow::Result<()> {
-        self.resize_internal(w, h)
+    fn resize_internal(&mut self, w: u32, h: u32, gpu: &GpuAssetServer) -> anyhow::Result<()> {
+        self.resize_internal(w, h, gpu)
     }
 
     fn last_frame_times(&self) -> Option<&GpuFrameTimes> {
@@ -233,7 +233,7 @@ pub fn build_dyn_renderer<P: RenderPipeline + Default + 'static>(
     );
 
     let handles = P::build(ctx, gpu_assets, &mut graph)?;
-    graph.allocate()?;
+    graph.allocate(gpu_assets)?;
     graph.compile()?;
 
     let frames: Vec<_> =

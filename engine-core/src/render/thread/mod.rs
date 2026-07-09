@@ -74,14 +74,14 @@ fn render_loop(
                     RenderCommand::Resize { width, height } => {
                         unsafe { vk.device.handle.device_wait_idle().ok() };
                         vk.recreate_swapchain(width, height, false)?;
-                        renderer.resize_output(width, height)?;
+                        renderer.resize_output(width, height, &gpu_assets)?;
                         log::debug!("Render thread: resize {width}x{height}");
                     }
                     RenderCommand::SetInternalScale(scale) => {
                         let sw = vk.swapchain.as_ref().unwrap();
                         let w = (sw.extent.width as f32 * scale) as u32;
                         let h = (sw.extent.height as f32 * scale) as u32;
-                        renderer.resize_internal(w.max(1), h.max(1))?;
+                        renderer.resize_internal(w.max(1), h.max(1), &gpu_assets)?;
                     }
                     RenderCommand::SetExposure(v) => renderer.set_exposure(v),
                     RenderCommand::SetFsrSharpness(v) => renderer.set_fsr_sharpness(v),
@@ -124,7 +124,7 @@ fn render_loop(
             let (w, h) = (sw.extent.width, sw.extent.height);
             unsafe { vk.device.handle.device_wait_idle().ok() };
             vk.recreate_swapchain(w, h, false)?;
-            renderer.resize_output(w, h)?;
+            renderer.resize_output(w, h, &gpu_assets)?;
         }
     }
 }

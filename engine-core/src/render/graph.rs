@@ -1,6 +1,6 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::render::gfx::format::ImageLayout;
-use crate::render::gfx::CommandEncoder;
+use crate::render::gfx::{CommandEncoder, DescriptorSetId, SamplerId};
 use crate::render::resource::{
     make_barrier, DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, LayoutTracker, ResourceHandle,
     ResourcePool,
@@ -239,13 +239,7 @@ impl RenderGraph {
         self.bindings.register(binding);
     }
 
-    pub fn bind_sampled(
-        &mut self,
-        resource: ResourceHandle,
-        set: vk::DescriptorSet,
-        binding: u32,
-        sampler: vk::Sampler,
-    ) {
+    pub fn bind_sampled(&mut self, resource: ResourceHandle, set: DescriptorSetId, binding: u32, sampler: SamplerId) {
         self.bindings.register(DescriptorBinding {
             resource,
             set,
@@ -256,9 +250,9 @@ impl RenderGraph {
         });
     }
 
-    pub fn allocate(&mut self) -> anyhow::Result<()> {
+    pub fn allocate(&mut self, gpu: &GpuAssetServer) -> anyhow::Result<()> {
         self.pool.allocate(self.internal_resolution, self.output_resolution)?;
-        self.bindings.flush_all(&self.pool);
+        self.bindings.flush_all(&self.pool, gpu);
         self.allocated = true;
         Ok(())
     }
@@ -368,21 +362,21 @@ impl RenderGraph {
         }
     }
 
-    pub fn resize_output(&mut self, new_output: (u32, u32)) -> anyhow::Result<()> {
+    pub fn resize_output(&mut self, new_output: (u32, u32), gpu: &GpuAssetServer) -> anyhow::Result<()> {
         self.output_resolution = new_output;
         self.pool.resize_output(self.internal_resolution, new_output)?;
         let affected: Vec<ResourceHandle> = self.pool.output_handles().collect();
-        self.bindings.flush(&self.pool, &affected);
+        self.bindings.flush(&self.pool, &affected, gpu);
         self.tracker.invalidate(&affected);
         self.build_compiled_passes();
         Ok(())
     }
 
-    pub fn resize_internal(&mut self, new_internal: (u32, u32)) -> anyhow::Result<()> {
+    pub fn resize_internal(&mut self, new_internal: (u32, u32), gpu: &GpuAssetServer) -> anyhow::Result<()> {
         self.internal_resolution = new_internal;
         self.pool.resize_internal(new_internal, self.output_resolution)?;
         let affected: Vec<ResourceHandle> = self.pool.internal_handles().collect();
-        self.bindings.flush(&self.pool, &affected);
+        self.bindings.flush(&self.pool, &affected, gpu);
         self.tracker.invalidate(&affected);
         Ok(())
     }
@@ -507,9 +501,9 @@ impl PassBuilder {
     pub fn bind_sampled(
         mut self,
         resource: ResourceHandle,
-        set: vk::DescriptorSet,
+        set: DescriptorSetId,
         binding: u32,
-        sampler: vk::Sampler,
+        sampler: SamplerId,
     ) -> Self {
         self.deferred_bindings.push(DescriptorBinding {
             resource,
@@ -525,10 +519,10 @@ impl PassBuilder {
     pub fn bind_sampled_at(
         mut self,
         resource: ResourceHandle,
-        set: vk::DescriptorSet,
+        set: DescriptorSetId,
         binding: u32,
         array_element: u32,
-        sampler: vk::Sampler,
+        sampler: SamplerId,
         image_layout: vk::ImageLayout,
     ) -> Self {
         self.deferred_bindings.push(DescriptorBinding {
@@ -564,12 +558,12 @@ pub struct PassNodeReady {
 }
 
 impl PassNodeReady {
-    pub fn build(self, graph: &mut RenderGraph) -> PassHandle {
+    pub fn build(self, graph: &mut RenderGraph, gpu: &GpuAssetServer) -> PassHandle {
         for b in self.deferred_bindings {
             let resource = b.resource;
             graph.bindings.register(b);
             if graph.allocated {
-                graph.bindings.flush(&graph.pool, &[resource]);
+                graph.bindings.flush(&graph.pool, &[resource], gpu);
             }
         }
         graph.add_pass(self.node)

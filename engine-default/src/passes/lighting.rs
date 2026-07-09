@@ -1,10 +1,12 @@
 use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::gfx::format::Format;
-use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage};
+use engine_core::render::gfx::{
+    CommandEncoder, DescriptorSetDesc, DescriptorSetId, PipelineId, PushConstantRange, SamplerDesc, SamplerId,
+    ShaderStage,
+};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedCamera, ExtractedLights, RenderWorld};
-use engine_core::vulkan::gfx_pipeline::builder::descriptor::alloc_single_set;
 use engine_core::vulkan::resources::light_buffer::{LightBuffer, LightingUbo};
 
 #[repr(C)]
@@ -18,11 +20,9 @@ struct LightingPC {
 
 pub struct LightingPass {
     pipeline: PipelineId,
-    pub descriptor_pool: vk::DescriptorPool,
-    pub descriptor_set_layout: vk::DescriptorSetLayout,
-    pub descriptor_set: vk::DescriptorSet,
-    pub sampler: vk::Sampler,
-    pub shadow_sampler: vk::Sampler,
+    pub descriptor_set: DescriptorSetId,
+    pub sampler: SamplerId,
+    pub shadow_sampler: SamplerId,
     pub light_buffer: LightBuffer,
     device: ash::Device,
 }
@@ -37,66 +37,19 @@ impl LightingPass {
     ) -> anyhow::Result<Self> {
         let light_buffer = LightBuffer::new(device, physical_device, instance)?;
 
-        let sampler = unsafe {
-            device.create_sampler(
-                &vk::SamplerCreateInfo::default()
-                    .mag_filter(vk::Filter::NEAREST)
-                    .min_filter(vk::Filter::NEAREST)
-                    .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                    .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE),
-                None,
-            )?
-        };
+        let sampler_id = gpu.create_sampler(SamplerDesc::nearest_clamp())?;
+        let shadow_sampler_id = gpu.create_sampler(SamplerDesc::shadow_compare())?;
 
-        let shadow_sampler = unsafe {
-            device.create_sampler(
-                &vk::SamplerCreateInfo::default()
-                    .mag_filter(vk::Filter::LINEAR)
-                    .min_filter(vk::Filter::LINEAR)
-                    .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_BORDER)
-                    .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_BORDER)
-                    .border_color(vk::BorderColor::FLOAT_OPAQUE_WHITE)
-                    .compare_enable(true)
-                    .compare_op(vk::CompareOp::LESS_OR_EQUAL),
-                None,
-            )?
-        };
+        let set_id = gpu.create_descriptor_set(
+            DescriptorSetDesc::new()
+                .with_sampled_image(0, ShaderStage::Fragment)
+                .with_sampled_image(1, ShaderStage::Fragment)
+                .with_sampled_image(2, ShaderStage::Fragment)
+                .with_uniform_buffer::<LightingUbo>(3, ShaderStage::Fragment)
+                .with_sampled_image(4, ShaderStage::Fragment),
+        )?;
 
-        let bindings = [
-            make_image_binding(0),
-            make_image_binding(1),
-            make_image_binding(2),
-            vk::DescriptorSetLayoutBinding::default()
-                .binding(3)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT),
-            make_image_binding(4),
-        ];
-
-        let descriptor_set_layout = unsafe {
-            device
-                .create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings), None)?
-        };
-
-        let pool_sizes = [
-            vk::DescriptorPoolSize { ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER, descriptor_count: 4 },
-            vk::DescriptorPoolSize { ty: vk::DescriptorType::UNIFORM_BUFFER, descriptor_count: 1 },
-        ];
-        let (descriptor_pool, descriptor_set) = alloc_single_set(device, descriptor_set_layout, &pool_sizes)?;
-
-        let buf_info = vk::DescriptorBufferInfo::default()
-            .buffer(light_buffer.buffer)
-            .offset(0)
-            .range(size_of::<LightingUbo>() as vk::DeviceSize);
-
-        let ubo_write = vk::WriteDescriptorSet::default()
-            .dst_set(descriptor_set)
-            .dst_binding(3)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .buffer_info(std::slice::from_ref(&buf_info));
-
-        unsafe { device.update_descriptor_sets(&[ubo_write], &[]) };
+        gpu.bind_uniform_buffer(set_id, 3, light_buffer.buffer, size_of::<LightingUbo>() as vk::DeviceSize);
 
         let push_range = PushConstantRange::of::<LightingPC>(ShaderStage::Fragment);
 
@@ -105,22 +58,21 @@ impl LightingPass {
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.expect("'lighting' должен иметь frag").to_vec();
 
+        let dsl = gpu.descriptor_set_layout(set_id);
         let pipeline = gpu.create_fullscreen_pipeline(
             &vert_spv,
             &frag_spv,
             std::slice::from_ref(&hdr_format),
-            std::slice::from_ref(&descriptor_set_layout),
+            std::slice::from_ref(&dsl),
             std::slice::from_ref(&push_range),
             None,
         )?;
 
         Ok(Self {
             pipeline,
-            descriptor_pool,
-            descriptor_set_layout,
-            descriptor_set,
-            sampler,
-            shadow_sampler,
+            descriptor_set: set_id,
+            sampler: sampler_id,
+            shadow_sampler: shadow_sampler_id,
             light_buffer,
             device: device.clone(),
         })
@@ -130,7 +82,7 @@ impl LightingPass {
         &self,
         enc: &mut CommandEncoder,
         rw: &RenderWorld,
-        _gpu: &GpuAssetServer,
+        gpu: &GpuAssetServer,
         hdr: ResourceHandle,
     ) -> anyhow::Result<()> {
         let camera = rw.get::<ExtractedCamera>().cloned().unwrap_or_default();
@@ -147,7 +99,7 @@ impl LightingPass {
 
         enc.begin_rendering_discard(hdr);
         enc.bind_pipeline(self.pipeline);
-        enc.bind_descriptor_sets(self.pipeline, &[self.descriptor_set]);
+        enc.bind_descriptor_sets(self.pipeline, &[gpu.descriptor_set_handle(self.descriptor_set)]);
 
         let pc = LightingPC {
             inv_proj: camera.proj.inverse().to_cols_array_2d(),
@@ -160,23 +112,4 @@ impl LightingPass {
         enc.end_rendering();
         Ok(())
     }
-}
-
-impl Drop for LightingPass {
-    fn drop(&mut self) {
-        unsafe {
-            self.device.destroy_descriptor_pool(self.descriptor_pool, None);
-            self.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
-            self.device.destroy_sampler(self.sampler, None);
-            self.device.destroy_sampler(self.shadow_sampler, None);
-        }
-    }
-}
-
-fn make_image_binding(binding: u32) -> vk::DescriptorSetLayoutBinding<'static> {
-    vk::DescriptorSetLayoutBinding::default()
-        .binding(binding)
-        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-        .descriptor_count(1)
-        .stage_flags(vk::ShaderStageFlags::FRAGMENT)
 }

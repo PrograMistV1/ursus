@@ -1,4 +1,5 @@
-use crate::render::gfx::Format;
+use crate::assets::gpu_server::GpuAssetServer;
+use crate::render::gfx::{DescriptorSetId, Format, SamplerId};
 use crate::vulkan::core::debug::set_object_name;
 use crate::vulkan::core::memory;
 use crate::vulkan::core::memory::destroy_image_resources;
@@ -379,14 +380,14 @@ pub enum ResourceDescRef<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DescriptorImageType {
-    CombinedImageSampler(vk::Sampler),
+    CombinedImageSampler(SamplerId),
     SampledImage,
 }
 
 #[derive(Debug, Clone)]
 pub struct DescriptorBinding {
     pub resource: ResourceHandle,
-    pub set: vk::DescriptorSet,
+    pub set: DescriptorSetId,
     pub binding: u32,
     pub array_element: u32,
     pub image_type: DescriptorImageType,
@@ -407,7 +408,7 @@ impl DescriptorBindingRegistry {
         self.bindings.push(binding);
     }
 
-    pub fn flush(&self, pool: &ResourcePool, affected: &[ResourceHandle]) {
+    pub fn flush(&self, pool: &ResourcePool, affected: &[ResourceHandle], gpu: &GpuAssetServer) {
         let relevant: Vec<&DescriptorBinding> =
             self.bindings.iter().filter(|b| affected.contains(&b.resource)).collect();
 
@@ -420,7 +421,7 @@ impl DescriptorBindingRegistry {
             .map(|b| {
                 let img = pool.image(b.resource);
                 let sampler = match b.image_type {
-                    DescriptorImageType::CombinedImageSampler(s) => s,
+                    DescriptorImageType::CombinedImageSampler(s) => gpu.sampler_handle(s),
                     DescriptorImageType::SampledImage => vk::Sampler::null(),
                 };
                 vk::DescriptorImageInfo::default().image_view(img.view).image_layout(b.image_layout).sampler(sampler)
@@ -436,7 +437,7 @@ impl DescriptorBindingRegistry {
                     DescriptorImageType::SampledImage => vk::DescriptorType::SAMPLED_IMAGE,
                 };
                 vk::WriteDescriptorSet::default()
-                    .dst_set(b.set)
+                    .dst_set(gpu.descriptor_set_handle(b.set))
                     .dst_binding(b.binding)
                     .dst_array_element(b.array_element)
                     .descriptor_type(desc_type)
@@ -448,9 +449,9 @@ impl DescriptorBindingRegistry {
         log::debug!("DescriptorBindingRegistry: переписано {} дескрипторов после resize", writes.len());
     }
 
-    pub fn flush_all(&self, pool: &ResourcePool) {
+    pub fn flush_all(&self, pool: &ResourcePool, gpu: &GpuAssetServer) {
         let all: Vec<ResourceHandle> = self.bindings.iter().map(|b| b.resource).collect();
-        self.flush(pool, &all);
+        self.flush(pool, &all, &gpu);
     }
 }
 
