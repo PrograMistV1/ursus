@@ -1,4 +1,3 @@
-use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::gfx::format::Format;
 use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage};
@@ -34,23 +33,23 @@ impl UiPass {
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.expect("'ui' must have frag").to_vec();
 
-        let blend = [vk::PipelineColorBlendAttachmentState::default()
+        let blend = [ash::vk::PipelineColorBlendAttachmentState::default()
             .blend_enable(true)
-            .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
-            .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
-            .color_blend_op(vk::BlendOp::ADD)
-            .src_alpha_blend_factor(vk::BlendFactor::ONE)
-            .dst_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
-            .alpha_blend_op(vk::BlendOp::ADD)
-            .color_write_mask(vk::ColorComponentFlags::RGBA)];
+            .src_color_blend_factor(ash::vk::BlendFactor::SRC_ALPHA)
+            .dst_color_blend_factor(ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+            .color_blend_op(ash::vk::BlendOp::ADD)
+            .src_alpha_blend_factor(ash::vk::BlendFactor::ONE)
+            .dst_alpha_blend_factor(ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+            .alpha_blend_op(ash::vk::BlendOp::ADD)
+            .color_write_mask(ash::vk::ColorComponentFlags::RGBA)];
 
-        let bindless_layout = gpu.bindless.layout;
+        let bindless_set = gpu.bindless_set();
 
         let pipeline = gpu.create_fullscreen_pipeline(
             &vert_spv,
             &frag_spv,
             std::slice::from_ref(&swapchain_format),
-            std::slice::from_ref(&bindless_layout),
+            std::slice::from_ref(&bindless_set),
             std::slice::from_ref(&push_range),
             Some(&blend),
         )?;
@@ -82,7 +81,7 @@ impl UiPass {
 
         enc.begin_rendering_load(swapchain);
         enc.bind_pipeline(self.pipeline);
-        enc.bind_descriptor_sets(self.pipeline, &[gpu.bindless.set]);
+        enc.bind_descriptor_sets(self.pipeline, &[gpu.bindless_set()]);
 
         for primitive in &draw_list.primitives {
             let pc = match primitive {

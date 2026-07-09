@@ -1,6 +1,8 @@
 use super::handles::{PipelineId, ShaderStage};
 use super::pipeline_cache::PipelineCache;
+use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::mesh::GpuMesh;
+use crate::render::gfx::DescriptorSetId;
 use crate::render::resource::{ResourceHandle, ResourcePool};
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
 use crate::vulkan::gfx_pipeline::builder::cmd::{
@@ -13,6 +15,7 @@ pub struct CommandEncoder<'a> {
     cmd: vk::CommandBuffer,
     pool: &'a ResourcePool,
     pipelines: &'a PipelineCache,
+    gpu_assets: &'a GpuAssetServer,
     bound_pipeline: Option<PipelineId>,
 }
 
@@ -22,8 +25,9 @@ impl<'a> CommandEncoder<'a> {
         cmd: vk::CommandBuffer,
         pool: &'a ResourcePool,
         pipelines: &'a PipelineCache,
+        gpu_assets: &'a GpuAssetServer,
     ) -> Self {
-        Self { device, cmd, pool, pipelines, bound_pipeline: None }
+        Self { device, cmd, pool, pipelines, gpu_assets, bound_pipeline: None }
     }
 
     pub fn raw_cmd(&self) -> vk::CommandBuffer {
@@ -123,15 +127,18 @@ impl<'a> CommandEncoder<'a> {
         self.bound_pipeline = Some(pipeline);
     }
 
-    pub fn bind_descriptor_sets(&self, pipeline: PipelineId, sets: &[vk::DescriptorSet]) {
+    pub fn bind_descriptor_sets(&self, pipeline: PipelineId, sets: &[DescriptorSetId]) {
         let stored = self.pipelines.get(pipeline);
+        let vk_sets: Vec<vk::DescriptorSet> =
+            sets.iter().map(|&id| self.gpu_assets.descriptor_set_handle(id)).collect();
+
         unsafe {
             self.device.cmd_bind_descriptor_sets(
                 self.cmd,
                 vk::PipelineBindPoint::GRAPHICS,
                 stored.layout,
                 0,
-                sets,
+                &vk_sets,
                 &[],
             );
         }

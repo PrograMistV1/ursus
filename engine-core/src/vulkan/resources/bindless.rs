@@ -7,7 +7,7 @@ pub const MAX_TEXTURES: u32 = 4096;
 pub struct BindlessSet {
     pub layout: vk::DescriptorSetLayout,
     pub set: vk::DescriptorSet,
-    pool: vk::DescriptorPool,
+    pub pool: vk::DescriptorPool,
     pub sampler: vk::Sampler,
     next_slot: u32,
     owned_textures: Vec<GpuTexture>,
@@ -143,8 +143,6 @@ impl BindlessSet {
 impl Drop for BindlessSet {
     fn drop(&mut self) {
         unsafe {
-            self.device.destroy_descriptor_pool(self.pool, None);
-            self.device.destroy_descriptor_set_layout(self.layout, None);
             self.device.destroy_sampler(self.sampler, None);
         }
     }

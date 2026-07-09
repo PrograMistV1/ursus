@@ -52,6 +52,8 @@ pub struct GpuAssetServer {
 
     samplers: Vec<StoredSampler>,
     descriptor_sets: Vec<StoredDescriptorSet>,
+    bindless_set_id: DescriptorSetId,
+    material_buffer_set_id: DescriptorSetId,
 }
 
 impl GpuAssetServer {
@@ -71,7 +73,7 @@ impl GpuAssetServer {
 
         log::info!("GpuAssetServer: white=slot0, text_renderer готов, next_slot={}", bindless.next_slot());
 
-        Ok(Self {
+        let mut this = Self {
             gpu_meshes: HashMap::new(),
             texture_slots: HashMap::new(),
             gpu_textures: HashMap::new(),
@@ -87,7 +89,22 @@ impl GpuAssetServer {
             queue,
             samplers: Vec::new(),
             descriptor_sets: Vec::new(),
-        })
+            bindless_set_id: DescriptorSetId(0),
+            material_buffer_set_id: DescriptorSetId(0),
+        };
+
+        let bindless_layout = this.bindless.layout;
+        let bindless_set = this.bindless.set;
+        let bindless_pool = this.bindless.pool;
+        this.bindless_set_id = this.register_external_descriptor_set(bindless_layout, bindless_set, bindless_pool);
+
+        let material_layout = this.material_buffer.layout;
+        let material_set = this.material_buffer.set;
+        let material_pool = this.material_buffer.pool;
+        this.material_buffer_set_id =
+            this.register_external_descriptor_set(material_layout, material_set, material_pool);
+
+        Ok(this)
     }
 
     pub fn create_sampler(&mut self, desc: SamplerDesc) -> anyhow::Result<SamplerId> {
@@ -145,8 +162,16 @@ impl GpuAssetServer {
         Ok(id)
     }
 
-    pub fn descriptor_set_layout(&self, id: DescriptorSetId) -> vk::DescriptorSetLayout {
+    pub(crate) fn descriptor_set_layout(&self, id: DescriptorSetId) -> vk::DescriptorSetLayout {
         self.descriptor_sets[id.0 as usize].layout
+    }
+
+    pub fn bindless_set(&self) -> DescriptorSetId {
+        self.bindless_set_id
+    }
+
+    pub fn material_buffer_set(&self) -> DescriptorSetId {
+        self.material_buffer_set_id
     }
 
     pub fn descriptor_set_handle(&self, id: DescriptorSetId) -> vk::DescriptorSet {
@@ -212,16 +237,19 @@ impl GpuAssetServer {
         vert_spv: &[u8],
         frag_spv: &[u8],
         color_formats: &[Format],
-        set_layouts: &[vk::DescriptorSetLayout],
+        set_layouts: &[DescriptorSetId],
         push_constant_ranges: &[PushConstantRange],
         blend_attachments: Option<&[vk::PipelineColorBlendAttachmentState]>,
     ) -> anyhow::Result<PipelineId> {
+        let layouts: Vec<vk::DescriptorSetLayout> =
+            set_layouts.iter().map(|&id| self.descriptor_set_layout(id)).collect();
+
         self.pipeline_cache.create_fullscreen_pipeline(
             &self.device,
             vert_spv,
             frag_spv,
             color_formats,
-            set_layouts,
+            &layouts,
             push_constant_ranges,
             blend_attachments,
         )
@@ -293,6 +321,17 @@ impl GpuAssetServer {
 
     pub fn texture_slot(&self, handle: TextureHandle) -> u32 {
         self.texture_slots.get(&handle).copied().unwrap_or(BINDLESS_SLOT_WHITE)
+    }
+
+    pub(crate) fn register_external_descriptor_set(
+        &mut self,
+        layout: vk::DescriptorSetLayout,
+        set: vk::DescriptorSet,
+        pool: vk::DescriptorPool,
+    ) -> DescriptorSetId {
+        let id = DescriptorSetId(self.descriptor_sets.len() as u32);
+        self.descriptor_sets.push(StoredDescriptorSet { layout, set, pool, bindings: Vec::new() });
+        id
     }
 
     pub fn register_material_gpu(

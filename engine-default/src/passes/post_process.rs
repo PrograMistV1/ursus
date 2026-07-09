@@ -35,12 +35,11 @@ impl PostProcessPass {
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.expect("'post_process' должен иметь frag").to_vec();
 
-        let dsl = gpu.descriptor_set_layout(set_id);
         let pipeline = gpu.create_fullscreen_pipeline(
             &vert_spv,
             &frag_spv,
             std::slice::from_ref(&swapchain_format),
-            std::slice::from_ref(&dsl),
+            std::slice::from_ref(&set_id),
             std::slice::from_ref(&push_range),
             None,
         )?;
@@ -52,7 +51,7 @@ impl PostProcessPass {
         &self,
         enc: &mut CommandEncoder,
         rw: &RenderWorld,
-        gpu: &GpuAssetServer,
+        _gpu: &GpuAssetServer,
         ldr: ResourceHandle,
     ) -> anyhow::Result<()> {
         let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
@@ -60,7 +59,7 @@ impl PostProcessPass {
 
         enc.begin_rendering_discard(ldr);
         enc.bind_pipeline(self.pipeline);
-        enc.bind_descriptor_sets(self.pipeline, &[gpu.descriptor_set_handle(self.descriptor_set)]);
+        enc.bind_descriptor_sets(self.pipeline, &[self.descriptor_set]);
 
         let pc =
             PostProcessPC { texel_size: [1.0 / extent[0], 1.0 / extent[1]], exposure: settings.exposure, flags: 0 };

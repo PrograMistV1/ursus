@@ -314,7 +314,7 @@ impl RenderGraph {
             }
 
             {
-                let mut encoder = CommandEncoder::new(device, cmd, &self.pool, gpu_assets.pipeline_cache());
+                let mut encoder = CommandEncoder::new(device, cmd, &self.pool, gpu_assets.pipeline_cache(), gpu_assets);
                 (node.record)(&mut encoder, rw, gpu_assets)?;
             }
 

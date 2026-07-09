@@ -108,7 +108,7 @@ impl GeometryPass {
                     continue;
                 };
                 enc.bind_pipeline(pipeline);
-                enc.bind_descriptor_sets(pipeline, &[gpu.bindless.set, gpu.material_buffer.set]);
+                enc.bind_descriptor_sets(pipeline, &[gpu.bindless_set(), gpu.material_buffer_set()]);
                 current_shader = Some(dc.shader);
             }
 

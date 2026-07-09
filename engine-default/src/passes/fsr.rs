@@ -1,4 +1,3 @@
-use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::gfx::format::Format;
 use engine_core::render::gfx::{
@@ -45,10 +44,8 @@ impl FsrPass {
         let easu_push = PushConstantRange::of::<EasuPC>(ShaderStage::Fragment);
         let rcas_push = PushConstantRange::of::<RcasPC>(ShaderStage::Fragment);
 
-        let easu_dsl = gpu.descriptor_set_layout(easu_descriptor_set_id);
-        let rcas_dsl = gpu.descriptor_set_layout(easu_descriptor_set_id);
-        let easu_pipeline = build_stage_pipeline(gpu, "fsr_easu", easu_dsl, easu_push, output_format)?;
-        let rcas_pipeline = build_stage_pipeline(gpu, "fsr_rcas", rcas_dsl, rcas_push, output_format)?;
+        let easu_pipeline = build_stage_pipeline(gpu, "fsr_easu", easu_descriptor_set_id, easu_push, output_format)?;
+        let rcas_pipeline = build_stage_pipeline(gpu, "fsr_rcas", rcas_descriptor_set_id, rcas_push, output_format)?;
 
         Ok(Self {
             easu_pipeline,
@@ -63,7 +60,7 @@ impl FsrPass {
         &self,
         enc: &mut CommandEncoder,
         rw: &RenderWorld,
-        gpu: &GpuAssetServer,
+        _gpu: &GpuAssetServer,
         src: ResourceHandle,
         dst: ResourceHandle,
     ) -> anyhow::Result<()> {
@@ -74,7 +71,7 @@ impl FsrPass {
 
         enc.begin_rendering_discard(dst);
         enc.bind_pipeline(self.easu_pipeline);
-        enc.bind_descriptor_sets(self.easu_pipeline, &[gpu.descriptor_set_handle(self.easu_descriptor_set)]);
+        enc.bind_descriptor_sets(self.easu_pipeline, &[self.easu_descriptor_set]);
         enc.push_constants(self.easu_pipeline, ShaderStage::Fragment, &pc);
         enc.draw(3);
         enc.end_rendering();
@@ -85,7 +82,7 @@ impl FsrPass {
         &self,
         enc: &mut CommandEncoder,
         rw: &RenderWorld,
-        gpu: &GpuAssetServer,
+        _gpu: &GpuAssetServer,
         dst: ResourceHandle,
     ) -> anyhow::Result<()> {
         let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
@@ -93,7 +90,7 @@ impl FsrPass {
 
         enc.begin_rendering_discard(dst);
         enc.bind_pipeline(self.rcas_pipeline);
-        enc.bind_descriptor_sets(self.rcas_pipeline, &[gpu.descriptor_set_handle(self.rcas_descriptor_set)]);
+        enc.bind_descriptor_sets(self.rcas_pipeline, &[self.rcas_descriptor_set]);
         enc.push_constants(self.rcas_pipeline, ShaderStage::Fragment, &pc);
         enc.draw(3);
         enc.end_rendering();
@@ -104,7 +101,7 @@ impl FsrPass {
 fn build_stage_pipeline(
     gpu: &mut GpuAssetServer,
     shader_name: &str,
-    dsl: vk::DescriptorSetLayout,
+    descriptor_set: DescriptorSetId,
     push_range: PushConstantRange,
     output_format: Format,
 ) -> anyhow::Result<PipelineId> {
@@ -118,7 +115,7 @@ fn build_stage_pipeline(
         &vert,
         &frag,
         std::slice::from_ref(&output_format),
-        std::slice::from_ref(&dsl),
+        std::slice::from_ref(&descriptor_set),
         std::slice::from_ref(&push_range),
         None,
     )

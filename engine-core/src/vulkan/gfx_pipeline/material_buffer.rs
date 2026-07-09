@@ -10,7 +10,7 @@ pub struct MaterialBuffer {
     pub capacity: usize,
     pub layout: vk::DescriptorSetLayout,
     pub set: vk::DescriptorSet,
-    pool: vk::DescriptorPool,
+    pub pool: vk::DescriptorPool,
     device: ash::Device,
 }
 
@@ -97,8 +97,6 @@ impl Drop for MaterialBuffer {
             self.device.unmap_memory(self.memory);
             self.device.destroy_buffer(self.buffer, None);
             self.device.free_memory(self.memory, None);
-            self.device.destroy_descriptor_pool(self.pool, None);
-            self.device.destroy_descriptor_set_layout(self.layout, None);
         }
     }
 }
