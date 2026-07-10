@@ -5,8 +5,8 @@ use crate::assets::shader_registry::TextureSlot;
 use crate::assets::ShaderRegistry;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::render::gfx::{
-    sampler, BindingKind, DescriptorBindingDesc, DescriptorSetDesc, DescriptorSetId, Format, PushConstantRange,
-    SamplerDesc, SamplerId, VertexLayout,
+    sampler, BindingKind, BlendState, DescriptorBindingDesc, DescriptorSetDesc, DescriptorSetId, Format,
+    PushConstantRange, SamplerDesc, SamplerId, VertexLayout,
 };
 use crate::render::gfx::{PipelineCache, PipelineId};
 use crate::render::world::RenderWorld;
@@ -239,10 +239,13 @@ impl GpuAssetServer {
         color_formats: &[Format],
         set_layouts: &[DescriptorSetId],
         push_constant_ranges: &[PushConstantRange],
-        blend_attachments: Option<&[vk::PipelineColorBlendAttachmentState]>,
+        blend_attachments: Option<&[BlendState]>,
     ) -> anyhow::Result<PipelineId> {
         let layouts: Vec<vk::DescriptorSetLayout> =
             set_layouts.iter().map(|&id| self.descriptor_set_layout(id)).collect();
+
+        let vk_blend: Option<Vec<vk::PipelineColorBlendAttachmentState>> =
+            blend_attachments.map(|states| states.iter().map(|s| s.to_vk()).collect());
 
         self.pipeline_cache.create_fullscreen_pipeline(
             &self.device,
@@ -251,7 +254,7 @@ impl GpuAssetServer {
             color_formats,
             &layouts,
             push_constant_ranges,
-            blend_attachments,
+            vk_blend.as_deref(),
         )
     }
 

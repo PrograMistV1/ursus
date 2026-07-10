@@ -5,10 +5,9 @@ use crate::passes::lighting::LightingPass;
 use crate::passes::post_process::PostProcessPass;
 use crate::passes::shadow::ShadowPass;
 use crate::passes::ui::UiPass;
-use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
-use engine_core::render::gfx::format::{Format, ImageLayout};
+use engine_core::render::gfx::{Format, ImageLayout, ImageUsage};
 use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::render::resource::{ResourceDesc, ResourceExtent};
 use engine_core::vulkan::resources::gbuffer::GBuffer;
@@ -60,7 +59,7 @@ impl RenderPipeline for DefaultPipeline {
             graph.pool.register(ResourceDesc::color("fsr_easu", LDR_FORMAT, ResourceExtent::ScaleOutput(1.0)));
         let h_fsr_rcas = graph.pool.register(
             ResourceDesc::color("fsr_rcas", LDR_FORMAT, ResourceExtent::ScaleOutput(1.0))
-                .with_usage(vk::ImageUsageFlags::TRANSFER_SRC),
+                .with_usage(ImageUsage::TRANSFER_SRC),
         );
         let h_swapchain = graph.pool.register_swapchain_external(swapchain.format);
 

@@ -1,5 +1,5 @@
 use crate::assets::gpu_server::GpuAssetServer;
-use crate::render::gfx::{DescriptorSetId, Format, SamplerId};
+use crate::render::gfx::{DescriptorSetId, Format, ImageUsage, SamplerId};
 use crate::vulkan::core::debug::set_object_name;
 use crate::vulkan::core::memory;
 use crate::vulkan::core::memory::destroy_image_resources;
@@ -54,7 +54,7 @@ pub struct ResourceDesc {
     pub format: Format,
     pub extent: ResourceExtent,
     pub kind: ResourceKind,
-    pub usage: vk::ImageUsageFlags,
+    pub usage: ImageUsage,
 }
 
 impl ResourceDesc {
@@ -64,7 +64,7 @@ impl ResourceDesc {
             format,
             extent,
             kind: ResourceKind::Color,
-            usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+            usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::SAMPLED,
         }
     }
 
@@ -74,11 +74,11 @@ impl ResourceDesc {
             format,
             extent,
             kind: ResourceKind::Depth,
-            usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+            usage: ImageUsage::DEPTH_ATTACHMENT | ImageUsage::SAMPLED,
         }
     }
 
-    pub fn with_usage(mut self, flags: vk::ImageUsageFlags) -> Self {
+    pub fn with_usage(mut self, flags: ImageUsage) -> Self {
         self.usage |= flags;
         self
     }
@@ -108,7 +108,7 @@ impl TransientImage {
             format: desc.format.to_vk(),
             width,
             height,
-            usage: desc.usage,
+            usage: desc.usage.to_vk(),
             aspect_mask: desc.kind.aspect_mask(),
             mip_levels: 1,
         };
@@ -232,7 +232,7 @@ impl ResourcePool {
         }
     }
 
-    pub fn add_usage(&mut self, handle: ResourceHandle, flags: vk::ImageUsageFlags) {
+    pub fn add_usage(&mut self, handle: ResourceHandle, flags: ImageUsage) {
         if let ResourceEntry::Transient { desc, .. } = &mut self.entries[handle.0 as usize] {
             desc.usage |= flags;
         }

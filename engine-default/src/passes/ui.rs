@@ -1,6 +1,6 @@
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::gfx::format::Format;
-use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage};
+use engine_core::render::gfx::{BlendState, CommandEncoder, PipelineId, PushConstantRange, ShaderStage};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{PreparedUiDrawList, RenderWorld, UiPrimitive};
 use glam::Vec2;
@@ -33,15 +33,7 @@ impl UiPass {
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.expect("'ui' must have frag").to_vec();
 
-        let blend = [ash::vk::PipelineColorBlendAttachmentState::default()
-            .blend_enable(true)
-            .src_color_blend_factor(ash::vk::BlendFactor::SRC_ALPHA)
-            .dst_color_blend_factor(ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
-            .color_blend_op(ash::vk::BlendOp::ADD)
-            .src_alpha_blend_factor(ash::vk::BlendFactor::ONE)
-            .dst_alpha_blend_factor(ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
-            .alpha_blend_op(ash::vk::BlendOp::ADD)
-            .color_write_mask(ash::vk::ColorComponentFlags::RGBA)];
+        let blend = [BlendState::alpha_blend()];
 
         let bindless_set = gpu.bindless_set();
 

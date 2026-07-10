@@ -1,6 +1,6 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::render::gfx::format::ImageLayout;
-use crate::render::gfx::{CommandEncoder, DescriptorSetId, SamplerId};
+use crate::render::gfx::{CommandEncoder, DescriptorSetId, ImageUsage, SamplerId};
 use crate::render::resource::{
     make_barrier, DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, LayoutTracker, ResourceHandle,
     ResourcePool,
@@ -168,10 +168,10 @@ impl RenderGraph {
     pub fn add_pass(&mut self, node: PassNode) -> PassHandle {
         for access in &node.accesses {
             let extra = match access.layout {
-                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => vk::ImageUsageFlags::SAMPLED,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL => vk::ImageUsageFlags::COLOR_ATTACHMENT,
-                vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL => vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-                _ => vk::ImageUsageFlags::empty(),
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => ImageUsage::SAMPLED,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL => ImageUsage::COLOR_ATTACHMENT,
+                vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL => ImageUsage::DEPTH_ATTACHMENT,
+                _ => ImageUsage::empty(),
             };
             self.pool.add_usage(access.handle, extra);
         }
