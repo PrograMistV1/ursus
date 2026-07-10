@@ -1,3 +1,4 @@
+use crate::passes::light_buffer::{LightBuffer, LightingUbo};
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::gfx::format::Format;
 use engine_core::render::gfx::{
@@ -6,7 +7,6 @@ use engine_core::render::gfx::{
 };
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedCamera, ExtractedLights, RenderWorld};
-use engine_core::vulkan::resources::light_buffer::{LightBuffer, LightingUbo};
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -27,7 +27,7 @@ pub struct LightingPass {
 
 impl LightingPass {
     pub fn new(gpu: &mut GpuAssetServer, hdr_format: Format) -> anyhow::Result<Self> {
-        let light_buffer = gpu.create_light_buffer()?;
+        let light_buffer = LightBuffer::new(gpu)?;
 
         let sampler_id = gpu.create_sampler(SamplerDesc::nearest_clamp())?;
         let shadow_sampler_id = gpu.create_sampler(SamplerDesc::shadow_compare())?;
@@ -41,7 +41,7 @@ impl LightingPass {
                 .with_sampled_image(4, ShaderStage::Fragment),
         )?;
 
-        gpu.bind_uniform_buffer(set_id, 3, light_buffer.buffer(), light_buffer.size());
+        gpu.bind_mapped_uniform_buffer(set_id, 3, light_buffer.inner());
 
         let push_range = PushConstantRange::of::<LightingPC>(ShaderStage::Fragment);
 

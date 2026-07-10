@@ -3,8 +3,8 @@ use crate::assets::CpuAssetServer;
 use crate::components::light::{DirectionalLightComponent, PointLightComponent};
 use crate::math::light_frustum::compute_light_view_proj;
 use crate::render::extract::ExtractSystem;
+use crate::render::gfx::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
 use crate::render::world::{ExtractedLights, RenderWorld};
-use crate::vulkan::resources::light_buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
 use crate::GameWorld;
 use std::sync::mpsc::Sender;
 

@@ -11,7 +11,6 @@ use crate::render::gfx::{
 use crate::render::gfx::{PipelineCache, PipelineId};
 use crate::render::world::RenderWorld;
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
-use crate::vulkan::resources::light_buffer::LightBuffer;
 use crate::vulkan::{BindlessSet, GpuTexture, MaterialBuffer};
 use ash::vk;
 use std::collections::HashMap;
@@ -197,6 +196,15 @@ impl GpuAssetServer {
         unsafe { self.device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
     }
 
+    pub fn bind_mapped_uniform_buffer<T: Copy>(
+        &self,
+        set: DescriptorSetId,
+        binding: u32,
+        mapped: &crate::vulkan::MappedGpuBuffer<T>,
+    ) {
+        self.bind_uniform_buffer(set, binding, mapped.buffer, mapped.size());
+    }
+
     pub fn bind_sampled_image(
         &self,
         set: DescriptorSetId,
@@ -275,8 +283,12 @@ impl GpuAssetServer {
         )
     }
 
-    pub fn create_light_buffer(&self) -> anyhow::Result<LightBuffer> {
-        LightBuffer::new(&self.device, self.physical_device, &self.instance)
+    pub fn create_mapped_buffer<T: Copy>(
+        &self,
+        usage: crate::render::gfx::BufferUsage,
+        capacity: usize,
+    ) -> anyhow::Result<crate::vulkan::MappedGpuBuffer<T>> {
+        crate::vulkan::MappedGpuBuffer::new(&self.device, self.physical_device, &self.instance, usage.to_vk(), capacity)
     }
 
     pub fn upload_mesh(&mut self, handle: MeshHandle, cpu_mesh: &CpuMesh) -> anyhow::Result<()> {

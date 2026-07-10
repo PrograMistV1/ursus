@@ -1,17 +1,21 @@
 pub mod blend;
+pub mod buffer_usage;
 pub mod descriptor;
 pub mod encoder;
 pub mod format;
 pub mod handles;
+pub mod light_buffer;
 pub mod pipeline_cache;
 pub mod sampler;
 pub mod vertex;
 
 pub use blend::{BlendFactor, BlendState};
+pub use buffer_usage::BufferUsage;
 pub use descriptor::{BindingKind, DescriptorBindingDesc, DescriptorSetDesc, ImageUsage};
 pub use encoder::CommandEncoder;
 pub use format::{Format, ImageLayout};
 pub use handles::{DescriptorSetId, PipelineId, PushConstantRange, SamplerId, ShaderStage};
+pub use light_buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
 pub use pipeline_cache::PipelineCache;
 pub use sampler::{AddressMode, Filter, SamplerDesc};
 pub use vertex::{VertexAttribute, VertexFormat, VertexLayout};

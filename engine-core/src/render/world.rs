@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::assets::mesh::Aabb;
 use crate::assets::TextureHandle;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
-use crate::vulkan::resources::light_buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
+use crate::render::gfx::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
 use glam::{Mat4, Vec2, Vec3};
 
 pub struct RenderWorld {
