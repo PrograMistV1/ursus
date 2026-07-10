@@ -59,13 +59,17 @@ access:
 
 ```rust
 pass("lighting")
-.read(h_gbuffer_albedo, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-.read(h_gbuffer_normal, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-.read(h_shadow_map, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-.write(h_hdr, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-.bind_sampled(h_gbuffer_albedo, lighting_pass.descriptor_set, 0, sampler)
-.record( move | cmd, pool, rw, gpu| { /* ... */ })
-.build(graph);
+.read(h_gbuffer_albedo, ImageLayout::ShaderReadOnly)
+.read(h_gbuffer_normal, ImageLayout::ShaderReadOnly)
+.read(h_depth, ImageLayout::ShaderReadOnly)
+.read(h_shadow_map, ImageLayout::ShaderReadOnly)
+.write(h_hdr, ImageLayout::ColorAttachment)
+.bind_sampled(h_gbuffer_albedo, lighting_pass.descriptor_set, 0, lighting_pass.sampler)
+.bind_sampled(h_gbuffer_normal, lighting_pass.descriptor_set, 1, lighting_pass.sampler)
+.bind_sampled(h_depth, lighting_pass.descriptor_set, 2, lighting_pass.sampler)
+.bind_sampled(h_shadow_map, lighting_pass.descriptor_set, 4, lighting_pass.shadow_sampler)
+.record(move |enc, rw, gpu| lighting_pass.record(enc, rw, gpu, h_hdr))
+.build(graph, &gpu_assets);
 ```
 
 `RenderGraph::compile()` builds a dependency graph from these read/write accesses, topologically sorts the passes, and
