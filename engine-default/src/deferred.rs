@@ -76,7 +76,7 @@ impl RenderPipeline for DefaultPipeline {
             &ctx.instance.handle,
             Format::Rgba16Float,
         )?;
-        let post_pass = PostProcessPass::new(gpu_assets, &ctx.device.handle, LDR_FORMAT)?;
+        let post_pass = PostProcessPass::new(gpu_assets, LDR_FORMAT)?;
 
         pass("shadow")
             .write(h_shadow_map, ImageLayout::DepthAttachment)

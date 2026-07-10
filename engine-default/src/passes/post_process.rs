@@ -19,11 +19,10 @@ pub struct PostProcessPass {
     pipeline: PipelineId,
     pub descriptor_set: DescriptorSetId,
     pub sampler: SamplerId,
-    device: ash::Device,
 }
 
 impl PostProcessPass {
-    pub fn new(gpu: &mut GpuAssetServer, device: &ash::Device, swapchain_format: Format) -> anyhow::Result<Self> {
+    pub fn new(gpu: &mut GpuAssetServer, swapchain_format: Format) -> anyhow::Result<Self> {
         let sampler_id = gpu.create_sampler(SamplerDesc::linear_clamp())?;
         let set_id =
             gpu.create_descriptor_set(DescriptorSetDesc::new().with_sampled_image(0, ShaderStage::Fragment))?;
@@ -44,7 +43,7 @@ impl PostProcessPass {
             None,
         )?;
 
-        Ok(Self { pipeline, descriptor_set: set_id, sampler: sampler_id, device: device.clone() })
+        Ok(Self { pipeline, descriptor_set: set_id, sampler: sampler_id })
     }
 
     pub fn record(
