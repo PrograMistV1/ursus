@@ -68,13 +68,7 @@ impl RenderPipeline for DefaultPipeline {
 
         let mut geometry_pass = GeometryPass::new(gpu_assets, GBuffer::color_formats())?;
 
-        let lighting_pass = LightingPass::new(
-            gpu_assets,
-            &ctx.device.handle,
-            ctx.device.physical,
-            &ctx.instance.handle,
-            Format::Rgba16Float,
-        )?;
+        let lighting_pass = LightingPass::new(gpu_assets, Format::Rgba16Float)?;
         let post_pass = PostProcessPass::new(gpu_assets, LDR_FORMAT)?;
 
         pass("shadow")

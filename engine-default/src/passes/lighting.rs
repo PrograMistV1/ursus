@@ -1,4 +1,3 @@
-use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::gfx::format::Format;
 use engine_core::render::gfx::{
@@ -27,14 +26,8 @@ pub struct LightingPass {
 }
 
 impl LightingPass {
-    pub fn new(
-        gpu: &mut GpuAssetServer,
-        device: &ash::Device,
-        physical_device: vk::PhysicalDevice,
-        instance: &ash::Instance,
-        hdr_format: Format,
-    ) -> anyhow::Result<Self> {
-        let light_buffer = LightBuffer::new(device, physical_device, instance)?;
+    pub fn new(gpu: &mut GpuAssetServer, hdr_format: Format) -> anyhow::Result<Self> {
+        let light_buffer = gpu.create_light_buffer()?;
 
         let sampler_id = gpu.create_sampler(SamplerDesc::nearest_clamp())?;
         let shadow_sampler_id = gpu.create_sampler(SamplerDesc::shadow_compare())?;
@@ -48,7 +41,7 @@ impl LightingPass {
                 .with_sampled_image(4, ShaderStage::Fragment),
         )?;
 
-        gpu.bind_uniform_buffer(set_id, 3, light_buffer.buffer, size_of::<LightingUbo>() as vk::DeviceSize);
+        gpu.bind_uniform_buffer(set_id, 3, light_buffer.buffer(), light_buffer.size());
 
         let push_range = PushConstantRange::of::<LightingPC>(ShaderStage::Fragment);
 

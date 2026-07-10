@@ -11,6 +11,7 @@ use crate::render::gfx::{
 use crate::render::gfx::{PipelineCache, PipelineId};
 use crate::render::world::RenderWorld;
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
+use crate::vulkan::resources::light_buffer::LightBuffer;
 use crate::vulkan::{BindlessSet, GpuTexture, MaterialBuffer};
 use ash::vk;
 use std::collections::HashMap;
@@ -272,6 +273,10 @@ impl GpuAssetServer {
             push_constant_ranges,
             depth_bias,
         )
+    }
+
+    pub fn create_light_buffer(&self) -> anyhow::Result<LightBuffer> {
+        LightBuffer::new(&self.device, self.physical_device, &self.instance)
     }
 
     pub fn upload_mesh(&mut self, handle: MeshHandle, cpu_mesh: &CpuMesh) -> anyhow::Result<()> {

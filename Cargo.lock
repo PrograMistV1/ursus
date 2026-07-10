@@ -582,7 +582,6 @@ name = "engine-default"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "ash",
  "bytemuck",
  "engine-core",
  "glam",

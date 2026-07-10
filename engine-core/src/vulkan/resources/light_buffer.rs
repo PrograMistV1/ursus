@@ -1,4 +1,4 @@
-use crate::vulkan::core::memory::find_memory_type;
+use crate::vulkan::resources::mapped_uniform::MappedUniformBuffer;
 use ash::vk;
 
 pub const MAX_POINT_LIGHTS: usize = 16;
@@ -39,64 +39,29 @@ impl Default for LightingUbo {
     }
 }
 
-pub struct LightBuffer {
-    pub buffer: vk::Buffer,
-    pub memory: vk::DeviceMemory,
-    pub mapped: *mut LightingUbo,
-    device: ash::Device,
-}
+pub struct LightBuffer(MappedUniformBuffer<LightingUbo>);
 
 unsafe impl Send for LightBuffer {}
 unsafe impl Sync for LightBuffer {}
 
 impl LightBuffer {
-    pub fn new(
+    pub(crate) fn new(
         device: &ash::Device,
         physical_device: vk::PhysicalDevice,
         instance: &ash::Instance,
     ) -> anyhow::Result<Self> {
-        let size = size_of::<LightingUbo>() as vk::DeviceSize;
-
-        let buf_info = vk::BufferCreateInfo::default()
-            .size(size)
-            .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-        let buffer = unsafe { device.create_buffer(&buf_info, None)? };
-
-        let req = unsafe { device.get_buffer_memory_requirements(buffer) };
-        let mem_type = find_memory_type(
-            instance,
-            physical_device,
-            req.memory_type_bits,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        )?;
-
-        let memory = unsafe {
-            device.allocate_memory(
-                &vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(mem_type),
-                None,
-            )?
-        };
-        unsafe { device.bind_buffer_memory(buffer, memory, 0)? };
-
-        let mapped = unsafe { device.map_memory(memory, 0, size, vk::MemoryMapFlags::empty())? as *mut LightingUbo };
-
-        unsafe { std::ptr::write(mapped, LightingUbo::default()) };
-
-        Ok(Self { buffer, memory, mapped, device: device.clone() })
+        Ok(Self(MappedUniformBuffer::new(device, physical_device, instance, LightingUbo::default())?))
     }
 
     pub fn upload(&self, data: &LightingUbo) {
-        unsafe { std::ptr::write(self.mapped, *data) };
+        self.0.upload(data);
     }
-}
 
-impl Drop for LightBuffer {
-    fn drop(&mut self) {
-        unsafe {
-            self.device.unmap_memory(self.memory);
-            self.device.destroy_buffer(self.buffer, None);
-            self.device.free_memory(self.memory, None);
-        }
+    pub fn buffer(&self) -> vk::Buffer {
+        self.0.buffer
+    }
+
+    pub fn size(&self) -> vk::DeviceSize {
+        self.0.size()
     }
 }
