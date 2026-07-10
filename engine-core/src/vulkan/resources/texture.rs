@@ -1,3 +1,4 @@
+use crate::render::gfx::Format;
 use crate::vulkan::core::memory::{alloc_buffer, destroy_image_resources, find_memory_type};
 use ash::vk;
 
@@ -22,7 +23,7 @@ impl GpuTexture {
         pixels: &[u8],
         width: u32,
         height: u32,
-        format: vk::Format,
+        format: Format,
         name: impl Into<String>,
     ) -> anyhow::Result<Self> {
         let name = name.into();
@@ -46,7 +47,7 @@ impl GpuTexture {
 
         let image_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
-            .format(format)
+            .format(format.to_vk())
             .extent(vk::Extent3D { width, height, depth: 1 })
             .mip_levels(mip_levels)
             .array_layers(1)
@@ -184,7 +185,7 @@ impl GpuTexture {
         let view_info = vk::ImageViewCreateInfo::default()
             .image(image)
             .view_type(vk::ImageViewType::TYPE_2D)
-            .format(format)
+            .format(format.to_vk())
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: vk::ImageAspectFlags::COLOR,
                 base_mip_level: 0,
@@ -196,7 +197,7 @@ impl GpuTexture {
 
         log::debug!("GpuTexture '{}': {}x{} {:?}", name, width, height, format);
 
-        Ok(Self { image, view, memory, format, width, height, name, device: device.clone() })
+        Ok(Self { image, view, memory, format: format.to_vk(), width, height, name, device: device.clone() })
     }
 
     pub fn upload_no_mip(
@@ -208,7 +209,7 @@ impl GpuTexture {
         pixels: &[u8],
         width: u32,
         height: u32,
-        format: vk::Format,
+        format: Format,
         name: impl Into<String>,
     ) -> anyhow::Result<Self> {
         let name = name.into();
@@ -230,7 +231,7 @@ impl GpuTexture {
 
         let image_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
-            .format(format)
+            .format(format.to_vk())
             .extent(vk::Extent3D { width, height, depth: 1 })
             .mip_levels(1)
             .array_layers(1)
@@ -300,7 +301,7 @@ impl GpuTexture {
         let view_info = vk::ImageViewCreateInfo::default()
             .image(image)
             .view_type(vk::ImageViewType::TYPE_2D)
-            .format(format)
+            .format(format.to_vk())
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: vk::ImageAspectFlags::COLOR,
                 base_mip_level: 0,
@@ -312,7 +313,7 @@ impl GpuTexture {
 
         log::debug!("GpuTexture (no mip) '{}': {}x{} {:?}", name, width, height, format);
 
-        Ok(Self { image, view, memory, format, width, height, name, device: device.clone() })
+        Ok(Self { image, view, memory, format: format.to_vk(), width, height, name, device: device.clone() })
     }
 }
 

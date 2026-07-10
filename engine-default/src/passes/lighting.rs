@@ -24,7 +24,6 @@ pub struct LightingPass {
     pub sampler: SamplerId,
     pub shadow_sampler: SamplerId,
     pub light_buffer: LightBuffer,
-    device: ash::Device,
 }
 
 impl LightingPass {
@@ -73,7 +72,6 @@ impl LightingPass {
             sampler: sampler_id,
             shadow_sampler: shadow_sampler_id,
             light_buffer,
-            device: device.clone(),
         })
     }
 

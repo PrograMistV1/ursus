@@ -309,7 +309,7 @@ impl GpuAssetServer {
             pixels,
             width,
             height,
-            format,
+            Format::from_vk(format),
             name,
         )?;
         let slot = self.bindless.alloc_slot(tex.view);

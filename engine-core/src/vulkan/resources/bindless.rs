@@ -1,3 +1,4 @@
+use crate::render::gfx::Format;
 use crate::vulkan::core::sampler;
 use crate::vulkan::GpuTexture;
 use ash::vk;
@@ -97,7 +98,7 @@ impl BindlessSet {
             &[255u8, 255, 255, 255],
             1,
             1,
-            vk::Format::R8G8B8A8_SRGB,
+            Format::Rgba8Srgb,
             "white_fallback",
         )?;
         let slot = this.alloc_slot(white.view);

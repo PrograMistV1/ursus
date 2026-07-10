@@ -1,12 +1,10 @@
 use crate::passes::ui::UiPass;
-use ash::vk;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
-use engine_core::render::gfx::format::ImageLayout;
+use engine_core::render::gfx::format::{Format, ImageLayout};
 use engine_core::render::gfx::{CommandEncoder, PushConstantRange, ShaderStage};
 use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::render::world::{PreparedUiDrawList, UiPrimitive};
-use engine_core::vulkan::gfx_pipeline::builder::PipelineBuilder;
 use engine_core::vulkan::{GpuTexture, VulkanContext};
 use glam::Vec2;
 use std::sync::Arc;
@@ -21,9 +19,6 @@ struct LoadingPC {
 }
 
 struct PendingState {
-    bg_pipeline: vk::Pipeline,
-    bg_layout: vk::PipelineLayout,
-    device: ash::Device,
     logo_texture: GpuTexture,
 }
 
@@ -33,9 +28,6 @@ thread_local! {
 }
 
 pub struct LoadingPipeline {
-    bg_pipeline: vk::Pipeline,
-    bg_layout: vk::PipelineLayout,
-    device: ash::Device,
     _logo_texture: GpuTexture,
 }
 
@@ -43,7 +35,7 @@ impl Default for LoadingPipeline {
     fn default() -> Self {
         let s =
             PENDING.with(|c| c.borrow_mut().take()).expect("LoadingPipeline::default() called without prior build()");
-        Self { bg_pipeline: s.bg_pipeline, bg_layout: s.bg_layout, device: s.device, _logo_texture: s.logo_texture }
+        Self { _logo_texture: s.logo_texture }
     }
 }
 
@@ -80,16 +72,6 @@ fn load_svg_as_rgba(path: &str) -> anyhow::Result<(Vec<u8>, u32, u32)> {
     Ok((pixels, w, h))
 }
 
-impl Drop for LoadingPipeline {
-    fn drop(&mut self) {
-        unsafe {
-            self.device.device_wait_idle().ok();
-            self.device.destroy_pipeline(self.bg_pipeline, None);
-            self.device.destroy_pipeline_layout(self.bg_layout, None);
-        }
-    }
-}
-
 impl RenderPipeline for LoadingPipeline {
     fn build(
         ctx: &VulkanContext,
@@ -102,7 +84,6 @@ impl RenderPipeline for LoadingPipeline {
         crate::builtin_shaders::register_builtin(&mut gpu_assets.shaders);
 
         let swapchain = ctx.swapchain.as_ref().unwrap();
-        let device = &ctx.device.handle;
 
         let h_swapchain = graph.pool.register_swapchain_external(swapchain.format);
 
@@ -113,10 +94,14 @@ impl RenderPipeline for LoadingPipeline {
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.expect("'loading' must have frag").to_vec();
 
-        let (bg_pipeline, bg_layout) =
-            PipelineBuilder::fullscreen(&vert_spv, &frag_spv, std::slice::from_ref(&swapchain.format))
-                .push_constants(std::slice::from_ref(&push_range))
-                .build(device)?;
+        let bg_pipeline = gpu_assets.create_fullscreen_pipeline(
+            &vert_spv,
+            &frag_spv,
+            std::slice::from_ref(&swapchain.format),
+            &[],
+            std::slice::from_ref(&push_range),
+            None,
+        )?;
 
         let (logo_pixels, logo_w, logo_h) = load_svg_as_rgba("assets/ursus.svg").unwrap_or_else(|e| {
             log::warn!("Лого не загружено: {} — fallback 1x1", e);
@@ -125,7 +110,7 @@ impl RenderPipeline for LoadingPipeline {
         let logo_aspect = logo_w as f32 / logo_h as f32;
 
         let logo_texture = GpuTexture::upload_no_mip(
-            device,
+            &ctx.device.handle,
             ctx.device.physical,
             &ctx.instance.handle,
             gpu_assets.command_pool(),
@@ -133,7 +118,7 @@ impl RenderPipeline for LoadingPipeline {
             &logo_pixels,
             logo_w,
             logo_h,
-            vk::Format::R8G8B8A8_UNORM,
+            Format::Rgba8Unorm,
             "ursus_logo",
         )?;
         let logo_slot = gpu_assets.bindless.alloc_slot(logo_texture.view);
@@ -141,29 +126,21 @@ impl RenderPipeline for LoadingPipeline {
         let start_time = std::time::Instant::now();
         pass("loading_background")
             .write(h_swapchain, ImageLayout::ColorAttachment)
-            .record(move |enc: &mut CommandEncoder, _rw, gpu| {
+            .record(move |enc: &mut CommandEncoder, _rw, _gpu| {
                 enc.begin_rendering_clear(h_swapchain, [0.05, 0.05, 0.08, 1.0]);
 
                 let extent = enc.extent_of(h_swapchain);
-                let cmd = enc.raw_cmd();
-                unsafe {
-                    gpu.device().cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, bg_pipeline);
 
-                    let pc = LoadingPC {
-                        time: start_time.elapsed().as_secs_f32(),
-                        progress: 1.0,
-                        width: extent[0],
-                        height: extent[1],
-                    };
-                    gpu.device().cmd_push_constants(
-                        cmd,
-                        bg_layout,
-                        vk::ShaderStageFlags::FRAGMENT,
-                        0,
-                        bytemuck::bytes_of(&pc),
-                    );
-                    gpu.device().cmd_draw(cmd, 3, 1, 0, 0);
-                }
+                enc.bind_pipeline(bg_pipeline);
+
+                let pc = LoadingPC {
+                    time: start_time.elapsed().as_secs_f32(),
+                    progress: 1.0,
+                    width: extent[0],
+                    height: extent[1],
+                };
+                enc.push_constants(bg_pipeline, ShaderStage::Fragment, &pc);
+                enc.draw(3);
 
                 enc.end_rendering();
                 Ok(())
@@ -197,7 +174,7 @@ impl RenderPipeline for LoadingPipeline {
             .build(graph, &gpu_assets);
 
         PENDING.with(|c| {
-            *c.borrow_mut() = Some(PendingState { bg_pipeline, bg_layout, device: device.clone(), logo_texture });
+            *c.borrow_mut() = Some(PendingState { logo_texture });
         });
 
         Ok(PipelineHandles { swapchain: h_swapchain })
