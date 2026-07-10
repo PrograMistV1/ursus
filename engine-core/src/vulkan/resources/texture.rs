@@ -1,4 +1,5 @@
 use crate::render::gfx::Format;
+use crate::render::resource::make_barrier_range;
 use crate::vulkan::core::memory::{alloc_buffer, destroy_image_resources, find_memory_type};
 use ash::vk;
 
@@ -332,52 +333,7 @@ fn transition_image_layout(
     base_mip: u32,
     level_count: u32,
 ) {
-    let (src_stage, src_access, dst_stage, dst_access) = match (from, to) {
-        (vk::ImageLayout::UNDEFINED, vk::ImageLayout::TRANSFER_DST_OPTIMAL) => (
-            vk::PipelineStageFlags2::TOP_OF_PIPE,
-            vk::AccessFlags2::empty(),
-            vk::PipelineStageFlags2::TRANSFER,
-            vk::AccessFlags2::TRANSFER_WRITE,
-        ),
-        (vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::TRANSFER_SRC_OPTIMAL) => (
-            vk::PipelineStageFlags2::TRANSFER,
-            vk::AccessFlags2::TRANSFER_WRITE,
-            vk::PipelineStageFlags2::TRANSFER,
-            vk::AccessFlags2::TRANSFER_READ,
-        ),
-        (vk::ImageLayout::TRANSFER_SRC_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
-            vk::PipelineStageFlags2::TRANSFER,
-            vk::AccessFlags2::TRANSFER_READ,
-            vk::PipelineStageFlags2::FRAGMENT_SHADER,
-            vk::AccessFlags2::SHADER_READ,
-        ),
-        (vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL) => (
-            vk::PipelineStageFlags2::TRANSFER,
-            vk::AccessFlags2::TRANSFER_WRITE,
-            vk::PipelineStageFlags2::FRAGMENT_SHADER,
-            vk::AccessFlags2::SHADER_READ,
-        ),
-        _ => panic!("transition_image_layout: неизвестная пара {:?} → {:?}", from, to),
-    };
-
-    let barrier = vk::ImageMemoryBarrier2::default()
-        .src_stage_mask(src_stage)
-        .src_access_mask(src_access)
-        .dst_stage_mask(dst_stage)
-        .dst_access_mask(dst_access)
-        .old_layout(from)
-        .new_layout(to)
-        .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-        .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-        .image(image)
-        .subresource_range(vk::ImageSubresourceRange {
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            base_mip_level: base_mip,
-            level_count,
-            base_array_layer: 0,
-            layer_count: 1,
-        });
-
+    let barrier = make_barrier_range(image, vk::ImageAspectFlags::COLOR, base_mip, level_count, from, to);
     unsafe {
         device.cmd_pipeline_barrier2(
             cmd,

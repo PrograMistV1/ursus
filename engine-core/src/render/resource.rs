@@ -524,7 +524,18 @@ pub fn make_barrier(
     old_layout: vk::ImageLayout,
     new_layout: vk::ImageLayout,
 ) -> vk::ImageMemoryBarrier2<'static> {
-    let (src_stage, src_access, dst_stage, dst_access) = layout_transition_masks(old_layout, new_layout, kind);
+    make_barrier_range(image, kind.aspect_mask(), 0, 1, old_layout, new_layout)
+}
+
+pub fn make_barrier_range(
+    image: vk::Image,
+    aspect_mask: vk::ImageAspectFlags,
+    base_mip_level: u32,
+    level_count: u32,
+    old_layout: vk::ImageLayout,
+    new_layout: vk::ImageLayout,
+) -> vk::ImageMemoryBarrier2<'static> {
+    let (src_stage, src_access, dst_stage, dst_access) = layout_transition_masks(old_layout, new_layout);
 
     vk::ImageMemoryBarrier2::default()
         .src_stage_mask(src_stage)
@@ -537,9 +548,9 @@ pub fn make_barrier(
         .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
         .image(image)
         .subresource_range(vk::ImageSubresourceRange {
-            aspect_mask: kind.aspect_mask(),
-            base_mip_level: 0,
-            level_count: 1,
+            aspect_mask,
+            base_mip_level,
+            level_count,
             base_array_layer: 0,
             layer_count: 1,
         })
@@ -548,7 +559,6 @@ pub fn make_barrier(
 fn layout_transition_masks(
     from: vk::ImageLayout,
     to: vk::ImageLayout,
-    kind: ResourceKind,
 ) -> (vk::PipelineStageFlags2, vk::AccessFlags2, vk::PipelineStageFlags2, vk::AccessFlags2) {
     use vk::AccessFlags2 as A;
     use vk::ImageLayout as L;
@@ -613,7 +623,13 @@ fn layout_transition_masks(
         (L::TRANSFER_DST_OPTIMAL, L::COLOR_ATTACHMENT_OPTIMAL) => {
             (S::TRANSFER, A::TRANSFER_WRITE, S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE)
         }
-        other => panic!("layout_transition_masks: неизвестная пара {:?} (kind={:?})", other, kind),
+        (L::TRANSFER_DST_OPTIMAL, L::TRANSFER_SRC_OPTIMAL) => {
+            (S::TRANSFER, A::TRANSFER_WRITE, S::TRANSFER, A::TRANSFER_READ)
+        }
+        (L::TRANSFER_DST_OPTIMAL, L::SHADER_READ_ONLY_OPTIMAL) => {
+            (S::TRANSFER, A::TRANSFER_WRITE, S::FRAGMENT_SHADER, A::SHADER_READ)
+        }
+        other => panic!("layout_transition_masks: неизвестная пара {:?}", other),
     }
 }
 
