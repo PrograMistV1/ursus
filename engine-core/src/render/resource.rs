@@ -556,81 +556,47 @@ pub fn make_barrier_range(
         })
 }
 
-fn layout_transition_masks(
-    from: vk::ImageLayout,
-    to: vk::ImageLayout,
-) -> (vk::PipelineStageFlags2, vk::AccessFlags2, vk::PipelineStageFlags2, vk::AccessFlags2) {
+fn src_stage_access(layout: vk::ImageLayout) -> (vk::PipelineStageFlags2, vk::AccessFlags2) {
     use vk::AccessFlags2 as A;
     use vk::ImageLayout as L;
     use vk::PipelineStageFlags2 as S;
 
-    match (from, to) {
-        (L::UNDEFINED, L::COLOR_ATTACHMENT_OPTIMAL) => {
-            (S::TOP_OF_PIPE, A::empty(), S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE)
-        }
-        (L::UNDEFINED, L::DEPTH_ATTACHMENT_OPTIMAL) => (
-            S::TOP_OF_PIPE,
-            A::empty(),
-            S::EARLY_FRAGMENT_TESTS,
-            A::DEPTH_STENCIL_ATTACHMENT_READ | A::DEPTH_STENCIL_ATTACHMENT_WRITE,
-        ),
-        (L::UNDEFINED, L::SHADER_READ_ONLY_OPTIMAL) => (S::TOP_OF_PIPE, A::empty(), S::FRAGMENT_SHADER, A::SHADER_READ),
-        (L::COLOR_ATTACHMENT_OPTIMAL, L::SHADER_READ_ONLY_OPTIMAL) => {
-            (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE, S::FRAGMENT_SHADER, A::SHADER_READ)
-        }
-        (L::DEPTH_ATTACHMENT_OPTIMAL, L::SHADER_READ_ONLY_OPTIMAL) => {
-            (S::LATE_FRAGMENT_TESTS, A::DEPTH_STENCIL_ATTACHMENT_WRITE, S::FRAGMENT_SHADER, A::SHADER_READ)
-        }
-        (L::SHADER_READ_ONLY_OPTIMAL, L::COLOR_ATTACHMENT_OPTIMAL) => {
-            (S::FRAGMENT_SHADER, A::SHADER_READ, S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE)
-        }
-        (L::SHADER_READ_ONLY_OPTIMAL, L::DEPTH_ATTACHMENT_OPTIMAL) => (
-            S::FRAGMENT_SHADER,
-            A::SHADER_READ,
-            S::EARLY_FRAGMENT_TESTS,
-            A::DEPTH_STENCIL_ATTACHMENT_READ | A::DEPTH_STENCIL_ATTACHMENT_WRITE,
-        ),
-        (L::DEPTH_ATTACHMENT_OPTIMAL, L::DEPTH_ATTACHMENT_OPTIMAL) => (
-            S::LATE_FRAGMENT_TESTS,
-            A::DEPTH_STENCIL_ATTACHMENT_WRITE,
-            S::EARLY_FRAGMENT_TESTS,
-            A::DEPTH_STENCIL_ATTACHMENT_READ | A::DEPTH_STENCIL_ATTACHMENT_WRITE,
-        ),
-        (L::UNDEFINED, L::PRESENT_SRC_KHR) => (S::TOP_OF_PIPE, A::empty(), S::BOTTOM_OF_PIPE, A::empty()),
-        (L::COLOR_ATTACHMENT_OPTIMAL, L::PRESENT_SRC_KHR) => {
-            (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE, S::BOTTOM_OF_PIPE, A::empty())
-        }
-        (L::PRESENT_SRC_KHR, L::COLOR_ATTACHMENT_OPTIMAL) => {
-            (S::BOTTOM_OF_PIPE, A::empty(), S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE)
-        }
-        (L::COLOR_ATTACHMENT_OPTIMAL, L::TRANSFER_SRC_OPTIMAL) => {
-            (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE, S::TRANSFER, A::TRANSFER_READ)
-        }
-        (L::SHADER_READ_ONLY_OPTIMAL, L::TRANSFER_SRC_OPTIMAL) => {
-            (S::FRAGMENT_SHADER, A::SHADER_READ, S::TRANSFER, A::TRANSFER_READ)
-        }
-        (L::TRANSFER_SRC_OPTIMAL, L::SHADER_READ_ONLY_OPTIMAL) => {
-            (S::TRANSFER, A::TRANSFER_READ, S::FRAGMENT_SHADER, A::SHADER_READ)
-        }
-        (L::TRANSFER_SRC_OPTIMAL, L::COLOR_ATTACHMENT_OPTIMAL) => {
-            (S::TRANSFER, A::TRANSFER_READ, S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE)
-        }
-        (L::UNDEFINED, L::TRANSFER_SRC_OPTIMAL) => (S::TOP_OF_PIPE, A::empty(), S::TRANSFER, A::TRANSFER_READ),
-        (L::TRANSFER_DST_OPTIMAL, L::PRESENT_SRC_KHR) => {
-            (S::TRANSFER, A::TRANSFER_WRITE, S::BOTTOM_OF_PIPE, A::empty())
-        }
-        (L::UNDEFINED, L::TRANSFER_DST_OPTIMAL) => (S::TOP_OF_PIPE, A::empty(), S::TRANSFER, A::TRANSFER_WRITE),
-        (L::TRANSFER_DST_OPTIMAL, L::COLOR_ATTACHMENT_OPTIMAL) => {
-            (S::TRANSFER, A::TRANSFER_WRITE, S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE)
-        }
-        (L::TRANSFER_DST_OPTIMAL, L::TRANSFER_SRC_OPTIMAL) => {
-            (S::TRANSFER, A::TRANSFER_WRITE, S::TRANSFER, A::TRANSFER_READ)
-        }
-        (L::TRANSFER_DST_OPTIMAL, L::SHADER_READ_ONLY_OPTIMAL) => {
-            (S::TRANSFER, A::TRANSFER_WRITE, S::FRAGMENT_SHADER, A::SHADER_READ)
-        }
-        other => panic!("layout_transition_masks: неизвестная пара {:?}", other),
+    match layout {
+        L::UNDEFINED | L::PRESENT_SRC_KHR => (S::TOP_OF_PIPE, A::empty()),
+        L::COLOR_ATTACHMENT_OPTIMAL => (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE),
+        L::DEPTH_ATTACHMENT_OPTIMAL => (S::LATE_FRAGMENT_TESTS, A::DEPTH_STENCIL_ATTACHMENT_WRITE),
+        L::SHADER_READ_ONLY_OPTIMAL => (S::FRAGMENT_SHADER, A::SHADER_READ),
+        L::TRANSFER_SRC_OPTIMAL => (S::TRANSFER, A::TRANSFER_READ),
+        L::TRANSFER_DST_OPTIMAL => (S::TRANSFER, A::TRANSFER_WRITE),
+        other => panic!("src_stage_access: layout {:?} не поддержан", other),
     }
+}
+
+fn dst_stage_access(layout: vk::ImageLayout) -> (vk::PipelineStageFlags2, vk::AccessFlags2) {
+    use vk::AccessFlags2 as A;
+    use vk::ImageLayout as L;
+    use vk::PipelineStageFlags2 as S;
+
+    match layout {
+        L::PRESENT_SRC_KHR => (S::BOTTOM_OF_PIPE, A::empty()),
+        L::COLOR_ATTACHMENT_OPTIMAL => (S::COLOR_ATTACHMENT_OUTPUT, A::COLOR_ATTACHMENT_WRITE),
+        L::DEPTH_ATTACHMENT_OPTIMAL => {
+            (S::EARLY_FRAGMENT_TESTS, A::DEPTH_STENCIL_ATTACHMENT_READ | A::DEPTH_STENCIL_ATTACHMENT_WRITE)
+        }
+        L::SHADER_READ_ONLY_OPTIMAL => (S::FRAGMENT_SHADER, A::SHADER_READ),
+        L::TRANSFER_SRC_OPTIMAL => (S::TRANSFER, A::TRANSFER_READ),
+        L::TRANSFER_DST_OPTIMAL => (S::TRANSFER, A::TRANSFER_WRITE),
+        other => panic!("dst_stage_access: layout {:?} не поддержан", other),
+    }
+}
+
+fn layout_transition_masks(
+    from: vk::ImageLayout,
+    to: vk::ImageLayout,
+) -> (vk::PipelineStageFlags2, vk::AccessFlags2, vk::PipelineStageFlags2, vk::AccessFlags2) {
+    let (src_stage, src_access) = src_stage_access(from);
+    let (dst_stage, dst_access) = dst_stage_access(to);
+    (src_stage, src_access, dst_stage, dst_access)
 }
 
 pub trait GpuImage {
