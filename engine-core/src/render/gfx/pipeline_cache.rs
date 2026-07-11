@@ -83,14 +83,17 @@ impl PipelineCache {
         &mut self,
         device: &ash::Device,
         vert_spv: &[u8],
+        frag_spv: Option<&[u8]>,
         vertex_layout: &VertexLayout,
         push_constant_ranges: &[PushConstantRange],
+        set_layouts: &[vk::DescriptorSetLayout],
         depth_bias: Option<(f32, f32)>,
     ) -> anyhow::Result<PipelineId> {
         let binding = vertex_layout.to_vk_binding(0);
         let attributes = vertex_layout.to_vk_attributes(0);
 
-        let mut builder = PipelineBuilder::depth_only(vert_spv, std::slice::from_ref(&binding), &attributes)
+        let mut builder = PipelineBuilder::depth_only(vert_spv, frag_spv, std::slice::from_ref(&binding), &attributes)
+            .set_layouts(set_layouts)
             .push_constants(push_constant_ranges);
 
         if let Some((constant, slope)) = depth_bias {

@@ -16,10 +16,12 @@ fn compile_shaders() {
         ("shaders/post_process.frag", "post_process.frag.spv"),
         ("shaders/lighting.frag", "lighting.frag.spv"),
         ("shaders/shadow.vert", "shadow.vert.spv"),
+        ("shaders/shadow.frag", "shadow.frag.spv"),
         ("shaders/fsr_easu.frag", "fsr_easu.frag.spv"),
         ("shaders/fsr_rcas.frag", "fsr_rcas.frag.spv"),
         ("shaders/loading_pipeline.frag", "loading_pipeline.frag.spv"),
         ("shaders/depth_prepass.vert", "depth_prepass.vert.spv"),
+        ("shaders/depth_prepass.frag", "depth_prepass.frag.spv"),
         ("shaders/ui.vert", "ui.vert.spv"),
         ("shaders/ui.frag", "ui.frag.spv"),
     ];

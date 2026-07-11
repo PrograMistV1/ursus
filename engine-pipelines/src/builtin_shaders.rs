@@ -11,14 +11,16 @@ pub fn register_builtin(reg: &mut ShaderRegistry) {
         .with_slot(TextureSlot::Normal),
     );
 
-    reg.register_if_absent(ShaderDef::from_bytes_vert_only(
+    reg.register_if_absent(ShaderDef::from_bytes(
         "shadow",
         include_bytes!(concat!(env!("OUT_DIR"), "/shadow.vert.spv")).to_vec(),
+        include_bytes!(concat!(env!("OUT_DIR"), "/shadow.frag.spv")).to_vec(),
     ));
 
-    reg.register_if_absent(ShaderDef::from_bytes_vert_only(
+    reg.register_if_absent(ShaderDef::from_bytes(
         "depth_prepass",
         include_bytes!(concat!(env!("OUT_DIR"), "/depth_prepass.vert.spv")).to_vec(),
+        include_bytes!(concat!(env!("OUT_DIR"), "/depth_prepass.frag.spv")).to_vec(),
     ));
 
     reg.register_if_absent(ShaderDef::from_bytes(

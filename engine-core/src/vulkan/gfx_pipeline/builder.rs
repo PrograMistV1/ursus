@@ -72,12 +72,13 @@ impl<'a> PipelineBuilder<'a> {
 
     pub fn depth_only(
         vert_spv: &'a [u8],
+        frag_spv: Option<&'a [u8]>,
         vertex_bindings: &'a [vk::VertexInputBindingDescription],
         vertex_attributes: &'a [vk::VertexInputAttributeDescription],
     ) -> Self {
         Self {
             vert_spv,
-            frag_spv: None,
+            frag_spv,
             color_formats: &[],
             depth_format: vk::Format::D32_SFLOAT,
             cull_mode: vk::CullModeFlags::NONE,

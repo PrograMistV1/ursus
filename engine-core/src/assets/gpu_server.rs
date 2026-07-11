@@ -270,15 +270,19 @@ impl GpuAssetServer {
     pub fn create_depth_only_pipeline(
         &mut self,
         vert_spv: &[u8],
+        frag_spv: Option<&[u8]>,
         vertex_layout: &VertexLayout,
         push_constant_ranges: &[PushConstantRange],
+        set_layouts: &[vk::DescriptorSetLayout],
         depth_bias: Option<(f32, f32)>,
     ) -> anyhow::Result<PipelineId> {
         self.pipeline_cache.create_depth_only_pipeline(
             &self.device,
             vert_spv,
+            frag_spv,
             vertex_layout,
             push_constant_ranges,
+            set_layouts,
             depth_bias,
         )
     }
