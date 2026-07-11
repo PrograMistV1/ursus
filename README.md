@@ -28,7 +28,7 @@ deferred rendering pipeline, and a threaded game/render split.
 
 ```text
 engine-core/       the engine itself: ECS, asset pipeline, Vulkan abstraction, render graph
-engine-default/    a batteries-included deferred renderer + built-in shaders, built on engine-core
+engine-pipelines/    a batteries-included deferred renderer + built-in shaders, built on engine-core
 engine-template/   minimal example application showing how to use the engine
 ```
 

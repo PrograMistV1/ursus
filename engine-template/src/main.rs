@@ -3,7 +3,7 @@ use engine_core::components::light::DirectionalLightComponent;
 use engine_core::components::ui::{UiLayout, UiText};
 use engine_core::render::thread::command::PipelineFactory;
 use engine_core::{App, AsyncMeshHandle, Engine, EngineContext};
-use engine_default::{DefaultPipeline, LoadingPipeline};
+use engine_pipelines::{DefaultPipeline, LoadingPipeline};
 use glam::{Vec2, Vec3};
 
 struct MyApp {

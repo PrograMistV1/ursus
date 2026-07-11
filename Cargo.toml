@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "engine-core",
-    "engine-default",
+    "engine-pipelines",
     "engine-template",
 ]
 resolver = "2"

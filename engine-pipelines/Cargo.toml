@@ -1,5 +1,5 @@
 [package]
-name = "engine-default"
+name = "engine-pipelines"
 version = "0.1.0"
 edition = "2021"
 

@@ -578,7 +578,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "engine-default"
+name = "engine-pipelines"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -595,7 +595,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "engine-core",
- "engine-default",
+ "engine-pipelines",
  "glam",
  "log",
 ]
