@@ -377,9 +377,6 @@ impl GpuAssetServer {
         id
     }
 
-    /// Регистрирует непрозрачный payload материала, произведённый загрузчиком,
-    /// вместе с ролями его текстур. Ядро не интерпретирует содержимое payload'а —
-    /// это дело рендер-пайплайна (см. `get_material::<T>`).
     pub fn register_material_payload(
         &mut self,
         handle: MaterialHandle,
@@ -390,10 +387,8 @@ impl GpuAssetServer {
         self.material_textures.insert(handle, texture_slots);
     }
 
-    /// Даункаст payload'а материала к конкретному типу, который умеет
-    /// готовить конкретный рендер-пайплайн.
     pub fn get_material<T: 'static>(&self, handle: MaterialHandle) -> Option<&T> {
-        self.material_payloads.get(&handle)?.as_any().downcast_ref::<T>()
+        self.material_payloads.get(&handle)?.as_ref().as_any().downcast_ref::<T>()
     }
 
     pub fn material_textures(&self, handle: MaterialHandle) -> &[(String, TextureHandle)] {

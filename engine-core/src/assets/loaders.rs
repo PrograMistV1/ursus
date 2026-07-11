@@ -70,14 +70,6 @@ pub struct UnlitMaterial {
     pub base_color: [f32; 4],
 }
 
-pub struct GltfMaterial {
-    pub name: String,
-    pub base_color: [f32; 4],
-    pub metallic: f32,
-    pub roughness: f32,
-    pub emissive: [f32; 3],
-}
-
 pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
     let (gltf, buffers, images) = gltf::import(path)?;
     let mut primitives = Vec::new();
