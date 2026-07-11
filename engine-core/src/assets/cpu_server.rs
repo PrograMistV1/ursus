@@ -1,10 +1,12 @@
 use crate::assets::loader_job::{BackgroundLoader, LoaderMessage, MeshSource};
+use crate::assets::loader_registry::{AssetLoader, LoaderRegistry};
 use crate::assets::mesh::{Aabb, CpuMesh};
 use crate::assets::text::{FontId, TextRenderer};
 use crate::assets::upload::GpuUploadRequest;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::components::transform::Transform;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
@@ -34,6 +36,31 @@ impl LoadProgress {
     }
 }
 
+const TEXTURE_HASH_SAMPLE_COUNT: usize = 64;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct TextureContentKey(u64, usize, u32, u32, u32 /* vk::Format as u32 */);
+
+fn hash_texture(pixels: &[u8], width: u32, height: u32, format: ash::vk::Format) -> TextureContentKey {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+
+    let len = pixels.len();
+    if len <= TEXTURE_HASH_SAMPLE_COUNT * 2 {
+        pixels.hash(&mut hasher);
+    } else {
+        let step = len / TEXTURE_HASH_SAMPLE_COUNT;
+        let mut i = 0;
+        while i < len {
+            hasher.write_u8(pixels[i]);
+            i += step;
+        }
+        hasher.write(&pixels[..32.min(len)]);
+        hasher.write(&pixels[len - 32.min(len)..]);
+    }
+
+    TextureContentKey(hasher.finish(), len, width, height, format.as_raw() as u32)
+}
+
 pub struct CpuAssetServer {
     pub cpu_meshes: Vec<CpuMesh>,
     next_material_handle: u32,
@@ -44,6 +71,7 @@ pub struct CpuAssetServer {
 
     pending_uploads: Vec<GpuUploadRequest>,
     pub(crate) next_texture_handle: u32,
+    texture_dedup: HashMap<TextureContentKey, TextureHandle>,
 
     loader: BackgroundLoader,
     pending_paths: HashMap<PathBuf, ()>,
@@ -53,7 +81,7 @@ pub struct CpuAssetServer {
 }
 
 impl CpuAssetServer {
-    pub fn new() -> Self {
+    pub fn new(registry: LoaderRegistry) -> Self {
         let mut text_renderer = TextRenderer::new();
         let default_font = text_renderer.load_font(DEFAULT_FONT_BYTES);
         Self {
@@ -63,17 +91,44 @@ impl CpuAssetServer {
             load_progress: LoadProgress::default(),
             pending_uploads: Vec::new(),
             next_texture_handle: 1,
-            loader: BackgroundLoader::new(),
+            texture_dedup: HashMap::new(),
+            loader: BackgroundLoader::new(registry),
             pending_paths: HashMap::new(),
             text_renderer,
             default_font,
         }
     }
 
+    pub fn register_loader(&self, loader: impl AssetLoader + 'static) {
+        self.loader.register_loader(Arc::new(loader));
+    }
+
+    pub fn register_loader_arc(&self, loader: Arc<dyn AssetLoader>) {
+        self.loader.register_loader(loader);
+    }
+
     fn alloc_texture_handle(&mut self) -> TextureHandle {
         let h = TextureHandle(self.next_texture_handle);
         self.next_texture_handle += 1;
         h
+    }
+
+    fn dedup_or_upload_texture(
+        &mut self,
+        pixels: Vec<u8>,
+        width: u32,
+        height: u32,
+        format: ash::vk::Format,
+        name: String,
+    ) -> TextureHandle {
+        let key = hash_texture(&pixels, width, height, format);
+        if let Some(&handle) = self.texture_dedup.get(&key) {
+            return handle;
+        }
+        let handle = self.alloc_texture_handle();
+        self.pending_uploads.push(GpuUploadRequest::Texture { handle, pixels, width, height, format, name });
+        self.texture_dedup.insert(key, handle);
+        handle
     }
 
     pub fn register_mesh(&mut self, mesh: CpuMesh) -> MeshHandle {
@@ -137,7 +192,6 @@ impl CpuAssetServer {
         source: MeshSource,
     ) -> Vec<(MeshHandle, Option<MaterialHandle>, Transform, Aabb)> {
         let mut instances = Vec::new();
-        let mut image_index_cache: HashMap<usize, TextureHandle> = HashMap::new();
 
         for prim in source.primitives {
             let aabb = Aabb::from_vertices(&prim.mesh.vertices);
@@ -146,36 +200,30 @@ impl CpuAssetServer {
             let indices = prim.mesh.indices.clone();
             let mesh_handle = self.register_mesh(prim.mesh);
 
-            self.pending_uploads.push(GpuUploadRequest::Mesh { handle: mesh_handle, vertices, indices, name });
+            self.pending_uploads.push(GpuUploadRequest::Mesh {
+                handle: mesh_handle,
+                vertices,
+                indices,
+                name: name.clone(),
+            });
 
-            let material_handle = prim.material.map(|payload| {
+            let material_handle = prim.material.map(|loaded_material| {
                 let mut texture_slots = Vec::new();
-                for (role, pixels, width, height, tex_name, image_index) in prim.textures {
-                    let tex_handle = *image_index_cache.entry(image_index).or_insert_with(|| {
-                        let h = self.alloc_texture_handle();
-                        // Загрузчик решает семантику роли; SRGB для цветовых
-                        // данных (base_color/emissive), UNORM для остальных.
-                        let format = match role.as_str() {
-                            "base_color" | "emissive" => ash::vk::Format::R8G8B8A8_SRGB,
-                            _ => ash::vk::Format::R8G8B8A8_UNORM,
-                        };
-                        self.pending_uploads.push(GpuUploadRequest::Texture {
-                            handle: h,
-                            pixels: pixels.clone(),
-                            width,
-                            height,
-                            format,
-                            name: tex_name.clone(),
-                        });
-                        h
-                    });
+                for (role, tex) in loaded_material.textures {
+                    let tex_name = format!("{}_{}", name, role);
+                    let tex_handle =
+                        self.dedup_or_upload_texture(tex.pixels, tex.width, tex.height, tex.format, tex_name);
                     texture_slots.push((role, tex_handle));
                 }
 
                 let handle = MaterialHandle(self.next_material_handle);
                 self.next_material_handle += 1;
 
-                self.pending_uploads.push(GpuUploadRequest::Material { handle, payload, texture_slots });
+                self.pending_uploads.push(GpuUploadRequest::Material {
+                    handle,
+                    payload: loaded_material.payload,
+                    texture_slots,
+                });
 
                 handle
             });
@@ -207,12 +255,6 @@ impl CpuAssetServer {
         handle: &AsyncMeshHandle,
     ) -> Option<Vec<(MeshHandle, Option<MaterialHandle>, Transform, Aabb)>> {
         self.mesh_path_cache.lock().unwrap().get(&handle.0).cloned()
-    }
-}
-
-impl Default for CpuAssetServer {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

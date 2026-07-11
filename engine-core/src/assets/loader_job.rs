@@ -1,12 +1,10 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
 use std::thread;
 
-use crate::assets::loaders;
-
-pub struct MeshSource {
-    pub primitives: Vec<loaders::GltfPrimitive>,
-}
+pub use crate::assets::loader_registry::LoadedMeshSource as MeshSource;
+use crate::assets::loader_registry::{AssetLoader, LoaderRegistry};
 
 pub struct TextureSource {
     pub pixels: Vec<u8>,
@@ -23,6 +21,7 @@ pub enum LoaderMessage {
 enum LoaderCommand {
     LoadMesh(PathBuf),
     LoadTexture(PathBuf),
+    RegisterLoader(Arc<dyn AssetLoader>),
     Shutdown,
 }
 
@@ -32,13 +31,13 @@ pub struct BackgroundLoader {
 }
 
 impl BackgroundLoader {
-    pub fn new() -> Self {
+    pub fn new(initial_registry: LoaderRegistry) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<LoaderCommand>();
         let (msg_tx, msg_rx) = mpsc::channel::<LoaderMessage>();
 
         thread::Builder::new()
             .name("asset-loader".into())
-            .spawn(move || loader_thread(cmd_rx, msg_tx))
+            .spawn(move || loader_thread(cmd_rx, msg_tx, initial_registry))
             .expect("failed to spawn asset-loader thread");
 
         Self { cmd_tx, msg_rx }
@@ -51,6 +50,10 @@ impl BackgroundLoader {
     pub fn request_texture(&self, path: PathBuf) {
         let _ = self.cmd_tx.send(LoaderCommand::LoadTexture(path));
     }
+
+    pub fn register_loader(&self, loader: Arc<dyn AssetLoader>) {
+        let _ = self.cmd_tx.send(LoaderCommand::RegisterLoader(loader));
+    }
 }
 
 impl Drop for BackgroundLoader {
@@ -59,13 +62,15 @@ impl Drop for BackgroundLoader {
     }
 }
 
-fn loader_thread(cmd_rx: Receiver<LoaderCommand>, msg_tx: Sender<LoaderMessage>) {
+fn loader_thread(cmd_rx: Receiver<LoaderCommand>, msg_tx: Sender<LoaderMessage>, mut registry: LoaderRegistry) {
     while let Ok(cmd) = cmd_rx.recv() {
         match cmd {
             LoaderCommand::Shutdown => break,
 
+            LoaderCommand::RegisterLoader(loader) => registry.register_arc(loader),
+
             LoaderCommand::LoadMesh(path) => {
-                let result = load_mesh_cpu(&path);
+                let result = registry.load(&path);
                 let msg = match result {
                     Ok(source) => LoaderMessage::MeshReady { path, source },
                     Err(e) => LoaderMessage::Error { path, error: e.to_string() },
@@ -86,30 +91,6 @@ fn loader_thread(cmd_rx: Receiver<LoaderCommand>, msg_tx: Sender<LoaderMessage>)
                 }
             }
         }
-    }
-}
-
-fn load_mesh_cpu(path: &std::path::Path) -> anyhow::Result<MeshSource> {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-
-    match ext.as_str() {
-        "obj" => {
-            let mesh = loaders::load_obj(path)?;
-            let primitive = loaders::GltfPrimitive {
-                mesh,
-                textures: Vec::new(),
-                material: None,
-                node_translation: [0.0; 3],
-                node_rotation: [0.0, 0.0, 0.0, 1.0],
-                node_scale: [1.0; 3],
-            };
-            Ok(MeshSource { primitives: vec![primitive] })
-        }
-        "gltf" | "glb" => {
-            let primitives = loaders::load_gltf(path)?;
-            Ok(MeshSource { primitives })
-        }
-        _ => anyhow::bail!("неизвестный формат меша: {:?}", path),
     }
 }
 

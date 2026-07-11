@@ -2,6 +2,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
+use crate::assets::builtin_loaders::{GltfLoader, ObjLoader};
+use crate::assets::loader_registry::LoaderRegistry;
+
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -50,8 +53,9 @@ impl EngineContext {
         upload_tx: Sender<GpuUploadRequest>,
         triple_buf: Arc<TripleBuffer<RenderWorld>>,
         output_size: (f32, f32),
+        loader_registry: LoaderRegistry,
     ) -> anyhow::Result<Self> {
-        let cpu_assets = CpuAssetServer::new();
+        let cpu_assets = CpuAssetServer::new(loader_registry);
 
         Ok(Self {
             world: GameWorld::new(),
@@ -72,6 +76,11 @@ impl EngineContext {
     where
         P: RenderPipeline + Default + 'static,
     {
+        let mut registry = LoaderRegistry::new();
+        P::register_loaders(&mut registry);
+        for loader in registry.into_loaders() {
+            self.cpu_assets.register_loader_arc(loader);
+        }
         self.send_render_cmd(RenderCommand::SetPipeline(PipelineFactory::of::<P>()));
     }
 
@@ -107,10 +116,20 @@ impl Engine {
 
         let initial_pipeline = A::initial_pipeline();
 
+        let mut loader_registry = LoaderRegistry::new();
+        loader_registry.register(ObjLoader);
+        loader_registry.register(GltfLoader);
+        initial_pipeline.register_loaders(&mut loader_registry);
+
         let event_loop = EventLoop::new()?;
         event_loop.set_control_flow(ControlFlow::Poll);
 
-        let mut handler = EngineHandler { app: Box::new(app), initial_pipeline: Some(initial_pipeline), state: None };
+        let mut handler = EngineHandler {
+            app: Box::new(app),
+            initial_pipeline: Some(initial_pipeline),
+            loader_registry: Some(loader_registry),
+            state: None,
+        };
         event_loop.run_app(&mut handler)?;
         Ok(())
     }
@@ -144,6 +163,7 @@ const TICK_RATE: f32 = 1.0 / 60.0;
 struct EngineHandler {
     app: Box<dyn App>,
     initial_pipeline: Option<PipelineFactory>,
+    loader_registry: Option<LoaderRegistry>,
     state: Option<EngineState>,
 }
 
@@ -176,8 +196,10 @@ impl ApplicationHandler for EngineHandler {
         let triple_buf = Arc::new(TripleBuffer::<RenderWorld>::new());
         let triple_buf_render = Arc::clone(&triple_buf);
 
-        let mut ctx =
-            EngineContext::new(cmd_tx, upload_tx, triple_buf, output_size).expect("Failed to create EngineContext");
+        let loader_registry = self.loader_registry.take().expect("loader_registry уже использован");
+
+        let mut ctx = EngineContext::new(cmd_tx, upload_tx, triple_buf, output_size, loader_registry)
+            .expect("Failed to create EngineContext");
 
         self.app.on_start(&mut ctx);
         ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);

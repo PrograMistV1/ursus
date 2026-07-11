@@ -50,8 +50,6 @@ impl DescriptorSetDesc {
     }
 }
 
-// ImageUsage и остальное — без изменений
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImageUsage(u32);
 
