@@ -33,14 +33,14 @@ engine-template/   minimal example application showing how to use the engine
 ```
 
 `engine-core` has no opinion about *how* you render things - it gives you the plumbing (device/swapchain setup, render
-graph, resource pool, asset loading, ECS). `engine-default` is one opinionated pipeline built on top of that plumbing.
-You could write your own pipeline crate instead and skip `engine-default` entirely.
+graph, resource pool, asset loading, ECS). `engine-pipelines` is one opinionated pipeline built on top of that plumbing.
+You could write your own pipeline crate instead and skip `engine-pipelines` entirely.
 
 ## ⭐ Features
 
 - **Render graph** (`engine-core/src/render/graph.rs`) - passes declare read/write access to resources; the graph
   topologically sorts them and inserts image layout barriers automatically. See [Render graph](#-render-graph) below.
-- **Deferred pipeline** (`engine-default`) - shadow pass -> depth prepass -> GBuffer (albedo/normal) -> lighting ->
+- **Deferred pipeline** (`engine-pipelines`) - shadow pass -> depth prepass -> GBuffer (albedo/normal) -> lighting ->
   tonemap/post-process -> FSR1 (EASU + RCAS) upscale -> UI overlay.
 - **Bindless textures** - a single descriptor set with `update_after_bind` + `PARTIALLY_BOUND`, indexed via
   `nonuniformEXT` in shaders. No per-draw descriptor churn.
@@ -78,7 +78,7 @@ precomputes the minimal set of `VkImageMemoryBarrier2`s needed between them. Res
 - **Transient** - sized relative to internal or output resolution, allocated/resized by the graph (`ResourcePool`)
 - **External** - swapchain images, whose layout is managed at frame boundaries
 
-Current pipeline order in `engine-default`:
+Current pipeline order in `engine-pipelines`:
 
 ```text
 shadow ---------+
@@ -95,7 +95,7 @@ it - the graph doesn't currently exploit that, it just orders them consistently.
 ## 🛠️ Building
 
 Requires the **Vulkan SDK** installed with `glslc` on your `PATH` - shaders are compiled to SPIR-V at build time via
-`build.rs` (`engine-default/build.rs`), there's no runtime shader compilation.
+`build.rs` (`engine-pipelines/build.rs`), there's no runtime shader compilation.
 
 ```bash
 cargo build --release
@@ -148,7 +148,7 @@ Engine architecture (`engine-core`):
 - [ ] **Runtime debug UI** - GPU timings, G-buffer view, live-tweaking of render parameters
 - [ ] **`vertex_format!` proc-macro** - derive `VertexFormat` (layout/offsets/stride) for custom vertex structs instead of a hand-written `impl`
 
-Rendering backlog (`engine-default`):
+Rendering backlog (`engine-pipelines`):
 
 - [ ] PBR lighting (specular/GGX, metallic)
 - [ ] Point light shadows
