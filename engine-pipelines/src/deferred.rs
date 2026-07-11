@@ -2,6 +2,7 @@ use crate::passes::depth_prepass::DepthPrepass;
 use crate::passes::fsr::FsrPass;
 use crate::passes::geometry::GeometryPass;
 use crate::passes::lighting::LightingPass;
+use crate::passes::material_buffer::{resolve_material, MaterialBuffer, MaterialData};
 use crate::passes::post_process::PostProcessPass;
 use crate::passes::shadow::ShadowPass;
 use crate::passes::ui::UiPass;
@@ -63,30 +64,51 @@ impl RenderPipeline for DefaultPipeline {
         );
         let h_swapchain = graph.pool.register_swapchain_external(swapchain.format);
 
-        let shadow_pass = ShadowPass::new(gpu_assets)?;
-        let depth_prepass = DepthPrepass::new(gpu_assets)?;
+        let material_buffer = Arc::new(MaterialBuffer::new(gpu_assets)?);
 
-        let mut geometry_pass = GeometryPass::new(gpu_assets, GBuffer::color_formats())?;
+        let shadow_pass = ShadowPass::new(gpu_assets, &material_buffer)?;
+        let depth_prepass = DepthPrepass::new(gpu_assets, &material_buffer)?;
+
+        let mut geometry_pass = GeometryPass::new(gpu_assets, GBuffer::color_formats(), &material_buffer)?;
 
         let lighting_pass = LightingPass::new(gpu_assets, Format::Rgba16Float)?;
         let post_pass = PostProcessPass::new(gpu_assets, LDR_FORMAT)?;
 
-        pass("shadow")
-            .write(h_shadow_map, ImageLayout::DepthAttachment)
-            .record(move |enc, rw, gpu| shadow_pass.record(enc, rw, gpu, h_shadow_map))
-            .build(graph, &gpu_assets);
+        {
+            let material_buffer = Arc::clone(&material_buffer);
+            pass("shadow")
+                .write(h_shadow_map, ImageLayout::DepthAttachment)
+                .record(move |enc, rw, gpu| shadow_pass.record(enc, rw, gpu, &material_buffer, h_shadow_map))
+                .build(graph, &gpu_assets);
+        }
 
-        pass("depth_prepass")
-            .write(h_depth, ImageLayout::DepthAttachment)
-            .record(move |enc, rw, gpu| depth_prepass.record(enc, rw, gpu, h_depth))
-            .build(graph, &gpu_assets);
+        {
+            let material_buffer = Arc::clone(&material_buffer);
+            pass("depth_prepass")
+                .write(h_depth, ImageLayout::DepthAttachment)
+                .record(move |enc, rw, gpu| depth_prepass.record(enc, rw, gpu, &material_buffer, h_depth))
+                .build(graph, &gpu_assets);
+        }
 
-        pass("geometry")
-            .write(h_gbuffer_albedo, ImageLayout::ColorAttachment)
-            .write(h_gbuffer_normal, ImageLayout::ColorAttachment)
-            .read_write(h_depth, ImageLayout::DepthAttachment)
-            .record(move |enc, rw, gpu| geometry_pass.record(enc, rw, gpu, h_gbuffer_albedo, h_gbuffer_normal, h_depth))
-            .build(graph, &gpu_assets);
+        {
+            let material_buffer = Arc::clone(&material_buffer);
+            pass("geometry")
+                .write(h_gbuffer_albedo, ImageLayout::ColorAttachment)
+                .write(h_gbuffer_normal, ImageLayout::ColorAttachment)
+                .read_write(h_depth, ImageLayout::DepthAttachment)
+                .record(move |enc, rw, gpu| {
+                    let max_handle = gpu.material_handles().map(|h| h.0).max();
+                    if let Some(max_handle) = max_handle {
+                        let mut collected = vec![MaterialData::default_white(); max_handle as usize + 1];
+                        for handle in gpu.material_handles() {
+                            collected[handle.0 as usize] = resolve_material(gpu, handle);
+                        }
+                        material_buffer.upload(&collected);
+                    }
+                    geometry_pass.record(enc, rw, gpu, &material_buffer, h_gbuffer_albedo, h_gbuffer_normal, h_depth)
+                })
+                .build(graph, &gpu_assets);
+        }
 
         pass("lighting")
             .read(h_gbuffer_albedo, ImageLayout::ShaderReadOnly)

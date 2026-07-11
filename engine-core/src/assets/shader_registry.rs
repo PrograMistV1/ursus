@@ -1,29 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TextureSlot {
-    Diffuse,
-    Normal,
-    MetallicRoughness,
-    Emissive,
-    Occlusion,
-}
-
-impl TextureSlot {
-    pub fn index(self) -> usize {
-        match self {
-            Self::Diffuse => 0,
-            Self::Normal => 1,
-            Self::MetallicRoughness => 2,
-            Self::Emissive => 3,
-            Self::Occlusion => 4,
-        }
-    }
-}
-
-pub const MAX_TEXTURE_SLOTS: usize = 5;
-
 pub enum ShaderSource {
     File(PathBuf),
     Bytes(Vec<u8>),
@@ -33,39 +10,23 @@ pub struct ShaderDef {
     pub name: String,
     pub vert: ShaderSource,
     pub frag: Option<ShaderSource>,
-    pub slots: Vec<TextureSlot>,
 }
 
 impl ShaderDef {
     pub fn from_files(name: impl Into<String>, vert: impl Into<PathBuf>, frag: impl Into<PathBuf>) -> Self {
-        Self {
-            name: name.into(),
-            vert: ShaderSource::File(vert.into()),
-            frag: Some(ShaderSource::File(frag.into())),
-            slots: Vec::new(),
-        }
+        Self { name: name.into(), vert: ShaderSource::File(vert.into()), frag: Some(ShaderSource::File(frag.into())) }
     }
 
     pub fn from_files_vert_only(name: impl Into<String>, vert: impl Into<PathBuf>) -> Self {
-        Self { name: name.into(), vert: ShaderSource::File(vert.into()), frag: None, slots: Vec::new() }
+        Self { name: name.into(), vert: ShaderSource::File(vert.into()), frag: None }
     }
 
     pub fn from_bytes(name: impl Into<String>, vert: Vec<u8>, frag: Vec<u8>) -> Self {
-        Self {
-            name: name.into(),
-            vert: ShaderSource::Bytes(vert),
-            frag: Some(ShaderSource::Bytes(frag)),
-            slots: Vec::new(),
-        }
+        Self { name: name.into(), vert: ShaderSource::Bytes(vert), frag: Some(ShaderSource::Bytes(frag)) }
     }
 
     pub fn from_bytes_vert_only(name: impl Into<String>, vert: Vec<u8>) -> Self {
-        Self { name: name.into(), vert: ShaderSource::Bytes(vert), frag: None, slots: Vec::new() }
-    }
-
-    pub fn with_slot(mut self, slot: TextureSlot) -> Self {
-        self.slots.push(slot);
-        self
+        Self { name: name.into(), vert: ShaderSource::Bytes(vert), frag: None }
     }
 }
 

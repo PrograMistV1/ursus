@@ -1,6 +1,5 @@
 use crate::assets::loader_job::{BackgroundLoader, LoaderMessage, MeshSource};
 use crate::assets::mesh::{Aabb, CpuMesh};
-use crate::assets::shader_registry::TextureSlot;
 use crate::assets::text::{FontId, TextRenderer};
 use crate::assets::upload::GpuUploadRequest;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
@@ -149,16 +148,16 @@ impl CpuAssetServer {
 
             self.pending_uploads.push(GpuUploadRequest::Mesh { handle: mesh_handle, vertices, indices, name });
 
-            let material_handle = prim.material.map(|m| {
+            let material_handle = prim.material.map(|payload| {
                 let mut texture_slots = Vec::new();
-                for (slot, pixels, width, height, tex_name, image_index) in prim.textures {
+                for (role, pixels, width, height, tex_name, image_index) in prim.textures {
                     let tex_handle = *image_index_cache.entry(image_index).or_insert_with(|| {
                         let h = self.alloc_texture_handle();
-                        let format = match slot {
-                            TextureSlot::Normal | TextureSlot::MetallicRoughness | TextureSlot::Occlusion => {
-                                ash::vk::Format::R8G8B8A8_UNORM
-                            }
-                            TextureSlot::Diffuse | TextureSlot::Emissive => ash::vk::Format::R8G8B8A8_SRGB,
+                        // Загрузчик решает семантику роли; SRGB для цветовых
+                        // данных (base_color/emissive), UNORM для остальных.
+                        let format = match role.as_str() {
+                            "base_color" | "emissive" => ash::vk::Format::R8G8B8A8_SRGB,
+                            _ => ash::vk::Format::R8G8B8A8_UNORM,
                         };
                         self.pending_uploads.push(GpuUploadRequest::Texture {
                             handle: h,
@@ -170,21 +169,13 @@ impl CpuAssetServer {
                         });
                         h
                     });
-                    texture_slots.push((slot, tex_handle));
+                    texture_slots.push((role, tex_handle));
                 }
 
                 let handle = MaterialHandle(self.next_material_handle);
                 self.next_material_handle += 1;
 
-                self.pending_uploads.push(GpuUploadRequest::Material {
-                    handle,
-                    base_color: m.base_color,
-                    metallic: m.metallic,
-                    roughness: m.roughness,
-                    emissive: [m.emissive[0], m.emissive[1], m.emissive[2], 0.0],
-                    texture_slots,
-                    name: m.name,
-                });
+                self.pending_uploads.push(GpuUploadRequest::Material { handle, payload, texture_slots });
 
                 handle
             });
@@ -208,10 +199,7 @@ impl CpuAssetServer {
     }
 
     pub fn flush_text_atlas(&mut self, upload_tx: &Sender<GpuUploadRequest>) {
-        self.text_renderer.flush_atlas_to_channel(
-            &mut self.next_texture_handle,
-            upload_tx,
-        );
+        self.text_renderer.flush_atlas_to_channel(&mut self.next_texture_handle, upload_tx);
     }
 
     pub fn get_mesh_instances(

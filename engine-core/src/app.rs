@@ -98,7 +98,7 @@ pub struct Engine;
 
 impl Engine {
     pub fn run<A: App + 'static>(app: A) -> anyhow::Result<()> {
-        env_logger::builder().filter_level(log::LevelFilter::Info).parse_default_env().init();
+        env_logger::builder().filter_level(log::LevelFilter::Debug).parse_default_env().init();
 
         let server_addr = format!("127.0.0.1:{}", puffin_http::DEFAULT_PORT);
         let _puffin_server = puffin_http::Server::new(&server_addr)?;

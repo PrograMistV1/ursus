@@ -1,3 +1,4 @@
+use crate::passes::material_buffer::MaterialBuffer;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::Vertex;
 use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage, VertexFormat};
@@ -17,9 +18,9 @@ pub struct ShadowPass {
 }
 
 impl ShadowPass {
-    pub fn new(gpu: &mut GpuAssetServer) -> anyhow::Result<Self> {
+    pub fn new(gpu: &mut GpuAssetServer, material_buffer: &MaterialBuffer) -> anyhow::Result<Self> {
         let layout = Vertex::layout().only_locations(&[0, 2]);
-        let set_layouts = [gpu.bindless.layout, gpu.material_buffer.layout];
+        let set_layouts = [gpu.bindless_set(), material_buffer.descriptor_set];
 
         let handle = gpu.shaders.by_name("shadow").expect("шейдер 'shadow' не зарегистрирован");
         let (vert_spv, frag_spv) = gpu.shaders.load_spv(handle)?;
@@ -45,6 +46,7 @@ impl ShadowPass {
         enc: &mut CommandEncoder,
         rw: &RenderWorld,
         gpu: &GpuAssetServer,
+        material_buffer: &MaterialBuffer,
         shadow_map: ResourceHandle,
     ) -> anyhow::Result<()> {
         let lights = rw.get::<ExtractedLights>().cloned().unwrap_or_default();
@@ -52,7 +54,7 @@ impl ShadowPass {
 
         enc.begin_rendering_depth_only(shadow_map);
         enc.bind_pipeline(self.pipeline);
-        enc.bind_descriptor_sets(self.pipeline, &[gpu.bindless_set(), gpu.material_buffer_set()]);
+        enc.bind_descriptor_sets(self.pipeline, &[gpu.bindless_set(), material_buffer.descriptor_set]);
 
         for inst in meshes {
             let Some(mesh) = gpu.get_gpu_mesh(inst.mesh) else {

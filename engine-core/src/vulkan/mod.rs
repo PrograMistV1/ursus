@@ -8,7 +8,6 @@ pub use core::debug::DebugMessenger;
 pub use core::device::Device;
 pub use core::instance::Instance;
 pub use core::swapchain::Swapchain;
-pub use gfx_pipeline::material_buffer::MaterialBuffer;
 pub use gfx_pipeline::Pipeline;
 pub use renderer::{build_dyn_renderer, DynRenderer, Renderer};
 pub use resources::bindless::BindlessSet;

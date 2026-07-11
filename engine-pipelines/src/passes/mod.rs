@@ -3,6 +3,7 @@ pub mod fsr;
 pub mod geometry;
 pub mod light_buffer;
 pub mod lighting;
+pub mod material_buffer;
 pub mod post_process;
 pub mod shadow;
 pub mod ui;

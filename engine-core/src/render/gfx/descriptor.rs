@@ -6,6 +6,7 @@ use std::ops::{BitOr, BitOrAssign};
 pub enum BindingKind {
     CombinedImageSampler,
     UniformBuffer { size: u64 },
+    StorageBuffer { size: u64 },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -38,7 +39,18 @@ impl DescriptorSetDesc {
         });
         self
     }
+
+    pub fn with_storage_buffer<T>(mut self, binding: u32, stage: ShaderStage) -> Self {
+        self.bindings.push(DescriptorBindingDesc {
+            binding,
+            kind: BindingKind::StorageBuffer { size: size_of::<T>() as u64 },
+            stage,
+        });
+        self
+    }
 }
+
+// ImageUsage и остальное — без изменений
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImageUsage(u32);

@@ -115,8 +115,6 @@ fn render_loop(
 
         let render_world = triple_buf.render_slot(render_idx);
 
-        gpu_assets.upload_materials_from_render_world(render_world);
-
         let needs_recreate = renderer.draw_frame(&vk, render_world, &mut gpu_assets)?;
 
         if needs_recreate {
@@ -145,16 +143,8 @@ fn flush_uploads_gpu(rx: &Receiver<GpuUploadRequest>, gpu: &mut GpuAssetServer) 
                         log::error!("GPU upload texture failed: {e}");
                     }
                 }
-                GpuUploadRequest::Material {
-                    handle,
-                    base_color,
-                    metallic,
-                    roughness,
-                    emissive,
-                    texture_slots,
-                    name,
-                } => {
-                    gpu.register_material_gpu(handle, base_color, metallic, roughness, emissive, texture_slots, name);
+                GpuUploadRequest::Material { handle, payload, texture_slots } => {
+                    gpu.register_material_payload(handle, payload, texture_slots);
                 }
             },
             Err(std::sync::mpsc::TryRecvError::Empty) => break,

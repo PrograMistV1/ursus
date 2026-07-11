@@ -1,15 +1,11 @@
-use engine_core::assets::{ShaderDef, ShaderRegistry, TextureSlot};
+use engine_core::assets::{ShaderDef, ShaderRegistry};
 
 pub fn register_builtin(reg: &mut ShaderRegistry) {
-    reg.register_if_absent(
-        ShaderDef::from_bytes(
-            "diffuse",
-            include_bytes!(concat!(env!("OUT_DIR"), "/mesh.vert.spv")).to_vec(),
-            include_bytes!(concat!(env!("OUT_DIR"), "/mesh.frag.spv")).to_vec(),
-        )
-        .with_slot(TextureSlot::Diffuse)
-        .with_slot(TextureSlot::Normal),
-    );
+    reg.register_if_absent(ShaderDef::from_bytes(
+        "diffuse",
+        include_bytes!(concat!(env!("OUT_DIR"), "/mesh.vert.spv")).to_vec(),
+        include_bytes!(concat!(env!("OUT_DIR"), "/mesh.frag.spv")).to_vec(),
+    ));
 
     reg.register_if_absent(ShaderDef::from_bytes(
         "shadow",

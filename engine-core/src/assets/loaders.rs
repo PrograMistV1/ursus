@@ -1,5 +1,5 @@
 use crate::assets::mesh::{CpuMesh, Vertex};
-use crate::assets::shader_registry::TextureSlot;
+use crate::assets::MaterialPayload;
 use glam::{Vec2, Vec3};
 use image::DynamicImage;
 
@@ -50,11 +50,24 @@ pub fn load_obj(path: &std::path::Path) -> anyhow::Result<CpuMesh> {
 
 pub struct GltfPrimitive {
     pub mesh: CpuMesh,
-    pub textures: Vec<(TextureSlot, Vec<u8>, u32, u32, String, usize)>,
-    pub material: Option<GltfMaterial>,
+    pub textures: Vec<(String, Vec<u8>, u32, u32, String, usize)>,
+    pub material: Option<Box<dyn MaterialPayload>>,
     pub node_translation: [f32; 3],
     pub node_rotation: [f32; 4],
     pub node_scale: [f32; 3],
+}
+
+pub struct PbrMetallicRoughness {
+    pub name: String,
+    pub base_color: [f32; 4],
+    pub metallic: f32,
+    pub roughness: f32,
+    pub emissive: [f32; 3],
+}
+
+pub struct UnlitMaterial {
+    pub name: String,
+    pub base_color: [f32; 4],
 }
 
 pub struct GltfMaterial {
@@ -126,7 +139,7 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
 
             log::debug!("glTF '{}': {} вершин, {} индексов", mesh_name, vertices.len(), indices.len());
 
-            let mut tex_data: Vec<(TextureSlot, Vec<u8>, u32, u32, String, usize)> = Vec::new();
+            let mut tex_data: Vec<(String, Vec<u8>, u32, u32, String, usize)> = Vec::new();
             let mut mat_out = None;
 
             if let Some(mat) = primitive.material().index().map(|_| primitive.material()) {
@@ -136,19 +149,21 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 let metallic = pbr.metallic_factor();
                 let roughness = pbr.roughness_factor();
                 let emissive = mat.emissive_factor();
+                let name = mat.name().unwrap_or("gltf_material").to_string();
 
-                mat_out = Some(GltfMaterial {
-                    name: mat.name().unwrap_or("gltf_material").to_string(),
-                    base_color,
-                    metallic,
-                    roughness,
-                    emissive,
+                let is_unlit = mat.unlit();
+
+                mat_out = Some(if is_unlit {
+                    Box::new(UnlitMaterial { name, base_color }) as Box<dyn MaterialPayload>
+                } else {
+                    Box::new(PbrMetallicRoughness { name, base_color, metallic, roughness, emissive })
+                        as Box<dyn MaterialPayload>
                 });
 
                 if let Some(info) = pbr.base_color_texture() {
                     if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
                         tex_data.push((
-                            TextureSlot::Diffuse,
+                            "base_color".to_string(),
                             bytes,
                             w,
                             h,
@@ -161,7 +176,7 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 if let Some(info) = pbr.metallic_roughness_texture() {
                     if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
                         tex_data.push((
-                            TextureSlot::MetallicRoughness,
+                            "metallic_roughness".to_string(),
                             bytes,
                             w,
                             h,
@@ -174,7 +189,7 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 if let Some(info) = mat.normal_texture() {
                     if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
                         tex_data.push((
-                            TextureSlot::Normal,
+                            "normal".to_string(),
                             bytes,
                             w,
                             h,
@@ -187,7 +202,7 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 if let Some(info) = mat.emissive_texture() {
                     if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
                         tex_data.push((
-                            TextureSlot::Emissive,
+                            "emissive".to_string(),
                             bytes,
                             w,
                             h,
@@ -200,7 +215,7 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
                 if let Some(info) = mat.occlusion_texture() {
                     if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
                         tex_data.push((
-                            TextureSlot::Occlusion,
+                            "occlusion".to_string(),
                             bytes,
                             w,
                             h,

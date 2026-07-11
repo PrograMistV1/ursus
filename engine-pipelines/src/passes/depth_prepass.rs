@@ -1,3 +1,4 @@
+use crate::passes::material_buffer::MaterialBuffer;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::Vertex;
 use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage, VertexFormat};
@@ -17,10 +18,10 @@ pub struct DepthPrepass {
 }
 
 impl DepthPrepass {
-    pub fn new(gpu: &mut GpuAssetServer) -> anyhow::Result<Self> {
+    pub fn new(gpu: &mut GpuAssetServer, material_buffer: &MaterialBuffer) -> anyhow::Result<Self> {
         let layout = Vertex::layout().only_locations(&[0, 2]);
 
-        let set_layouts = [gpu.bindless.layout, gpu.material_buffer.layout];
+        let set_layouts = [gpu.bindless_set(), material_buffer.descriptor_set];
 
         let handle = gpu.shaders.by_name("depth_prepass").expect("шейдер 'depth_prepass' не зарегистрирован");
         let (vert_spv, frag_spv) = gpu.shaders.load_spv(handle)?;
@@ -46,6 +47,7 @@ impl DepthPrepass {
         enc: &mut CommandEncoder,
         rw: &RenderWorld,
         gpu: &GpuAssetServer,
+        material_buffer: &MaterialBuffer,
         depth: ResourceHandle,
     ) -> anyhow::Result<()> {
         let camera = rw.get::<ExtractedCamera>().cloned().unwrap_or_default();
@@ -53,7 +55,7 @@ impl DepthPrepass {
 
         enc.begin_rendering_depth_only(depth);
         enc.bind_pipeline(self.pipeline);
-        enc.bind_descriptor_sets(self.pipeline, &[gpu.bindless_set(), gpu.material_buffer_set()]);
+        enc.bind_descriptor_sets(self.pipeline, &[gpu.bindless_set(), material_buffer.descriptor_set]);
 
         for inst in meshes {
             let Some(mesh) = gpu.get_gpu_mesh(inst.mesh) else {

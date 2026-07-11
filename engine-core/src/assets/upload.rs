@@ -1,10 +1,9 @@
+use crate::assets::material::MaterialPayload;
 use crate::assets::mesh::Vertex;
-use crate::assets::shader_registry::TextureSlot;
 use crate::assets::TextureHandle;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use ash::vk;
 
-#[derive(Debug)]
 pub enum GpuUploadRequest {
     Mesh {
         handle: MeshHandle,
@@ -22,11 +21,7 @@ pub enum GpuUploadRequest {
     },
     Material {
         handle: MaterialHandle,
-        base_color: [f32; 4],
-        metallic: f32,
-        roughness: f32,
-        emissive: [f32; 4],
-        texture_slots: Vec<(TextureSlot, TextureHandle)>,
-        name: String,
+        payload: Box<dyn MaterialPayload>,
+        texture_slots: Vec<(String, TextureHandle)>,
     },
 }

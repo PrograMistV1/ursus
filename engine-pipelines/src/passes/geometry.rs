@@ -1,3 +1,4 @@
+use crate::passes::material_buffer::MaterialBuffer;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::{GpuMesh, ShaderHandle, Vertex};
 use engine_core::components::mesh::MaterialHandle;
@@ -31,10 +32,14 @@ pub struct GeometryPass {
 }
 
 impl GeometryPass {
-    pub fn new(gpu: &mut GpuAssetServer, color_formats: [Format; 2]) -> anyhow::Result<Self> {
+    pub fn new(
+        gpu: &mut GpuAssetServer,
+        color_formats: [Format; 2],
+        material_buffer: &MaterialBuffer,
+    ) -> anyhow::Result<Self> {
         let mut pass = Self { pipelines: HashMap::new(), color_formats };
         let default = gpu.shaders.by_name("diffuse").unwrap();
-        pass.get_or_create_pipeline(gpu, default)?;
+        pass.get_or_create_pipeline(gpu, default, material_buffer)?;
         Ok(pass)
     }
 
@@ -42,6 +47,7 @@ impl GeometryPass {
         &mut self,
         gpu: &mut GpuAssetServer,
         shader: ShaderHandle,
+        material_buffer: &MaterialBuffer,
     ) -> anyhow::Result<PipelineId> {
         if let Some(&id) = self.pipelines.get(&shader) {
             return Ok(id);
@@ -54,7 +60,7 @@ impl GeometryPass {
         let layout = Vertex::layout();
         let push_range = PushConstantRange::of::<MeshPushConstants>(ShaderStage::VertexFragment);
 
-        let set_layouts = [gpu.bindless.layout, gpu.material_buffer.layout];
+        let set_layouts = [gpu.bindless_set(), material_buffer.descriptor_set];
 
         let desc = PipelineDesc::with_depth_equal(
             &vert_spv,
@@ -74,6 +80,7 @@ impl GeometryPass {
         enc: &mut CommandEncoder,
         rw: &RenderWorld,
         gpu: &GpuAssetServer,
+        material_buffer: &MaterialBuffer,
         albedo: ResourceHandle,
         normal: ResourceHandle,
         depth: ResourceHandle,
@@ -108,7 +115,7 @@ impl GeometryPass {
                     continue;
                 };
                 enc.bind_pipeline(pipeline);
-                enc.bind_descriptor_sets(pipeline, &[gpu.bindless_set(), gpu.material_buffer_set()]);
+                enc.bind_descriptor_sets(pipeline, &[gpu.bindless_set(), material_buffer.descriptor_set]);
                 current_shader = Some(dc.shader);
             }
 

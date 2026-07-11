@@ -1,7 +1,6 @@
 use crate::assets::cpu_server::TextureHandle;
-use crate::assets::material::MaterialData;
+use crate::assets::material::MaterialPayload;
 use crate::assets::mesh::{CpuMesh, GpuMesh};
-use crate::assets::shader_registry::TextureSlot;
 use crate::assets::ShaderRegistry;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::render::gfx::{
@@ -9,9 +8,8 @@ use crate::render::gfx::{
     PushConstantRange, SamplerDesc, SamplerId, VertexLayout,
 };
 use crate::render::gfx::{PipelineCache, PipelineId};
-use crate::render::world::RenderWorld;
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
-use crate::vulkan::{BindlessSet, GpuTexture, MaterialBuffer};
+use crate::vulkan::{BindlessSet, GpuTexture};
 use ash::vk;
 use std::collections::HashMap;
 
@@ -37,10 +35,11 @@ pub struct GpuAssetServer {
     gpu_meshes: HashMap<MeshHandle, GpuMeshState>,
     texture_slots: HashMap<TextureHandle, u32>,
     gpu_textures: HashMap<u32, GpuTexture>,
-    materials: Vec<MaterialData>,
+
+    material_payloads: HashMap<MaterialHandle, Box<dyn MaterialPayload>>,
+    material_textures: HashMap<MaterialHandle, Vec<(String, TextureHandle)>>,
 
     pub shaders: ShaderRegistry,
-    pub material_buffer: MaterialBuffer,
     pub bindless: BindlessSet,
     pipeline_cache: PipelineCache,
 
@@ -53,7 +52,6 @@ pub struct GpuAssetServer {
     samplers: Vec<StoredSampler>,
     descriptor_sets: Vec<StoredDescriptorSet>,
     bindless_set_id: DescriptorSetId,
-    material_buffer_set_id: DescriptorSetId,
 }
 
 impl GpuAssetServer {
@@ -67,19 +65,18 @@ impl GpuAssetServer {
         let bindless = BindlessSet::new(&device, physical_device, &instance, command_pool, queue)?;
         assert_eq!(bindless.next_slot(), 1, "slot 0 must be white fallback");
 
-        let material_buffer = MaterialBuffer::new(&device, physical_device, &instance)?;
         let shaders = ShaderRegistry::empty();
         let pipeline_cache = PipelineCache::new(device.clone());
 
-        log::info!("GpuAssetServer: white=slot0, text_renderer готов, next_slot={}", bindless.next_slot());
+        log::info!("GpuAssetServer: white=slot0, next_slot={}", bindless.next_slot());
 
         let mut this = Self {
             gpu_meshes: HashMap::new(),
             texture_slots: HashMap::new(),
             gpu_textures: HashMap::new(),
-            materials: Vec::new(),
+            material_payloads: HashMap::new(),
+            material_textures: HashMap::new(),
             shaders,
-            material_buffer,
             bindless,
             pipeline_cache,
             device,
@@ -90,19 +87,12 @@ impl GpuAssetServer {
             samplers: Vec::new(),
             descriptor_sets: Vec::new(),
             bindless_set_id: DescriptorSetId(0),
-            material_buffer_set_id: DescriptorSetId(0),
         };
 
         let bindless_layout = this.bindless.layout;
         let bindless_set = this.bindless.set;
         let bindless_pool = this.bindless.pool;
         this.bindless_set_id = this.register_external_descriptor_set(bindless_layout, bindless_set, bindless_pool);
-
-        let material_layout = this.material_buffer.layout;
-        let material_set = this.material_buffer.set;
-        let material_pool = this.material_buffer.pool;
-        this.material_buffer_set_id =
-            this.register_external_descriptor_set(material_layout, material_set, material_pool);
 
         Ok(this)
     }
@@ -126,6 +116,7 @@ impl GpuAssetServer {
                 let ty = match b.kind {
                     BindingKind::CombinedImageSampler => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
                     BindingKind::UniformBuffer { .. } => vk::DescriptorType::UNIFORM_BUFFER,
+                    BindingKind::StorageBuffer { .. } => vk::DescriptorType::STORAGE_BUFFER,
                 };
                 vk::DescriptorSetLayoutBinding::default()
                     .binding(b.binding)
@@ -149,6 +140,7 @@ impl GpuAssetServer {
                 let ty = match b.kind {
                     BindingKind::CombinedImageSampler => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
                     BindingKind::UniformBuffer { .. } => vk::DescriptorType::UNIFORM_BUFFER,
+                    BindingKind::StorageBuffer { .. } => vk::DescriptorType::STORAGE_BUFFER,
                 };
                 vk::DescriptorPoolSize { ty, descriptor_count: 1 }
             })
@@ -168,10 +160,6 @@ impl GpuAssetServer {
 
     pub fn bindless_set(&self) -> DescriptorSetId {
         self.bindless_set_id
-    }
-
-    pub fn material_buffer_set(&self) -> DescriptorSetId {
-        self.material_buffer_set_id
     }
 
     pub fn descriptor_set_handle(&self, id: DescriptorSetId) -> vk::DescriptorSet {
@@ -205,6 +193,33 @@ impl GpuAssetServer {
         self.bind_uniform_buffer(set, binding, mapped.buffer, mapped.size());
     }
 
+    pub fn bind_storage_buffer(&self, set: DescriptorSetId, binding: u32, buffer: vk::Buffer, size: vk::DeviceSize) {
+        let stored = &self.descriptor_sets[set.0 as usize];
+        debug_assert!(
+            stored.bindings.iter().any(|b| b.binding == binding && matches!(b.kind, BindingKind::StorageBuffer { .. })),
+            "bind_storage_buffer: binding {} в этом сете не объявлен как StorageBuffer",
+            binding
+        );
+
+        let buf_info = vk::DescriptorBufferInfo::default().buffer(buffer).offset(0).range(size);
+        let write = vk::WriteDescriptorSet::default()
+            .dst_set(stored.set)
+            .dst_binding(binding)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .buffer_info(std::slice::from_ref(&buf_info));
+
+        unsafe { self.device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
+    }
+
+    pub fn bind_mapped_storage_buffer<T: Copy>(
+        &self,
+        set: DescriptorSetId,
+        binding: u32,
+        mapped: &crate::vulkan::MappedGpuBuffer<T>,
+    ) {
+        self.bind_storage_buffer(set, binding, mapped.buffer, mapped.size());
+    }
+
     pub fn bind_sampled_image(
         &self,
         set: DescriptorSetId,
@@ -236,9 +251,11 @@ impl GpuAssetServer {
     pub fn create_graphics_pipeline(
         &mut self,
         desc: &PipelineDesc,
-        set_layouts: &[vk::DescriptorSetLayout],
+        set_layouts: &[DescriptorSetId],
     ) -> anyhow::Result<PipelineId> {
-        self.pipeline_cache.create_graphics_pipeline(&self.device, desc, set_layouts)
+        let layouts: Vec<vk::DescriptorSetLayout> =
+            set_layouts.iter().map(|&id| self.descriptor_set_layout(id)).collect();
+        self.pipeline_cache.create_graphics_pipeline(&self.device, desc, &layouts)
     }
 
     pub fn create_fullscreen_pipeline(
@@ -273,16 +290,18 @@ impl GpuAssetServer {
         frag_spv: Option<&[u8]>,
         vertex_layout: &VertexLayout,
         push_constant_ranges: &[PushConstantRange],
-        set_layouts: &[vk::DescriptorSetLayout],
+        set_layouts: &[DescriptorSetId],
         depth_bias: Option<(f32, f32)>,
     ) -> anyhow::Result<PipelineId> {
+        let layouts: Vec<vk::DescriptorSetLayout> =
+            set_layouts.iter().map(|&id| self.descriptor_set_layout(id)).collect();
         self.pipeline_cache.create_depth_only_pipeline(
             &self.device,
             vert_spv,
             frag_spv,
             vertex_layout,
             push_constant_ranges,
-            set_layouts,
+            &layouts,
             depth_bias,
         )
     }
@@ -358,44 +377,31 @@ impl GpuAssetServer {
         id
     }
 
-    pub fn register_material_gpu(
+    /// Регистрирует непрозрачный payload материала, произведённый загрузчиком,
+    /// вместе с ролями его текстур. Ядро не интерпретирует содержимое payload'а —
+    /// это дело рендер-пайплайна (см. `get_material::<T>`).
+    pub fn register_material_payload(
         &mut self,
         handle: MaterialHandle,
-        base_color: [f32; 4],
-        metallic: f32,
-        roughness: f32,
-        emissive: [f32; 4],
-        texture_slots: Vec<(TextureSlot, TextureHandle)>,
-        _name: String,
+        payload: Box<dyn MaterialPayload>,
+        texture_slots: Vec<(String, TextureHandle)>,
     ) {
-        let idx = handle.0 as usize;
-        if self.materials.len() <= idx {
-            self.materials.resize(idx + 1, MaterialData::default_white());
-        }
-        let mut tex0 = [0u32; 4];
-        let mut tex1 = [0u32; 4];
-        for (slot, tex_handle) in texture_slots {
-            let bindless_slot = self.texture_slot(tex_handle);
-            match slot.index() {
-                i @ 0..=3 => tex0[i] = bindless_slot,
-                i => tex1[i - 4] = bindless_slot,
-            }
-        }
-        self.materials[idx] = MaterialData {
-            base_color,
-            emissive,
-            metallic,
-            roughness,
-            _pad: [0.0; 2],
-            tex_indices0: tex0,
-            tex_indices1: tex1,
-        };
+        self.material_payloads.insert(handle, payload);
+        self.material_textures.insert(handle, texture_slots);
     }
 
-    pub fn upload_materials_from_render_world(&self, _rw: &RenderWorld) {
-        if !self.materials.is_empty() {
-            self.material_buffer.upload(&self.materials);
-        }
+    /// Даункаст payload'а материала к конкретному типу, который умеет
+    /// готовить конкретный рендер-пайплайн.
+    pub fn get_material<T: 'static>(&self, handle: MaterialHandle) -> Option<&T> {
+        self.material_payloads.get(&handle)?.as_any().downcast_ref::<T>()
+    }
+
+    pub fn material_textures(&self, handle: MaterialHandle) -> &[(String, TextureHandle)] {
+        self.material_textures.get(&handle).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    pub fn material_handles(&self) -> impl Iterator<Item = MaterialHandle> + '_ {
+        self.material_payloads.keys().copied()
     }
 
     pub fn get_gpu_mesh(&self, handle: MeshHandle) -> Option<&GpuMesh> {
