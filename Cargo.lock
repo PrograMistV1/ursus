@@ -566,15 +566,36 @@ dependencies = [
  "env_logger",
  "etagere",
  "glam",
- "gltf",
  "hecs",
  "image",
  "log",
  "puffin",
  "puffin_http",
  "raw-window-handle",
- "tobj",
  "winit",
+]
+
+[[package]]
+name = "engine-gltf-loader"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine-core",
+ "glam",
+ "gltf",
+ "image",
+ "log",
+]
+
+[[package]]
+name = "engine-obj-loader"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine-core",
+ "glam",
+ "log",
+ "tobj",
 ]
 
 [[package]]
@@ -584,6 +605,8 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "engine-core",
+ "engine-gltf-loader",
+ "engine-obj-loader",
  "glam",
  "log",
  "resvg",

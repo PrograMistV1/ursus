@@ -26,6 +26,10 @@ impl App for MyApp {
         PipelineFactory::of::<LoadingPipeline>()
     }
 
+    fn register_loaders(registry: &mut engine_core::assets::loader_registry::LoaderRegistry) {
+        engine_pipelines::register_builtin_loaders(registry);
+    }
+
     fn on_start(&mut self, ctx: &mut EngineContext) {
         self.sponza = Some(ctx.cpu_assets.load_mesh_async("assets/sponza/glTF/Sponza.gltf"));
 

@@ -1,5 +1,4 @@
 use engine_core::assets::gpu_server::GpuAssetServer;
-use engine_core::assets::loaders::{PbrMetallicRoughness, UnlitMaterial};
 use engine_core::components::mesh::MaterialHandle;
 use engine_core::render::gfx::{BufferUsage, DescriptorSetDesc, DescriptorSetId, ShaderStage};
 use engine_core::vulkan::MappedGpuBuffer;
@@ -61,16 +60,28 @@ impl MaterialBuffer {
 }
 
 pub fn resolve_material(gpu: &GpuAssetServer, handle: MaterialHandle) -> MaterialData {
-    if let Some(pbr) = gpu.get_material::<PbrMetallicRoughness>(handle) {
-        return pack_pbr(gpu, handle, pbr);
+    #[cfg(feature = "gltf-loader")]
+    {
+        use engine_gltf_loader::{PbrMetallicRoughness, UnlitMaterial};
+        if let Some(pbr) = gpu.get_material::<PbrMetallicRoughness>(handle) {
+            return pack_pbr(gpu, handle, pbr);
+        }
+        if let Some(unlit) = gpu.get_material::<UnlitMaterial>(handle) {
+            return pack_unlit(gpu, handle, unlit);
+        }
     }
-    if let Some(unlit) = gpu.get_material::<UnlitMaterial>(handle) {
-        return pack_unlit(gpu, handle, unlit);
-    }
+    #[cfg(not(feature = "gltf-loader"))]
+    let _ = handle;
+
     MaterialData::default_white()
 }
 
-fn pack_pbr(gpu: &GpuAssetServer, handle: MaterialHandle, m: &PbrMetallicRoughness) -> MaterialData {
+#[cfg(feature = "gltf-loader")]
+fn pack_pbr(
+    gpu: &GpuAssetServer,
+    handle: MaterialHandle,
+    m: &engine_gltf_loader::PbrMetallicRoughness,
+) -> MaterialData {
     let slots = gpu.material_textures(handle);
     let find = |role: &str| slots.iter().find(|(r, _)| r == role).map(|(_, h)| gpu.texture_slot(*h)).unwrap_or(0);
     MaterialData {
@@ -89,7 +100,8 @@ fn pack_pbr(gpu: &GpuAssetServer, handle: MaterialHandle, m: &PbrMetallicRoughne
     }
 }
 
-fn pack_unlit(gpu: &GpuAssetServer, handle: MaterialHandle, m: &UnlitMaterial) -> MaterialData {
+#[cfg(feature = "gltf-loader")]
+fn pack_unlit(gpu: &GpuAssetServer, handle: MaterialHandle, m: &engine_gltf_loader::UnlitMaterial) -> MaterialData {
     let slots = gpu.material_textures(handle);
     let base_color_tex = slots.iter().find(|(r, _)| r == "base_color").map(|(_, h)| gpu.texture_slot(*h)).unwrap_or(0);
     MaterialData {

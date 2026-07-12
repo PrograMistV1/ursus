@@ -340,7 +340,7 @@ impl GpuAssetServer {
         pixels: &[u8],
         width: u32,
         height: u32,
-        format: vk::Format,
+        format: Format,
         name: &str,
     ) -> anyhow::Result<()> {
         let tex = GpuTexture::upload(
@@ -352,7 +352,7 @@ impl GpuAssetServer {
             pixels,
             width,
             height,
-            Format::from_vk(format),
+            format,
             name,
         )?;
         let slot = self.bindless.alloc_slot(tex.view);

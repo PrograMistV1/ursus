@@ -1,5 +1,6 @@
 use crate::assets::material::MaterialPayload;
 use crate::assets::mesh::CpuMesh;
+use crate::render::gfx::Format;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -7,7 +8,7 @@ pub struct LoadedTexture {
     pub pixels: Vec<u8>,
     pub width: u32,
     pub height: u32,
-    pub format: ash::vk::Format,
+    pub format: Format,
 }
 
 pub struct LoadedMaterial {
@@ -52,6 +53,9 @@ impl LoaderRegistry {
     pub fn register_arc(&mut self, loader: Arc<dyn AssetLoader>) {
         for ext in loader.extensions() {
             if let Some(existing) = self.find(ext) {
+                if existing.name() == loader.name() {
+                    return;
+                }
                 log::warn!(
                     "LoaderRegistry: расширение '{}' уже обрабатывается '{}', переопределяется '{}'",
                     ext,

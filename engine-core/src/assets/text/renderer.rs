@@ -2,8 +2,8 @@ use crate::assets::cpu_server::TextureHandle;
 use crate::assets::text::atlas::TextAtlas;
 use crate::assets::text::atlas::ATLAS_SIZE;
 use crate::assets::upload::GpuUploadRequest;
+use crate::render::gfx::Format;
 use crate::render::world::PreparedUiDrawList;
-use ash::vk;
 use cosmic_text::{fontdb, Attrs, Buffer, Family, FontSystem, LayoutGlyph, Metrics, Shaping, SwashCache, SwashContent};
 use glam::Vec2;
 use std::collections::{HashMap, HashSet};
@@ -173,7 +173,7 @@ impl TextRenderer {
                     pixels: page.pixels.clone(),
                     width: ATLAS_SIZE as u32,
                     height: ATLAS_SIZE as u32,
-                    format: vk::Format::R8_UNORM,
+                    format: Format::R8Unorm,
                     name: format!("text_atlas_{idx}"),
                 })
                 .ok();

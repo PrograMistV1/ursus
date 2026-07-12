@@ -2,7 +2,6 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-use crate::assets::builtin_loaders::{GltfLoader, ObjLoader};
 use crate::assets::loader_registry::LoaderRegistry;
 
 use winit::{
@@ -29,6 +28,11 @@ pub trait App {
         Self: Sized,
     {
         PipelineFactory::empty()
+    }
+    fn register_loaders(_registry: &mut LoaderRegistry)
+    where
+        Self: Sized,
+    {
     }
     fn on_start(&mut self, ctx: &mut EngineContext);
     fn on_update(&mut self, ctx: &mut EngineContext, dt: f32);
@@ -76,11 +80,6 @@ impl EngineContext {
     where
         P: RenderPipeline + Default + 'static,
     {
-        let mut registry = LoaderRegistry::new();
-        P::register_loaders(&mut registry);
-        for loader in registry.into_loaders() {
-            self.cpu_assets.register_loader_arc(loader);
-        }
         self.send_render_cmd(RenderCommand::SetPipeline(PipelineFactory::of::<P>()));
     }
 
@@ -117,9 +116,7 @@ impl Engine {
         let initial_pipeline = A::initial_pipeline();
 
         let mut loader_registry = LoaderRegistry::new();
-        loader_registry.register(ObjLoader);
-        loader_registry.register(GltfLoader);
-        initial_pipeline.register_loaders(&mut loader_registry);
+        A::register_loaders(&mut loader_registry);
 
         let event_loop = EventLoop::new()?;
         event_loop.set_control_flow(ControlFlow::Poll);

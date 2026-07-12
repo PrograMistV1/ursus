@@ -1,52 +1,14 @@
-use crate::assets::mesh::{CpuMesh, Vertex};
-use crate::assets::MaterialPayload;
+use crate::materials::{PbrMetallicRoughness, UnlitMaterial};
+use crate::tangents::compute_tangents;
+use engine_core::assets::loader_registry::{
+    AssetLoader, LoadedMaterial, LoadedMeshSource, LoadedPrimitive, LoadedTexture,
+};
+use engine_core::assets::material::MaterialPayload;
+use engine_core::assets::mesh::{CpuMesh, Vertex};
+use engine_core::render::gfx::Format;
 use glam::{Vec2, Vec3};
 use image::DynamicImage;
-
-pub fn load_obj(path: &std::path::Path) -> anyhow::Result<CpuMesh> {
-    let (models, _materials) =
-        tobj::load_obj(path, &tobj::LoadOptions { triangulate: true, single_index: true, ..Default::default() })?;
-
-    if models.is_empty() {
-        anyhow::bail!("OBJ файл не содержит мешей: {:?}", path);
-    }
-
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-    let mut base = 0u32;
-
-    for model in &models {
-        let mesh = &model.mesh;
-        let has_normals = !mesh.normals.is_empty();
-        let has_uvs = !mesh.texcoords.is_empty();
-        let vertex_count = mesh.positions.len() / 3;
-
-        for i in 0..vertex_count {
-            let pos = Vec3::new(mesh.positions[i * 3], mesh.positions[i * 3 + 1], mesh.positions[i * 3 + 2]);
-            let normal = if has_normals {
-                Vec3::new(mesh.normals[i * 3], mesh.normals[i * 3 + 1], mesh.normals[i * 3 + 2])
-            } else {
-                Vec3::Y
-            };
-            let uv = if has_uvs {
-                Vec2::new(mesh.texcoords[i * 2], 1.0 - mesh.texcoords[i * 2 + 1])
-            } else {
-                Vec2::ZERO
-            };
-
-            vertices.push(Vertex::new(pos, normal, uv));
-        }
-
-        for &idx in &mesh.indices {
-            indices.push(base + idx);
-        }
-        base += vertex_count as u32;
-    }
-
-    let name = models[0].name.clone();
-    log::info!("OBJ '{}': {} вершин, {} индексов", name, vertices.len(), indices.len());
-    Ok(CpuMesh::new(name, vertices, indices))
-}
+use std::path::Path;
 
 pub struct GltfPrimitive {
     pub mesh: CpuMesh,
@@ -57,20 +19,7 @@ pub struct GltfPrimitive {
     pub node_scale: [f32; 3],
 }
 
-pub struct PbrMetallicRoughness {
-    pub name: String,
-    pub base_color: [f32; 4],
-    pub metallic: f32,
-    pub roughness: f32,
-    pub emissive: [f32; 3],
-}
-
-pub struct UnlitMaterial {
-    pub name: String,
-    pub base_color: [f32; 4],
-}
-
-pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
+pub fn load_gltf(path: &Path) -> anyhow::Result<Vec<GltfPrimitive>> {
     let (gltf, buffers, images) = gltf::import(path)?;
     let mut primitives = Vec::new();
 
@@ -132,7 +81,7 @@ pub fn load_gltf(path: &std::path::Path) -> anyhow::Result<Vec<GltfPrimitive>> {
             log::debug!("glTF '{}': {} вершин, {} индексов", mesh_name, vertices.len(), indices.len());
 
             let mut tex_data: Vec<(String, Vec<u8>, u32, u32, String, usize)> = Vec::new();
-            let mut mat_out = None;
+            let mut mat_out: Option<Box<dyn MaterialPayload>> = None;
 
             if let Some(mat) = primitive.material().index().map(|_| primitive.material()) {
                 let pbr = mat.pbr_metallic_roughness();
@@ -257,54 +206,43 @@ fn image_bytes(images: &[gltf::image::Data], index: usize) -> Option<(Vec<u8>, u
     Some((rgba.into_raw(), w, h))
 }
 
-pub fn compute_tangents(positions: &[Vec3], normals: &[Vec3], uvs: &[Vec2], indices: &[u32]) -> Vec<[f32; 4]> {
-    let n = positions.len();
-    let mut tan1 = vec![Vec3::ZERO; n];
-    let mut tan2 = vec![Vec3::ZERO; n];
+#[derive(Default)]
+pub struct GltfLoader;
 
-    for tri in indices.chunks_exact(3) {
-        let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
-
-        let e1 = positions[i1] - positions[i0];
-        let e2 = positions[i2] - positions[i0];
-        let du1 = uvs[i1].x - uvs[i0].x;
-        let dv1 = uvs[i1].y - uvs[i0].y;
-        let du2 = uvs[i2].x - uvs[i0].x;
-        let dv2 = uvs[i2].y - uvs[i0].y;
-
-        let r = du1 * dv2 - du2 * dv1;
-        if r.abs() < 1e-7 {
-            continue;
-        }
-        let f = 1.0 / r;
-
-        let sdir = (e1 * dv2 - e2 * dv1) * f;
-        let tdir = (e2 * du1 - e1 * du2) * f;
-
-        tan1[i0] += sdir;
-        tan1[i1] += sdir;
-        tan1[i2] += sdir;
-        tan2[i0] += tdir;
-        tan2[i1] += tdir;
-        tan2[i2] += tdir;
+impl AssetLoader for GltfLoader {
+    fn extensions(&self) -> &[&str] {
+        &["gltf", "glb"]
     }
 
-    positions
-        .iter()
-        .enumerate()
-        .map(|(i, _)| {
-            let n = normals[i];
-            let t = tan1[i];
-            let tangent = (t - n * n.dot(t)).normalize_or_zero();
-            let w = if n.cross(t).dot(tan2[i]) < 0.0 { -1.0f32 } else { 1.0f32 };
-            [tangent.x, tangent.y, tangent.z, w]
-        })
-        .collect()
-}
+    fn load(&self, path: &Path) -> anyhow::Result<LoadedMeshSource> {
+        let primitives = load_gltf(path)?;
+        let primitives = primitives
+            .into_iter()
+            .map(|p| LoadedPrimitive {
+                mesh: p.mesh,
+                material: p.material.map(|payload| LoadedMaterial {
+                    payload,
+                    textures: p
+                        .textures
+                        .into_iter()
+                        .map(|(role, pixels, width, height, _name, _image_index)| {
+                            let format = match role.as_str() {
+                                "base_color" | "emissive" => Format::Rgba8Srgb,
+                                _ => Format::Rgba8Unorm,
+                            };
+                            (role, LoadedTexture { pixels, width, height, format })
+                        })
+                        .collect(),
+                }),
+                node_translation: p.node_translation,
+                node_rotation: p.node_rotation,
+                node_scale: p.node_scale,
+            })
+            .collect();
+        Ok(LoadedMeshSource { primitives })
+    }
 
-pub fn compute_tangents_flat(vertices: &[Vertex], indices: &[u32]) -> Vec<[f32; 4]> {
-    let positions: Vec<Vec3> = vertices.iter().map(|v| Vec3::from(v.position)).collect();
-    let normals: Vec<Vec3> = vertices.iter().map(|v| Vec3::from(v.normal)).collect();
-    let uvs: Vec<Vec2> = vertices.iter().map(|v| Vec2::from(v.uv)).collect();
-    compute_tangents(&positions, &normals, &uvs, indices)
+    fn name(&self) -> &str {
+        "gltf (engine-gltf-loader)"
+    }
 }

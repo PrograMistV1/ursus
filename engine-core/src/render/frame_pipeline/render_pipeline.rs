@@ -1,5 +1,4 @@
 use crate::assets::gpu_server::GpuAssetServer;
-use crate::assets::loader_registry::LoaderRegistry;
 use crate::render::gfx::format::ImageLayout;
 use crate::render::gfx::CommandEncoder;
 use crate::render::graph::{pass, RenderGraph};
@@ -20,12 +19,6 @@ pub trait RenderPipeline: Send + 'static {
     ) -> anyhow::Result<PipelineHandles>
     where
         Self: Sized;
-
-    fn register_loaders(_registry: &mut LoaderRegistry)
-    where
-        Self: Sized,
-    {
-    }
 
     fn on_resize(&mut self, _graph: &mut RenderGraph, _width: u32, _height: u32) -> anyhow::Result<()> {
         Ok(())

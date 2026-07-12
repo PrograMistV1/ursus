@@ -5,6 +5,7 @@ use crate::assets::text::{FontId, TextRenderer};
 use crate::assets::upload::GpuUploadRequest;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::components::transform::Transform;
+use crate::render::gfx::Format;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -39,9 +40,9 @@ impl LoadProgress {
 const TEXTURE_HASH_SAMPLE_COUNT: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct TextureContentKey(u64, usize, u32, u32, u32 /* vk::Format as u32 */);
+struct TextureContentKey(u64, usize, u32, u32, Format);
 
-fn hash_texture(pixels: &[u8], width: u32, height: u32, format: ash::vk::Format) -> TextureContentKey {
+fn hash_texture(pixels: &[u8], width: u32, height: u32, format: Format) -> TextureContentKey {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
     let len = pixels.len();
@@ -58,7 +59,7 @@ fn hash_texture(pixels: &[u8], width: u32, height: u32, format: ash::vk::Format)
         hasher.write(&pixels[len - 32.min(len)..]);
     }
 
-    TextureContentKey(hasher.finish(), len, width, height, format.as_raw() as u32)
+    TextureContentKey(hasher.finish(), len, width, height, format)
 }
 
 pub struct CpuAssetServer {
@@ -118,7 +119,7 @@ impl CpuAssetServer {
         pixels: Vec<u8>,
         width: u32,
         height: u32,
-        format: ash::vk::Format,
+        format: Format,
         name: String,
     ) -> TextureHandle {
         let key = hash_texture(&pixels, width, height, format);

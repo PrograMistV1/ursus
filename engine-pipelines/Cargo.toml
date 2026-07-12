@@ -5,8 +5,15 @@ edition = "2021"
 
 [dependencies]
 engine-core = { path = "../engine-core" }
+engine-gltf-loader = { path = "../engine-gltf-loader", optional = true }
+engine-obj-loader = { path = "../engine-obj-loader", optional = true }
 anyhow = "1"
 log = "0.4"
 glam = "0.33.0"
 resvg = "0.47.0"
 bytemuck = "1.25.0"
+
+[features]
+default = ["gltf-loader", "obj-loader"]
+gltf-loader = ["dep:engine-gltf-loader"]
+obj-loader = ["dep:engine-obj-loader"]

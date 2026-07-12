@@ -1,0 +1,11 @@
+[package]
+name = "engine-obj-loader"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+tobj = "4.0.4"
+anyhow = "1"
+glam = "0.33.0"
+log = "0.4"

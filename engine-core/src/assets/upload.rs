@@ -2,7 +2,7 @@ use crate::assets::material::MaterialPayload;
 use crate::assets::mesh::Vertex;
 use crate::assets::TextureHandle;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
-use ash::vk;
+use crate::render::gfx::Format;
 
 pub enum GpuUploadRequest {
     Mesh {
@@ -16,7 +16,7 @@ pub enum GpuUploadRequest {
         pixels: Vec<u8>,
         width: u32,
         height: u32,
-        format: vk::Format,
+        format: Format,
         name: String,
     },
     Material {

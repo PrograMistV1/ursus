@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "engine-core",
+    "engine-gltf-loader",
+    "engine-obj-loader",
     "engine-pipelines",
     "engine-template",
 ]

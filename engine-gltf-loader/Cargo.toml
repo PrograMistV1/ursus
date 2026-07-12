@@ -1,0 +1,12 @@
+[package]
+name = "engine-gltf-loader"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+gltf = { version = "1.4.1", features = ["image", "KHR_materials_unlit"] }
+image = { version = "0.25.10", features = ["png", "jpeg"], default-features = false }
+anyhow = "1"
+glam = "0.33.0"
+log = "0.4"
