@@ -1,9 +1,9 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/ursus-light.svg">
-  <source media="(prefers-color-scheme: light)" srcset="assets/ursus.svg">
-  <img src="assets/ursus.svg" width="240" alt="ursus logo">
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/ursus-light.svg">
+  <source media="(prefers-color-scheme: light)" srcset=".github/assets/ursus.svg">
+  <img src=".github/assets/ursus.svg" width="240" alt="ursus logo">
 </picture>
 
 # URSUS
@@ -29,7 +29,7 @@ deferred rendering pipeline, and a threaded game/render split.
 ```text
 engine-core/       the engine itself: ECS, asset pipeline, Vulkan abstraction, render graph
 engine-pipelines/    a batteries-included deferred renderer + built-in shaders, built on engine-core
-engine-template/   minimal example application showing how to use the engine
+engine-demo/   minimal example application showing how to use the engine
 ```
 
 `engine-core` has no opinion about *how* you render things - it gives you the plumbing (device/swapchain setup, render
@@ -68,8 +68,8 @@ pass("lighting")
 .bind_sampled(h_gbuffer_normal, lighting_pass.descriptor_set, 1, lighting_pass.sampler)
 .bind_sampled(h_depth, lighting_pass.descriptor_set, 2, lighting_pass.sampler)
 .bind_sampled(h_shadow_map, lighting_pass.descriptor_set, 4, lighting_pass.shadow_sampler)
-.record(move |enc, rw, gpu| lighting_pass.record(enc, rw, gpu, h_hdr))
-.build(graph, &gpu_assets);
+.record( move | enc, rw, gpu| lighting_pass.record(enc, rw, gpu, h_hdr))
+.build(graph, & gpu_assets);
 ```
 
 `RenderGraph::compile()` builds a dependency graph from these read/write accesses, topologically sorts the passes, and
@@ -99,14 +99,14 @@ Requires the **Vulkan SDK** installed with `glslc` on your `PATH` - shaders are 
 
 ```bash
 cargo build --release
-cargo run -p engine-template
+cargo run -p engine-demo
 ```
 
 If `glslc` isn't found, the build fails immediately with a clear panic rather than silently skipping shader compilation.
 
 ## 🎮 Example usage
 
-See `engine-template/src/main.rs` for a full example. Minimal shape:
+See `engine-demo/src/main.rs` for a full example. Minimal shape:
 
 ```rust
 struct MyApp;
@@ -146,7 +146,8 @@ Engine architecture (`engine-core`):
 - [ ] **Draw call batching / instancing** - GPU instancing for identical meshes instead of one draw call per instance
 - [ ] **Resource aliasing in the render graph** - reuse memory across transient resources with non-overlapping lifetimes
 - [ ] **Runtime debug UI** - GPU timings, G-buffer view, live-tweaking of render parameters
-- [ ] **`vertex_format!` proc-macro** - derive `VertexFormat` (layout/offsets/stride) for custom vertex structs instead of a hand-written `impl`
+- [ ] **`vertex_format!` proc-macro** - derive `VertexFormat` (layout/offsets/stride) for custom vertex structs instead
+  of a hand-written `impl`
 
 Rendering backlog (`engine-pipelines`):
 

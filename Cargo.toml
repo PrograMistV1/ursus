@@ -4,7 +4,7 @@ members = [
     "engine-gltf-loader",
     "engine-obj-loader",
     "engine-pipelines",
-    "engine-template",
+    "engine-demo",
 ]
 resolver = "2"
 

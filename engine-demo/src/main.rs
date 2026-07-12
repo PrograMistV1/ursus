@@ -31,7 +31,8 @@ impl App for MyApp {
     }
 
     fn on_start(&mut self, ctx: &mut EngineContext) {
-        self.sponza = Some(ctx.cpu_assets.load_mesh_async("assets/sponza/glTF/Sponza.gltf"));
+        let sponza_path = assets_dir().join("sponza/glTF/Sponza.gltf");
+        self.sponza = Some(ctx.cpu_assets.load_mesh_async(sponza_path));
 
         ctx.world
             .spawn()
@@ -92,6 +93,14 @@ impl App for MyApp {
     fn on_stop(&mut self, _ctx: &mut EngineContext) {
         log::info!("Stopped after {} ticks", self.tick);
     }
+}
+
+fn assets_dir() -> std::path::PathBuf {
+    std::env::current_exe()
+        .expect("не удалось получить путь к исполняемому файлу")
+        .parent()
+        .expect("у исполняемого файла должна быть родительская директория")
+        .join("assets")
 }
 
 fn main() -> anyhow::Result<()> {

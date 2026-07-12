@@ -4,6 +4,7 @@ use crate::assets::text::atlas::ATLAS_SIZE;
 use crate::assets::upload::GpuUploadRequest;
 use crate::render::gfx::Format;
 use crate::render::world::PreparedUiDrawList;
+use cosmic_text::fontdb::Query;
 use cosmic_text::{fontdb, Attrs, Buffer, Family, FontSystem, LayoutGlyph, Metrics, Shaping, SwashCache, SwashContent};
 use glam::Vec2;
 use std::collections::{HashMap, HashSet};
@@ -49,6 +50,12 @@ impl TextRenderer {
 
         self.families.insert(FontId(id), family);
         FontId(id)
+    }
+
+    pub fn find_system_font(&self, family: Family) -> Option<FontId> {
+        let db = self.font_system.db();
+        let query = Query { families: &[family], ..Query::default() };
+        db.query(&query).map(FontId)
     }
 
     pub fn measure(&mut self, font: FontId, text: &str, px: f32) -> Vec2 {

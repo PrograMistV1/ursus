@@ -6,13 +6,12 @@ use crate::assets::upload::GpuUploadRequest;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::components::transform::Transform;
 use crate::render::gfx::Format;
+use cosmic_text::fontdb::Family;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
-
-const DEFAULT_FONT_BYTES: &[u8] = include_bytes!("../../../assets/fonts/RobotoMono.ttf");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextureHandle(pub u32);
@@ -83,8 +82,11 @@ pub struct CpuAssetServer {
 
 impl CpuAssetServer {
     pub fn new(registry: LoaderRegistry) -> Self {
-        let mut text_renderer = TextRenderer::new();
-        let default_font = text_renderer.load_font(DEFAULT_FONT_BYTES);
+        let text_renderer = TextRenderer::new();
+        let default_font = text_renderer
+            .find_system_font(Family::Monospace)
+            .or_else(|| text_renderer.find_system_font(Family::SansSerif))
+            .expect("Не найден ни один системный шрифт (Monospace/SansSerif) - установите шрифты в системе");
         Self {
             cpu_meshes: Vec::new(),
             next_material_handle: 0,

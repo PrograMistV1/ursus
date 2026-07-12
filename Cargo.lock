@@ -616,6 +616,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine-demo"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine-core",
+ "engine-pipelines",
+ "glam",
+ "log",
+]
+
+[[package]]
 name = "engine-gltf-loader"
 version = "0.1.0"
 dependencies = [
@@ -650,17 +661,6 @@ dependencies = [
  "glam",
  "log",
  "resvg",
-]
-
-[[package]]
-name = "engine-template"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "engine-core",
- "engine-pipelines",
- "glam",
- "log",
 ]
 
 [[package]]
