@@ -1,7 +1,7 @@
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
-
+use std::time::Instant;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -15,6 +15,7 @@ use crate::assets::upload::GpuUploadRequest;
 use crate::ecs::GameWorld;
 use crate::render::extract::{default_extract_schedule, ExtractSchedule};
 use crate::render::frame_pipeline::render_pipeline::RenderPipeline;
+use crate::render::frame_stats::FrameStats;
 use crate::render::thread::command::{PipelineFactory, RenderCommand};
 use crate::render::thread::{render_thread_main, WindowHandles};
 use crate::render::triple_buffer::TripleBuffer;
@@ -49,6 +50,7 @@ pub struct EngineContext {
     upload_tx: Sender<GpuUploadRequest>,
     triple_buf: Arc<TripleBuffer<RenderWorld>>,
     pub(crate) output_size: (f32, f32),
+    frame_stats: FrameStats,
 }
 
 impl EngineContext {
@@ -58,6 +60,7 @@ impl EngineContext {
         triple_buf: Arc<TripleBuffer<RenderWorld>>,
         output_size: (f32, f32),
         loader_registry: LoaderRegistry,
+        frame_stats: FrameStats,
     ) -> anyhow::Result<Self> {
         let cpu_assets = CpuAssetServer::new(loader_registry);
 
@@ -69,7 +72,12 @@ impl EngineContext {
             upload_tx,
             triple_buf,
             output_size,
+            frame_stats,
         })
+    }
+
+    pub fn frame_stats(&self) -> &FrameStats {
+        &self.frame_stats
     }
 
     pub fn send_render_cmd(&self, cmd: RenderCommand) {
@@ -108,6 +116,7 @@ impl Engine {
     pub fn run<A: App + 'static>(app: A) -> anyhow::Result<()> {
         env_logger::builder()
             .filter_level(log::LevelFilter::Info)
+            .filter_module("cosmic_text::font::fallback", log::LevelFilter::Off)
             .format(|buf, record| {
                 use std::io::Write;
 
@@ -167,11 +176,8 @@ struct RunningState {
     window: Window,
     ctx: EngineContext,
     render_thread: JoinHandle<()>,
-    last: std::time::Instant,
-    fps_timer: std::time::Instant,
-    fps_frames: u32,
+    last: Instant,
     tick_accumulator: f32,
-    paced_frame_time: f64,
 }
 
 enum EngineState {
@@ -220,8 +226,11 @@ impl ApplicationHandler for EngineHandler {
 
         let loader_registry = self.loader_registry.take().expect("loader_registry already used");
 
-        let mut ctx = EngineContext::new(cmd_tx, upload_tx, triple_buf, output_size, loader_registry)
-            .expect("Failed to create EngineContext");
+        let frame_stats = FrameStats::new();
+
+        let mut ctx =
+            EngineContext::new(cmd_tx, upload_tx, triple_buf, output_size, loader_registry, frame_stats.clone())
+                .expect("Failed to create EngineContext");
 
         self.app.on_start(&mut ctx);
         ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);
@@ -233,7 +242,16 @@ impl ApplicationHandler for EngineHandler {
         let render_thread = std::thread::Builder::new()
             .name("render".into())
             .spawn(move || {
-                render_thread_main(handles, flags, initial_pipeline, triple_buf_render, cmd_rx, upload_rx, ready_tx);
+                render_thread_main(
+                    handles,
+                    flags,
+                    initial_pipeline,
+                    triple_buf_render,
+                    frame_stats,
+                    cmd_rx,
+                    upload_rx,
+                    ready_tx,
+                );
             })
             .expect("Failed to spawn render thread");
 
@@ -256,11 +274,8 @@ impl ApplicationHandler for EngineHandler {
                         window,
                         ctx,
                         render_thread,
-                        last: std::time::Instant::now(),
-                        fps_timer: std::time::Instant::now(),
-                        fps_frames: 0,
+                        last: Instant::now(),
                         tick_accumulator: 0.0,
-                        paced_frame_time: 1.0 / 120.0,
                     }));
                 }
                 Err(_) => {
@@ -297,18 +312,11 @@ impl ApplicationHandler for EngineHandler {
             }
 
             WindowEvent::RedrawRequested => {
-                let frame_start = std::time::Instant::now();
-
                 state.ctx.poll_assets();
 
-                let now = std::time::Instant::now();
+                let now = Instant::now();
                 let dt = now.duration_since(state.last).as_secs_f32().min(0.1);
                 state.last = now;
-                state.fps_frames += 1;
-                if now.duration_since(state.fps_timer).as_secs_f32() >= 1.0 {
-                    state.fps_frames = 0;
-                    state.fps_timer = now;
-                }
 
                 state.tick_accumulator += dt;
                 while state.tick_accumulator >= TICK_RATE {
@@ -320,14 +328,6 @@ impl ApplicationHandler for EngineHandler {
                 self.app.on_render(&mut state.ctx);
 
                 state.window.request_redraw();
-
-                let render_time = frame_start.elapsed();
-                state.paced_frame_time = state.paced_frame_time * 0.9 + render_time.as_secs_f64() * 0.1;
-                let pace = std::time::Duration::from_secs_f64(state.paced_frame_time * 0.5);
-                let elapsed = frame_start.elapsed();
-                if pace > elapsed + std::time::Duration::from_micros(500) {
-                    std::thread::sleep(pace - elapsed - std::time::Duration::from_micros(500));
-                }
             }
 
             _ => {}

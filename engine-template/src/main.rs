@@ -9,12 +9,12 @@ use glam::{Vec2, Vec3};
 struct MyApp {
     sponza: Option<AsyncMeshHandle>,
     spawned: bool,
-    frame: u64,
+    tick: u64,
 }
 
 impl MyApp {
     fn new() -> Self {
-        Self { sponza: None, spawned: false, frame: 0 }
+        Self { sponza: None, spawned: false, tick: 0 }
     }
 }
 
@@ -43,7 +43,14 @@ impl App for MyApp {
     }
 
     fn on_update(&mut self, ctx: &mut EngineContext, _dt: f32) {
-        self.frame += 1;
+        self.tick += 1;
+
+        if self.tick % 60 == 0 {
+            let fps = ctx.frame_stats().current_fps();
+            for text in ctx.world.inner.query_mut::<&mut UiText>() {
+                text.text = format!("FPS: {:.0}", fps);
+            }
+        }
 
         if !self.spawned && !ctx.cpu_assets.is_loading() {
             if let Some(handle) = &self.sponza {
@@ -71,7 +78,7 @@ impl App for MyApp {
             log::info!("Загрузка завершена - переключились на DefaultPipeline");
         }
 
-        let t = self.frame as f32 * 0.003;
+        let t = self.tick as f32 * 0.003;
         for (cam, _) in ctx.world.inner.query_mut::<(&mut CameraComponent, &ActiveCamera)>() {
             if self.spawned {
                 cam.eye = Vec3::new(t.sin() * 9.0, 2.0, t.cos() * 4.0);
@@ -83,7 +90,7 @@ impl App for MyApp {
     fn on_render(&mut self, _ctx: &mut EngineContext) {}
 
     fn on_stop(&mut self, _ctx: &mut EngineContext) {
-        log::info!("Stopped after {} frames", self.frame);
+        log::info!("Stopped after {} ticks", self.tick);
     }
 }
 

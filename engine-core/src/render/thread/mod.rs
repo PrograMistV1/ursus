@@ -2,11 +2,13 @@ pub mod command;
 
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
+use std::time::Instant;
 
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::upload::GpuUploadRequest;
+use crate::render::frame_stats::FrameStats;
 use crate::render::triple_buffer::TripleBuffer;
 use crate::render::world::RenderWorld;
 use crate::vulkan::VulkanContext;
@@ -26,11 +28,13 @@ pub fn render_thread_main(
     flags: EngineFlags,
     initial_pipeline: PipelineFactory,
     triple_buf: Arc<TripleBuffer<RenderWorld>>,
+    frame_stats: FrameStats,
     cmd_rx: Receiver<RenderCommand>,
     upload_rx: Receiver<GpuUploadRequest>,
     ready_tx: std::sync::mpsc::SyncSender<()>,
 ) {
-    if let Err(e) = render_loop(handles, flags, initial_pipeline, triple_buf, cmd_rx, upload_rx, ready_tx) {
+    if let Err(e) = render_loop(handles, flags, initial_pipeline, triple_buf, frame_stats, cmd_rx, upload_rx, ready_tx)
+    {
         log::error!("Render thread exited with error: {e}");
     }
 }
@@ -40,6 +44,7 @@ fn render_loop(
     flags: EngineFlags,
     initial_pipeline: PipelineFactory,
     triple_buf: Arc<TripleBuffer<RenderWorld>>,
+    frame_stats: FrameStats,
     cmd_rx: Receiver<RenderCommand>,
     upload_rx: Receiver<GpuUploadRequest>,
     ready_tx: std::sync::mpsc::SyncSender<()>,
@@ -60,6 +65,7 @@ fn render_loop(
 
     let mut render_idx: usize = 2;
     let mut initialized = false;
+    let mut last_present = Instant::now();
 
     let _ = ready_tx.send(());
 
@@ -119,6 +125,15 @@ fn render_loop(
         let render_world = triple_buf.render_slot(render_idx);
 
         let needs_recreate = renderer.draw_frame(&vk, render_world, &mut gpu_assets)?;
+
+        let now = Instant::now();
+        let frame_ms = now.duration_since(last_present).as_secs_f32() * 1000.0;
+        last_present = now;
+        frame_stats.record_cpu_frame(frame_ms);
+
+        if let Some(times) = renderer.last_frame_times() {
+            frame_stats.record_gpu_times(times.clone());
+        }
 
         if needs_recreate {
             let sw = vk.swapchain.as_ref().unwrap();

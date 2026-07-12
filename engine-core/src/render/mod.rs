@@ -1,5 +1,6 @@
 pub mod extract;
 pub mod frame_pipeline;
+pub mod frame_stats;
 pub mod gfx;
 pub mod graph;
 pub mod resource;
