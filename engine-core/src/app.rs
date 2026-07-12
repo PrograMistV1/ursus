@@ -106,7 +106,22 @@ pub struct Engine;
 
 impl Engine {
     pub fn run<A: App + 'static>(app: A) -> anyhow::Result<()> {
-        env_logger::builder().filter_level(log::LevelFilter::Info).parse_default_env().init();
+        env_logger::builder()
+            .filter_level(log::LevelFilter::Info)
+            .format(|buf, record| {
+                use std::io::Write;
+
+                let parts: Vec<&str> = record.target().split("::").collect();
+                let start = parts.len().saturating_sub(2);
+                let short_target = parts[start..].join("::");
+
+                let ts = buf.timestamp().to_string();
+                let ts = ts.split('T').nth(1).unwrap_or(&ts).trim_end_matches('Z');
+
+                writeln!(buf, "[{} {:<5} {}] {}", ts, record.level(), short_target, record.args())
+            })
+            .parse_default_env()
+            .init();
 
         let server_addr = format!("127.0.0.1:{}", puffin_http::DEFAULT_PORT);
         let _puffin_server = puffin_http::Server::new(&server_addr)?;
