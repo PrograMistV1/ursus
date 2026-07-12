@@ -33,7 +33,7 @@ impl GpuTimestampPool {
         let props = unsafe { instance.get_physical_device_properties(physical_device) };
         let timestamp_period = props.limits.timestamp_period;
         if timestamp_period == 0.0 {
-            anyhow::bail!("GPU не поддерживает timestamp queries");
+            anyhow::bail!("GPU does not support timestamp queries");
         }
 
         let query_count = (pass_names.len() * 2) as u32;
@@ -53,7 +53,7 @@ impl GpuTimestampPool {
 
         let pools = raw_pools.into_iter().map(|pool| FramePool { pool, submitted_count: 0 }).collect();
 
-        log::info!("GpuTimestampPool: {} frames × {} passes × 2 queries", frames_in_flight, pass_names.len(),);
+        log::debug!("GpuTimestampPool: {} frames x {} passes x 2 queries", frames_in_flight, pass_names.len());
 
         Ok(Self {
             pools,
@@ -91,7 +91,7 @@ impl GpuTimestampPool {
                     self.last_frame = GpuFrameTimes { passes, total_ms: total };
                 }
                 Err(vk::Result::NOT_READY) => {}
-                Err(e) => log::warn!("GpuTimestampPool read: {:?}", e),
+                Err(e) => log::warn!("GpuTimestampPool read failed: {:?}", e),
             }
         }
 

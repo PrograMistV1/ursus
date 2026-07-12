@@ -19,11 +19,11 @@ impl Instance {
 
         let validation_active = validation && Self::has_validation(&entry);
         let layers: Vec<*const i8> = if validation_active {
-            log::info!("Validation layers включены");
+            log::info!("Validation layers enabled");
             vec![c"VK_LAYER_KHRONOS_validation".as_ptr()]
         } else {
             if validation {
-                log::warn!("VK_LAYER_KHRONOS_validation не найден — запуск без валидации");
+                log::warn!("VK_LAYER_KHRONOS_validation not found - running without validation");
             }
             vec![]
         };
@@ -42,7 +42,7 @@ impl Instance {
             .enabled_layer_names(&layers);
 
         let handle = unsafe { entry.create_instance(&create_info, None)? };
-        log::info!("Vulkan instance создан (API 1.3)");
+        log::info!("Vulkan instance created (API 1.3)");
 
         Ok(Self { entry, handle, validation_active })
     }

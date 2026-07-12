@@ -15,6 +15,8 @@ impl FrameSync {
 
 impl Drop for FrameSync {
     fn drop(&mut self) {
-        unsafe { self.device.destroy_fence(self.render_fence, None); }
+        unsafe {
+            self.device.destroy_fence(self.render_fence, None);
+        }
     }
 }

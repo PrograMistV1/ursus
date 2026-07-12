@@ -59,7 +59,7 @@ impl Device {
         let graphics_queue = unsafe { handle.get_device_queue(graphics_family, 0) };
         let present_queue = unsafe { handle.get_device_queue(present_family, 0) };
 
-        log::info!("Logical device создан");
+        log::info!("Logical device created");
 
         Ok(Self { handle, physical, physical_props, graphics_queue, present_queue, graphics_family, present_family })
     }
@@ -108,6 +108,6 @@ impl Device {
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe { self.handle.destroy_device(None) };
-        log::info!("Device уничтожен");
+        log::debug!("Device destroyed");
     }
 }

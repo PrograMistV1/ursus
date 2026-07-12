@@ -109,7 +109,7 @@ impl Swapchain {
             .collect();
         let image_views = image_views?;
 
-        log::debug!(
+        log::info!(
             "Swapchain: {}x{} {:?} ({} images, {:?})",
             extent.width,
             extent.height,
@@ -138,6 +138,6 @@ impl Drop for Swapchain {
             }
             self.loader.destroy_swapchain(self.handle, None);
         }
-        log::info!("Swapchain уничтожен");
+        log::debug!("Swapchain destroyed");
     }
 }

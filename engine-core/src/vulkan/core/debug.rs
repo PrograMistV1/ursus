@@ -23,7 +23,7 @@ impl DebugMessenger {
             .pfn_user_callback(Some(debug_callback));
 
         let handle = unsafe { loader.create_debug_utils_messenger(&create_info, None)? };
-        log::info!("Validation layers активированы");
+        log::info!("Validation layers activated");
 
         Ok(Self { loader, handle })
     }
