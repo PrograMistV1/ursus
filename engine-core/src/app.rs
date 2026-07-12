@@ -2,8 +2,6 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-use crate::assets::loader_registry::LoaderRegistry;
-
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -12,6 +10,7 @@ use winit::{
 };
 
 use crate::assets::cpu_server::CpuAssetServer;
+use crate::assets::loader_registry::LoaderRegistry;
 use crate::assets::upload::GpuUploadRequest;
 use crate::ecs::GameWorld;
 use crate::render::extract::{default_extract_schedule, ExtractSchedule};
@@ -21,6 +20,7 @@ use crate::render::thread::{render_thread_main, WindowHandles};
 use crate::render::triple_buffer::TripleBuffer;
 use crate::render::world::{ExtractedRenderSettings, RenderWorld};
 use crate::vulkan::VulkanContext;
+use crate::EngineFlags;
 
 pub trait App {
     fn initial_pipeline() -> PipelineFactory
@@ -123,10 +123,18 @@ impl Engine {
             .parse_default_env()
             .init();
 
-        let server_addr = format!("127.0.0.1:{}", puffin_http::DEFAULT_PORT);
-        let _puffin_server = puffin_http::Server::new(&server_addr)?;
-        log::info!("Run this to view profiling data:  puffin_viewer {server_addr}");
-        puffin::set_scopes_on(true);
+        let flags = EngineFlags::from_args();
+
+        let _puffin_server = if flags.profile {
+            let server_addr = format!("127.0.0.1:{}", puffin_http::DEFAULT_PORT);
+            let server = puffin_http::Server::new(&server_addr)?;
+            log::info!("Run this to view profiling data: puffin_viewer --url {server_addr}");
+            puffin::set_scopes_on(true);
+            Some(server)
+        } else {
+            puffin::set_scopes_on(false);
+            None
+        };
 
         let initial_pipeline = A::initial_pipeline();
 
@@ -140,6 +148,7 @@ impl Engine {
             app: Box::new(app),
             initial_pipeline: Some(initial_pipeline),
             loader_registry: Some(loader_registry),
+            flags,
             state: None,
         };
         event_loop.run_app(&mut handler)?;
@@ -176,6 +185,7 @@ struct EngineHandler {
     app: Box<dyn App>,
     initial_pipeline: Option<PipelineFactory>,
     loader_registry: Option<LoaderRegistry>,
+    flags: EngineFlags,
     state: Option<EngineState>,
 }
 
@@ -208,7 +218,7 @@ impl ApplicationHandler for EngineHandler {
         let triple_buf = Arc::new(TripleBuffer::<RenderWorld>::new());
         let triple_buf_render = Arc::clone(&triple_buf);
 
-        let loader_registry = self.loader_registry.take().expect("loader_registry уже использован");
+        let loader_registry = self.loader_registry.take().expect("loader_registry already used");
 
         let mut ctx = EngineContext::new(cmd_tx, upload_tx, triple_buf, output_size, loader_registry)
             .expect("Failed to create EngineContext");
@@ -216,13 +226,14 @@ impl ApplicationHandler for EngineHandler {
         self.app.on_start(&mut ctx);
         ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);
 
-        let initial_pipeline = self.initial_pipeline.take().expect("initial_pipeline уже использован");
+        let initial_pipeline = self.initial_pipeline.take().expect("initial_pipeline already used");
 
         let handles = WindowHandles { display, window: whandle };
+        let flags = self.flags;
         let render_thread = std::thread::Builder::new()
             .name("render".into())
             .spawn(move || {
-                render_thread_main(handles, initial_pipeline, triple_buf_render, cmd_rx, upload_rx, ready_tx);
+                render_thread_main(handles, flags, initial_pipeline, triple_buf_render, cmd_rx, upload_rx, ready_tx);
             })
             .expect("Failed to spawn render thread");
 

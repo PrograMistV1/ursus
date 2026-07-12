@@ -10,6 +10,7 @@ use crate::assets::upload::GpuUploadRequest;
 use crate::render::triple_buffer::TripleBuffer;
 use crate::render::world::RenderWorld;
 use crate::vulkan::VulkanContext;
+use crate::EngineFlags;
 
 use self::command::{PipelineFactory, RenderCommand};
 
@@ -22,26 +23,28 @@ unsafe impl Send for WindowHandles {}
 
 pub fn render_thread_main(
     handles: WindowHandles,
+    flags: EngineFlags,
     initial_pipeline: PipelineFactory,
     triple_buf: Arc<TripleBuffer<RenderWorld>>,
     cmd_rx: Receiver<RenderCommand>,
     upload_rx: Receiver<GpuUploadRequest>,
     ready_tx: std::sync::mpsc::SyncSender<()>,
 ) {
-    if let Err(e) = render_loop(handles, initial_pipeline, triple_buf, cmd_rx, upload_rx, ready_tx) {
-        log::error!("Render thread завершился с ошибкой: {e}");
+    if let Err(e) = render_loop(handles, flags, initial_pipeline, triple_buf, cmd_rx, upload_rx, ready_tx) {
+        log::error!("Render thread exited with error: {e}");
     }
 }
 
 fn render_loop(
     handles: WindowHandles,
+    flags: EngineFlags,
     initial_pipeline: PipelineFactory,
     triple_buf: Arc<TripleBuffer<RenderWorld>>,
     cmd_rx: Receiver<RenderCommand>,
     upload_rx: Receiver<GpuUploadRequest>,
     ready_tx: std::sync::mpsc::SyncSender<()>,
 ) -> anyhow::Result<()> {
-    let mut vk = VulkanContext::from_handles(handles.display, handles.window, cfg!(debug_assertions))?;
+    let mut vk = VulkanContext::from_handles(handles.display, handles.window, flags)?;
 
     let temp_pool = crate::app::create_temp_pool(&vk)?;
 
@@ -66,7 +69,7 @@ fn render_loop(
             match cmd_rx.try_recv() {
                 Ok(cmd) => match cmd {
                     RenderCommand::Shutdown => {
-                        log::info!("Render thread: получен Shutdown");
+                        log::info!("Render thread: received Shutdown");
                         unsafe { vk.device.handle.device_wait_idle().ok() };
                         unsafe { vk.device.handle.destroy_command_pool(temp_pool, None) };
                         return Ok(());
@@ -95,7 +98,7 @@ fn render_loop(
                 },
                 Err(std::sync::mpsc::TryRecvError::Empty) => break,
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    log::warn!("Render thread: cmd канал закрыт, завершаемся");
+                    log::warn!("Render thread: cmd channel closed, shutting down");
                     return Ok(());
                 }
             }

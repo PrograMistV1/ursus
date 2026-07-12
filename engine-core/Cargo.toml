@@ -23,5 +23,6 @@ cosmic-text = "0.19.0"
 etagere = "0.3.0"
 puffin = "0.20.0"
 puffin_http = "0.17.0"
+clap = { version = "4", features = ["derive"] }
 
 [build-dependencies]

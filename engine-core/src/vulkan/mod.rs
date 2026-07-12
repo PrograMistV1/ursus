@@ -16,6 +16,7 @@ pub use resources::mapped_buffer::MappedGpuBuffer;
 pub use resources::render_target::RenderTarget;
 pub use resources::texture::GpuTexture;
 
+use crate::EngineFlags;
 use ash::ext::debug_utils;
 use ash::vk;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -31,10 +32,15 @@ pub struct VulkanContext {
 }
 
 impl VulkanContext {
-    pub fn from_handles(display: RawDisplayHandle, window: RawWindowHandle, validation: bool) -> anyhow::Result<Self> {
-        let instance = Arc::new(Instance::new(display, validation)?);
+    pub fn from_handles(
+        display: RawDisplayHandle,
+        window: RawWindowHandle,
+        flags: EngineFlags,
+    ) -> anyhow::Result<Self> {
+        let instance = Arc::new(Instance::new(display, flags.validation, flags.debug_labels)?);
 
         let validation_active = instance.validation_active;
+        let debug_utils_active = instance.debug_utils_active;
 
         let debug = if validation_active {
             Some(DebugMessenger::new(&instance)?)
@@ -48,7 +54,7 @@ impl VulkanContext {
 
         let swapchain = Swapchain::new(&instance, &device, surface, 1280, 720, false)?;
 
-        let debug_utils = if validation_active {
+        let debug_utils = if debug_utils_active {
             Some(Arc::new(debug_utils::Device::new(&instance.handle, &device.handle)))
         } else {
             None
@@ -57,13 +63,13 @@ impl VulkanContext {
         Ok(Self { swapchain: Some(swapchain), debug_utils, device, surface, _debug: debug, instance })
     }
 
-    pub fn new(window: &winit::window::Window, validation: bool) -> anyhow::Result<Self> {
+    pub fn new(window: &winit::window::Window, flags: EngineFlags) -> anyhow::Result<Self> {
         use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
         let display = window.display_handle()?.as_raw();
         let whandle = window.window_handle()?.as_raw();
         let size = window.inner_size();
 
-        let mut ctx = Self::from_handles(display, whandle, validation)?;
+        let mut ctx = Self::from_handles(display, whandle, flags)?;
         ctx.recreate_swapchain(size.width, size.height, false)?;
         Ok(ctx)
     }

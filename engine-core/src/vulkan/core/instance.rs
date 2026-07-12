@@ -5,13 +5,19 @@ pub struct Instance {
     pub entry: ash::Entry,
     pub handle: ash::Instance,
     pub validation_active: bool,
+    pub debug_utils_active: bool,
 }
 
 impl Instance {
-    pub fn new(display: RawDisplayHandle, validation: bool) -> anyhow::Result<Self> {
+    pub fn new(display: RawDisplayHandle, validation: bool, debug_labels: bool) -> anyhow::Result<Self> {
         let entry = unsafe { ash::Entry::load()? };
 
         let mut extensions = ash_window::enumerate_required_extensions(display)?.to_vec();
+
+        let need_debug_utils = validation || debug_labels;
+        if need_debug_utils {
+            extensions.push(ash::ext::debug_utils::NAME.as_ptr());
+        }
 
         if validation {
             extensions.push(ash::ext::debug_utils::NAME.as_ptr());
@@ -44,7 +50,7 @@ impl Instance {
         let handle = unsafe { entry.create_instance(&create_info, None)? };
         log::info!("Vulkan instance created (API 1.3)");
 
-        Ok(Self { entry, handle, validation_active })
+        Ok(Self { entry, handle, validation_active, debug_utils_active: need_debug_utils })
     }
 
     fn has_validation(entry: &ash::Entry) -> bool {
