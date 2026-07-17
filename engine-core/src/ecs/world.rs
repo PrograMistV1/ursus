@@ -28,6 +28,10 @@ impl Default for GameWorld {
     }
 }
 
+pub trait Component: hecs::Component + Default {
+    fn init(_builder: &hecs::EntityBuilder) {}
+}
+
 pub struct EntityBuilder<'w> {
     world: &'w mut GameWorld,
     builder: hecs::EntityBuilder,
@@ -38,7 +42,8 @@ impl<'w> EntityBuilder<'w> {
         Self { world, builder: hecs::EntityBuilder::new() }
     }
 
-    pub fn insert<T: hecs::Component>(mut self, component: T) -> Self {
+    pub fn insert<T: Component>(mut self, component: T) -> Self {
+        T::init(&self.builder);
         self.builder.add(component);
         self
     }

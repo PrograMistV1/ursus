@@ -1,3 +1,4 @@
+use crate::ecs::Component;
 use glam::{Mat4, Quat, Vec3};
 
 #[derive(Debug, Clone)]
@@ -31,6 +32,7 @@ impl Transform {
     }
 }
 
+impl Component for Transform {}
 impl Default for Transform {
     fn default() -> Self {
         Self::identity()

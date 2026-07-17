@@ -1,3 +1,4 @@
+use crate::ecs::Component;
 use glam::Vec2;
 
 #[derive(Debug, Clone)]
@@ -16,6 +17,13 @@ impl UiLayout {
     }
     pub fn top_right(offset: Vec2) -> Self {
         Self { anchor: Vec2::new(1.0, 0.0), pivot: Vec2::new(1.0, 0.0), offset }
+    }
+}
+
+impl Component for UiLayout {}
+impl Default for UiLayout {
+    fn default() -> Self {
+        UiLayout::center()
     }
 }
 
@@ -40,9 +48,23 @@ impl UiText {
     }
 }
 
+impl Component for UiText {}
+impl Default for UiText {
+    fn default() -> Self {
+        UiText::new("NoText")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct UiRect {
     pub size: Vec2,
     pub color: [f32; 4],
     pub border_radius: f32,
+}
+
+impl Component for UiRect {}
+impl Default for UiRect {
+    fn default() -> Self {
+        UiRect { size: Vec2::ZERO, color: [1.0; 4], border_radius: 1.0 }
+    }
 }
