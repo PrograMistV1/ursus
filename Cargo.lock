@@ -603,6 +603,7 @@ dependencies = [
  "bytemuck",
  "clap",
  "cosmic-text",
+ "engine-macros",
  "env_logger",
  "etagere",
  "glam",
@@ -636,6 +637,14 @@ dependencies = [
  "gltf",
  "image",
  "log",
+]
+
+[[package]]
+name = "engine-macros"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
 ]
 
 [[package]]

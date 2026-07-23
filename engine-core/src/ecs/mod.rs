@@ -1,4 +1,4 @@
 pub mod components;
 pub mod world;
 
-pub use world::{Component, GameWorld};
+pub use world::{Component, ComponentInit, GameWorld};

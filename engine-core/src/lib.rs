@@ -1,3 +1,4 @@
+extern crate self as engine_core;
 pub mod app;
 pub mod assets;
 pub mod ecs;

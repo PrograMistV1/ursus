@@ -1,19 +1,18 @@
-use crate::ecs::Component;
+use engine_macros::Component;
 use glam::camera::rh::proj::directx::perspective;
 use glam::camera::rh::view::look_at_mat4;
 use glam::{Mat4, Vec3};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Component)]
 pub struct ActiveCamera; // todo components cannot be added or removed at runtime, move as a field CameraComponent
 
-impl Component for ActiveCamera {}
 impl Default for ActiveCamera {
     fn default() -> Self {
         ActiveCamera
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Component)]
 pub struct CameraComponent {
     pub eye: Vec3,
     pub target: Vec3,
@@ -32,7 +31,6 @@ impl CameraComponent {
     }
 }
 
-impl Component for CameraComponent {}
 impl Default for CameraComponent {
     fn default() -> Self {
         Self {

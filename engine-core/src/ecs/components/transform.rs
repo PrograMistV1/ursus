@@ -1,7 +1,7 @@
-use crate::ecs::Component;
+use engine_macros::Component;
 use glam::{Mat4, Quat, Vec3};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone, Component)]
 pub struct Transform {
     pub position: Vec3,
     pub rotation: Quat,
@@ -32,7 +32,6 @@ impl Transform {
     }
 }
 
-impl Component for Transform {}
 impl Default for Transform {
     fn default() -> Self {
         Self::identity()

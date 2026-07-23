@@ -1,7 +1,7 @@
-use crate::ecs::Component;
+use engine_macros::Component;
 use glam::Vec2;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Component)]
 pub struct UiLayout {
     pub anchor: Vec2,
     pub pivot: Vec2,
@@ -20,14 +20,13 @@ impl UiLayout {
     }
 }
 
-impl Component for UiLayout {}
 impl Default for UiLayout {
     fn default() -> Self {
         UiLayout::center()
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Component)]
 pub struct UiText {
     pub text: String,
     pub font_size: f32,
@@ -48,21 +47,19 @@ impl UiText {
     }
 }
 
-impl Component for UiText {}
 impl Default for UiText {
     fn default() -> Self {
         UiText::new("NoText")
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Component)]
 pub struct UiRect {
     pub size: Vec2,
     pub color: [f32; 4],
     pub border_radius: f32,
 }
 
-impl Component for UiRect {}
 impl Default for UiRect {
     fn default() -> Self {
         UiRect { size: Vec2::ZERO, color: [1.0; 4], border_radius: 1.0 }
