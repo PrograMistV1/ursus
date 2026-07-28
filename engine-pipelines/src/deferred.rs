@@ -98,13 +98,12 @@ impl RenderPipeline for DefaultPipeline {
                 .read_write(h_depth, ImageLayout::DepthAttachment)
                 .record(move |enc, rw, gpu| {
                     let max_handle = gpu.material_handles().map(|h| h.0).max();
-                    if let Some(max_handle) = max_handle {
-                        let mut collected = vec![MaterialData::default_white(); max_handle as usize + 1];
-                        for handle in gpu.material_handles() {
-                            collected[handle.0 as usize] = resolve_material(gpu, handle);
-                        }
-                        material_buffer.upload(&collected);
+                    let len = max_handle.map(|m| m as usize + 1).unwrap_or(1).max(1);
+                    let mut collected = vec![MaterialData::default_white(); len];
+                    for handle in gpu.material_handles() {
+                        collected[handle.0 as usize] = resolve_material(gpu, handle);
                     }
+                    material_buffer.upload(&collected);
                     geometry_pass.record(enc, rw, gpu, &material_buffer, h_gbuffer_albedo, h_gbuffer_normal, h_depth)
                 })
                 .build(graph, &gpu_assets);

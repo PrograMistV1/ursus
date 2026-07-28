@@ -3,14 +3,14 @@ use engine_core::components::camera::{ActiveCamera, CameraComponent};
 use engine_core::components::light::DirectionalLightComponent;
 use engine_core::components::transform::Transform;
 use engine_core::components::transform_interpolation::TransformInterpolation;
-use engine_core::components::ui::{UiLayout, UiText};
 use engine_core::ecs::world::Entity;
 use engine_core::render::thread::command::PipelineFactory;
 use engine_core::{App, Engine, EngineContext};
 use engine_pipelines::DefaultPipeline;
-use glam::{Quat, Vec2, Vec3};
+use glam::{Quat, Vec3};
+use std::f32::consts::PI;
 
-const ROT_SPEED: f32 = std::f32::consts::PI * 0.5;
+const ROT_SPEED: f32 = PI * 0.5;
 
 struct InterpolationDemoApp {
     interpolated_cube: Option<Entity>,
@@ -32,6 +32,10 @@ impl App for InterpolationDemoApp {
         PipelineFactory::of::<DefaultPipeline>()
     }
 
+    fn tick_rate(&self) -> f32 {
+        10.0
+    }
+
     fn on_start(&mut self, ctx: &mut EngineContext) {
         ctx.world.spawn().insert(CameraComponent::default()).insert(ActiveCamera).build();
         ctx.world.spawn().insert(DirectionalLightComponent::default()).build();
@@ -49,12 +53,6 @@ impl App for InterpolationDemoApp {
 
         let plain = ctx.world.spawn().insert(cube_mesh).insert(Transform::at(1.5, 1.0, 0.0)).build();
         self.plain_cube = Some(plain);
-
-        ctx.world
-            .spawn()
-            .insert(UiLayout::top_left(Vec2::new(16.0, 16.0)))
-            .insert(UiText::new("Left: interpolated | Right: raw").with_size(18.0).with_color([1.0; 4]))
-            .build();
     }
 
     fn on_update(&mut self, ctx: &mut EngineContext, dt: f32) {

@@ -36,6 +36,9 @@ pub trait App {
         Self: Sized,
     {
     }
+    fn tick_rate(&self) -> f32 {
+        60.0
+    }
     fn on_start(&mut self, ctx: &mut EngineContext);
     fn on_update(&mut self, ctx: &mut EngineContext, dt: f32);
     fn on_render(&mut self, ctx: &mut EngineContext);
@@ -182,14 +185,13 @@ struct RunningState {
     render_thread: JoinHandle<()>,
     last: Instant,
     tick_accumulator: f32,
+    tick_duration: f32,
 }
 
 enum EngineState {
     Waiting(WaitingState),
     Running(RunningState),
 }
-
-const TICK_RATE: f32 = 1.0 / 60.0;
 
 struct EngineHandler {
     app: Box<dyn App>,
@@ -280,6 +282,7 @@ impl ApplicationHandler for EngineHandler {
                         render_thread,
                         last: Instant::now(),
                         tick_accumulator: 0.0,
+                        tick_duration: 1.0 / self.app.tick_rate(),
                     }));
                 }
                 Err(_) => {
@@ -323,13 +326,13 @@ impl ApplicationHandler for EngineHandler {
                 state.last = now;
 
                 state.tick_accumulator += dt;
-                while state.tick_accumulator >= TICK_RATE {
-                    state.ctx.tick_schedule.run(&mut state.ctx.world, TICK_RATE);
-                    self.app.on_update(&mut state.ctx, TICK_RATE);
-                    state.tick_accumulator -= TICK_RATE;
+                while state.tick_accumulator >= state.tick_duration {
+                    state.ctx.tick_schedule.run(&mut state.ctx.world, state.tick_duration);
+                    self.app.on_update(&mut state.ctx, state.tick_duration);
+                    state.tick_accumulator -= state.tick_duration;
                 }
 
-                let alpha = (state.tick_accumulator / TICK_RATE).clamp(0.0, 1.0);
+                let alpha = (state.tick_accumulator / state.tick_duration).clamp(0.0, 1.0);
                 state.ctx.publish_frame([0.0, 0.0, 0.0, 1.0], alpha);
 
                 self.app.on_render(&mut state.ctx);
