@@ -1,4 +1,4 @@
-use glam::camera::rh::proj::directx::orthographic;
+use glam::camera::rh::proj::vulkan::orthographic;
 use glam::camera::rh::view::look_at_mat4;
 
 pub fn compute_light_view_proj(direction: [f32; 3], scene_center: glam::Vec3, scene_radius: f32) -> glam::Mat4 {

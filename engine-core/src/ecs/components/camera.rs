@@ -1,5 +1,5 @@
 use engine_macros::Component;
-use glam::camera::rh::proj::directx::perspective;
+use glam::camera::rh::proj::vulkan::perspective;
 use glam::camera::rh::view::look_at_mat4;
 use glam::{Mat4, Vec3};
 
@@ -25,8 +25,7 @@ pub struct CameraComponent {
 impl CameraComponent {
     pub fn view_proj(&self, aspect: f32) -> Mat4 {
         let view = look_at_mat4(self.eye, self.target, self.up);
-        let mut proj = perspective(self.fov_y, aspect, self.z_near, self.z_far);
-        proj.y_axis.y *= -1.0;
+        let proj = perspective(self.fov_y, aspect, self.z_near, self.z_far);
         proj * view
     }
 }
