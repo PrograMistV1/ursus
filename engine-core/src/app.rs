@@ -12,7 +12,8 @@ use winit::{
 use crate::assets::cpu_server::CpuAssetServer;
 use crate::assets::loader_registry::LoaderRegistry;
 use crate::assets::upload::GpuUploadRequest;
-use crate::ecs::GameWorld;
+use crate::ecs::tick::default_tick_schedule;
+use crate::ecs::{GameWorld, TickSchedule};
 use crate::render::extract::{default_extract_schedule, ExtractSchedule};
 use crate::render::frame_pipeline::render_pipeline::RenderPipeline;
 use crate::render::frame_stats::FrameStats;
@@ -45,6 +46,7 @@ pub struct EngineContext {
     pub world: GameWorld,
     pub cpu_assets: CpuAssetServer,
     pub extract_schedule: ExtractSchedule,
+    pub tick_schedule: TickSchedule,
 
     pub(crate) cmd_tx: Sender<RenderCommand>,
     upload_tx: Sender<GpuUploadRequest>,
@@ -68,6 +70,7 @@ impl EngineContext {
             world: GameWorld::new(),
             cpu_assets,
             extract_schedule: default_extract_schedule(),
+            tick_schedule: default_tick_schedule(),
             cmd_tx,
             upload_tx,
             triple_buf,
@@ -96,7 +99,7 @@ impl EngineContext {
         self.cpu_assets.flush_uploads_cpu(&self.upload_tx);
     }
 
-    pub(crate) fn publish_frame(&mut self, clear_color: [f32; 4]) {
+    pub(crate) fn publish_frame(&mut self, clear_color: [f32; 4], interpolation_alpha: f32) {
         let write = self.triple_buf.write_slot();
         write.clear();
         write.insert(ExtractedRenderSettings {
@@ -104,6 +107,7 @@ impl EngineContext {
             output_size: self.output_size,
             fsr_sharpness: 0.2,
             exposure: 0.5,
+            interpolation_alpha,
         });
         self.extract_schedule.run(&self.world, write, &mut self.cpu_assets, &self.upload_tx);
         self.triple_buf.publish();
@@ -233,7 +237,7 @@ impl ApplicationHandler for EngineHandler {
                 .expect("Failed to create EngineContext");
 
         self.app.on_start(&mut ctx);
-        ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);
+        ctx.publish_frame([0.0, 0.0, 0.0, 1.0], 1.0);
 
         let initial_pipeline = self.initial_pipeline.take().expect("initial_pipeline already used");
 
@@ -279,7 +283,7 @@ impl ApplicationHandler for EngineHandler {
                     }));
                 }
                 Err(_) => {
-                    waiting.ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);
+                    waiting.ctx.publish_frame([0.0, 0.0, 0.0, 1.0], 1.0);
                     self.state = Some(EngineState::Waiting(waiting));
                     if let WindowEvent::CloseRequested = event {
                         event_loop.exit();
@@ -320,10 +324,13 @@ impl ApplicationHandler for EngineHandler {
 
                 state.tick_accumulator += dt;
                 while state.tick_accumulator >= TICK_RATE {
+                    state.ctx.tick_schedule.run(&mut state.ctx.world, TICK_RATE);
                     self.app.on_update(&mut state.ctx, TICK_RATE);
-                    state.ctx.publish_frame([0.0, 0.0, 0.0, 1.0]);
                     state.tick_accumulator -= TICK_RATE;
                 }
+
+                let alpha = (state.tick_accumulator / TICK_RATE).clamp(0.0, 1.0);
+                state.ctx.publish_frame([0.0, 0.0, 0.0, 1.0], alpha);
 
                 self.app.on_render(&mut state.ctx);
 

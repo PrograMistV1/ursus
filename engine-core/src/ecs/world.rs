@@ -1,4 +1,5 @@
-use hecs::{Entity, World};
+pub use hecs::Entity;
+use hecs::World;
 
 pub struct GameWorld {
     pub inner: World,

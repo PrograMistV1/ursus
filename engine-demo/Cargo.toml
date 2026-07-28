@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "engine-demo"
-path = "src/main.rs"
+name = "sponza-scene-demo"
+path = "src/sponza_scene_demo.rs"
+
+[[bin]]
+name = "interpolation-demo"
+path = "src/interpolation_demo.rs"
 
 [dependencies]
 engine-core = { path = "../engine-core" }

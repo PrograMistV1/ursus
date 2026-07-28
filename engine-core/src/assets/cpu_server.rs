@@ -139,9 +139,23 @@ impl CpuAssetServer {
         self.cpu_meshes.push(mesh);
         MeshHandle(id)
     }
+
+    pub fn register_and_upload_mesh(&mut self, mesh: CpuMesh) -> MeshHandle {
+        let name = mesh.name.clone();
+        let vertices = mesh.vertices.clone();
+        let indices = mesh.indices.clone();
+
+        let handle = self.register_mesh(mesh);
+
+        self.pending_uploads.push(GpuUploadRequest::Mesh { handle, vertices, indices, name });
+
+        handle
+    }
+
     pub fn get_cpu_mesh(&self, handle: MeshHandle) -> Option<&CpuMesh> {
         self.cpu_meshes.get(handle.0 as usize)
     }
+
     pub fn is_loading(&self) -> bool {
         !self.load_progress.is_done()
     }

@@ -3,8 +3,11 @@ use crate::assets::upload::GpuUploadRequest;
 use crate::assets::CpuAssetServer;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::components::transform::Transform;
+use crate::components::transform_interpolation::TransformInterpolation;
 use crate::render::extract::ExtractSystem;
-use crate::render::world::{ExtractedInstance, ExtractedMeshes, ExtractedShadowMeshes, RenderWorld};
+use crate::render::world::{
+    ExtractedInstance, ExtractedMeshes, ExtractedRenderSettings, ExtractedShadowMeshes, RenderWorld,
+};
 use crate::GameWorld;
 use std::sync::mpsc::Sender;
 
@@ -17,13 +20,27 @@ impl ExtractSystem for MeshExtract {
         _cpu_assets: &mut CpuAssetServer,
         _upload_tx: &Sender<GpuUploadRequest>,
     ) {
+        let alpha = rw.get::<ExtractedRenderSettings>().map(|s| s.interpolation_alpha).unwrap_or(1.0);
+
         let mut meshes = ExtractedMeshes::default();
         let mut shadow_meshes = ExtractedShadowMeshes::default();
 
-        for (mesh, transform, mat, aabb) in
-            world.inner.query::<(&MeshHandle, &Transform, Option<&MaterialHandle>, Option<&Aabb>)>().iter()
+        for (mesh, transform, interp, mat, aabb) in world
+            .inner
+            .query::<(
+                &MeshHandle,
+                &Transform,
+                Option<&TransformInterpolation>,
+                Option<&MaterialHandle>,
+                Option<&Aabb>,
+            )>()
+            .iter()
         {
-            let model = transform.matrix();
+            let model = match interp {
+                Some(interp) => interp.interpolate(transform, alpha),
+                None => transform.matrix(),
+            };
+
             let instance = ExtractedInstance { mesh: *mesh, material: mat.copied(), model, aabb: aabb.copied() };
 
             shadow_meshes.instances.push(instance.clone());

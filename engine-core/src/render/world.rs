@@ -163,11 +163,18 @@ pub struct ExtractedRenderSettings {
     pub output_size: (f32, f32),
     pub exposure: f32,
     pub fsr_sharpness: f32,
+    pub interpolation_alpha: f32,
 }
 
 impl Default for ExtractedRenderSettings {
     fn default() -> Self {
-        Self { clear_color: [0.0, 0.0, 0.0, 1.0], output_size: (1280.0, 720.0), exposure: 0.5, fsr_sharpness: 0.2 }
+        Self {
+            clear_color: [0.0, 0.0, 0.0, 1.0],
+            output_size: (1280.0, 720.0),
+            exposure: 0.5,
+            fsr_sharpness: 0.2,
+            interpolation_alpha: 1.0,
+        }
     }
 }
 

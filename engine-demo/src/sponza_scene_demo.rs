@@ -1,3 +1,5 @@
+mod interpolation_demo;
+
 use engine_core::components::camera::{ActiveCamera, CameraComponent};
 use engine_core::components::light::DirectionalLightComponent;
 use engine_core::components::ui::{UiLayout, UiText};
