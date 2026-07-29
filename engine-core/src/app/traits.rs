@@ -1,4 +1,5 @@
 use crate::app::context::EngineContext;
+use crate::app::window_config::WindowConfig;
 use crate::assets::loader_registry::LoaderRegistry;
 use crate::render::thread::command::PipelineFactory;
 
@@ -14,6 +15,13 @@ pub trait App {
     where
         Self: Sized,
     {
+    }
+
+    fn window_config() -> WindowConfig
+    where
+        Self: Sized,
+    {
+        WindowConfig::default()
     }
 
     fn tick_rate(&self) -> f32 {

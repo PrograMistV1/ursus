@@ -3,15 +3,11 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-use winit::{
-    application::ApplicationHandler,
-    event::WindowEvent,
-    event_loop::ActiveEventLoop,
-    window::{Window, WindowAttributes},
-};
+use winit::{application::ApplicationHandler, event::WindowEvent, event_loop::ActiveEventLoop, window::Window};
 
-use crate::app::context::EngineContext;
+use crate::app::context::{EngineContext, WindowCommand};
 use crate::app::traits::App;
+use crate::app::window_config::WindowConfig;
 use crate::assets::loader_registry::LoaderRegistry;
 use crate::assets::upload::GpuUploadRequest;
 use crate::render::frame_stats::FrameStats;
@@ -33,6 +29,7 @@ struct EngineState {
     render_thread: JoinHandle<()>,
     ready_rx: Receiver<()>,
     render_loop: Option<RenderLoopState>,
+    window_cmd_rx: Receiver<WindowCommand>,
     rendering_paused: bool,
 }
 
@@ -63,6 +60,21 @@ impl EngineState {
         self.ctx.send_render_cmd(RenderCommand::SetPaused(paused));
         log::debug!("Rendering paused={paused}");
     }
+
+    fn drain_window_commands(&mut self) {
+        while let Ok(cmd) = self.window_cmd_rx.try_recv() {
+            match cmd {
+                WindowCommand::SetTitle(t) => self.window.set_title(&t),
+                WindowCommand::SetSize(w, h) => {
+                    let _ = self.window.request_inner_size(winit::dpi::LogicalSize::new(w, h));
+                }
+                WindowCommand::SetFullscreen(true) => {
+                    self.window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+                }
+                WindowCommand::SetFullscreen(false) => self.window.set_fullscreen(None),
+            }
+        }
+    }
 }
 
 pub(crate) struct EngineHandler {
@@ -70,6 +82,7 @@ pub(crate) struct EngineHandler {
     pub initial_pipeline: Option<PipelineFactory>,
     pub loader_registry: Option<LoaderRegistry>,
     pub flags: EngineFlags,
+    window_config: WindowConfig,
     state: Option<EngineState>,
 }
 
@@ -79,6 +92,7 @@ impl EngineHandler {
         initial_pipeline: PipelineFactory,
         loader_registry: LoaderRegistry,
         flags: EngineFlags,
+        window_config: WindowConfig,
     ) -> Self {
         Self {
             app,
@@ -86,6 +100,7 @@ impl EngineHandler {
             loader_registry: Some(loader_registry),
             flags,
             state: None,
+            window_config,
         }
     }
 }
@@ -96,14 +111,8 @@ impl ApplicationHandler for EngineHandler {
             return;
         }
 
-        let window = event_loop
-            .create_window(
-                WindowAttributes::default()
-                    .with_title("engine-core")
-                    .with_inner_size(winit::dpi::LogicalSize::new(1280u32, 720u32))
-                    .with_visible(false),
-            )
-            .expect("Failed to create window");
+        let window =
+            event_loop.create_window(self.window_config.to_winit_attributes()).expect("Failed to create window");
 
         let size = window.inner_size();
         let output_size = (size.width as f32, size.height as f32);
@@ -122,9 +131,18 @@ impl ApplicationHandler for EngineHandler {
         let loader_registry = self.loader_registry.take().expect("loader_registry already used");
         let frame_stats = FrameStats::new();
 
-        let mut ctx =
-            EngineContext::new(cmd_tx, upload_tx, triple_buf, output_size, loader_registry, frame_stats.clone())
-                .expect("Failed to create EngineContext");
+        let (window_cmd_tx, window_cmd_rx) = mpsc::channel::<WindowCommand>();
+
+        let mut ctx = EngineContext::new(
+            cmd_tx,
+            upload_tx,
+            triple_buf,
+            output_size,
+            loader_registry,
+            frame_stats.clone(),
+            window_cmd_tx,
+        )
+        .expect("Failed to create EngineContext");
 
         self.app.on_start(&mut ctx);
         ctx.publish_frame([0.0, 0.0, 0.0, 1.0], 1.0);
@@ -149,12 +167,20 @@ impl ApplicationHandler for EngineHandler {
             })
             .expect("Failed to spawn render thread");
 
-        self.state =
-            Some(EngineState { window, ctx, render_thread, ready_rx, render_loop: None, rendering_paused: false });
+        self.state = Some(EngineState {
+            window,
+            ctx,
+            render_thread,
+            ready_rx,
+            render_loop: None,
+            rendering_paused: false,
+            window_cmd_rx,
+        });
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: winit::window::WindowId, event: WindowEvent) {
         let Some(state) = self.state.as_mut() else { return };
+        state.drain_window_commands();
 
         if let WindowEvent::CloseRequested = event {
             self.app.on_stop(&mut state.ctx);
@@ -217,8 +243,9 @@ impl ApplicationHandler for EngineHandler {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(state) = &self.state {
+        if let Some(state) = &mut self.state {
             state.window.request_redraw();
+            state.drain_window_commands()
         }
     }
 }

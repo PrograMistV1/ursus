@@ -1,5 +1,4 @@
-mod interpolation_demo;
-
+use engine_core::app::window_config::WindowConfig;
 use engine_core::app::{App, Engine, EngineContext};
 use engine_core::components::camera::{ActiveCamera, CameraComponent};
 use engine_core::components::light::DirectionalLightComponent;
@@ -31,6 +30,10 @@ impl App for MyApp {
 
     fn register_loaders(registry: &mut engine_core::assets::loader_registry::LoaderRegistry) {
         engine_pipelines::register_builtin_loaders(registry);
+    }
+
+    fn window_config() -> WindowConfig {
+        WindowConfig::new().with_title("Sponza Demo").with_size(1600, 900).with_resizable(true)
     }
 
     fn on_start(&mut self, ctx: &mut EngineContext) {

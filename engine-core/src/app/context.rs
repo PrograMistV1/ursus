@@ -13,6 +13,12 @@ use crate::render::thread::command::{PipelineFactory, RenderCommand};
 use crate::render::triple_buffer::TripleBuffer;
 use crate::render::world::{ExtractedRenderSettings, RenderWorld};
 
+pub enum WindowCommand {
+    SetTitle(String),
+    SetSize(u32, u32),
+    SetFullscreen(bool), // true = borderless fullscreen
+}
+
 pub struct EngineContext {
     pub world: GameWorld,
     pub cpu_assets: CpuAssetServer,
@@ -24,6 +30,7 @@ pub struct EngineContext {
     triple_buf: Arc<TripleBuffer<RenderWorld>>,
     pub(crate) output_size: (f32, f32),
     frame_stats: FrameStats,
+    pub(crate) window_cmd_tx: Sender<WindowCommand>,
 }
 
 impl EngineContext {
@@ -34,6 +41,7 @@ impl EngineContext {
         output_size: (f32, f32),
         loader_registry: LoaderRegistry,
         frame_stats: FrameStats,
+        window_cmd_tx: Sender<WindowCommand>,
     ) -> anyhow::Result<Self> {
         let cpu_assets = CpuAssetServer::new(loader_registry);
 
@@ -47,6 +55,7 @@ impl EngineContext {
             triple_buf,
             output_size,
             frame_stats,
+            window_cmd_tx,
         })
     }
 
@@ -82,5 +91,15 @@ impl EngineContext {
         });
         self.extract_schedule.run(&self.world, write, &mut self.cpu_assets, &self.upload_tx);
         self.triple_buf.publish();
+    }
+
+    pub fn set_window_title(&self, title: impl Into<String>) {
+        let _ = self.window_cmd_tx.send(WindowCommand::SetTitle(title.into()));
+    }
+    pub fn set_window_size(&self, width: u32, height: u32) {
+        let _ = self.window_cmd_tx.send(WindowCommand::SetSize(width, height));
+    }
+    pub fn set_fullscreen(&self, enabled: bool) {
+        let _ = self.window_cmd_tx.send(WindowCommand::SetFullscreen(enabled));
     }
 }

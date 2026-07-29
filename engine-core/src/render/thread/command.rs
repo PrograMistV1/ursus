@@ -2,6 +2,7 @@ use crate::assets::gpu_server::GpuAssetServer;
 use crate::render::frame_pipeline::render_pipeline::{NoopPipeline, RenderPipeline};
 use crate::vulkan::renderer::{build_dyn_renderer, DynRenderer};
 use crate::vulkan::VulkanContext;
+use std::fmt::{Debug, Formatter, Result};
 
 pub struct PipelineFactory {
     build:
@@ -35,8 +36,8 @@ impl PipelineFactory {
     }
 }
 
-impl std::fmt::Debug for PipelineFactory {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for PipelineFactory {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         f.write_str("PipelineFactory(..)")
     }
 }
