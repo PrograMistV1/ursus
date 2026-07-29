@@ -1,3 +1,4 @@
+use engine_core::app::{App, Engine, EngineContext};
 use engine_core::assets::CpuMesh;
 use engine_core::components::camera::{ActiveCamera, CameraComponent};
 use engine_core::components::light::DirectionalLightComponent;
@@ -5,7 +6,6 @@ use engine_core::components::transform::Transform;
 use engine_core::components::transform_interpolation::TransformInterpolation;
 use engine_core::ecs::world::Entity;
 use engine_core::render::thread::command::PipelineFactory;
-use engine_core::{App, Engine, EngineContext};
 use engine_pipelines::DefaultPipeline;
 use glam::{Quat, Vec3};
 use std::f32::consts::PI;
