@@ -48,5 +48,6 @@ pub enum RenderCommand {
     SetExposure(f32),
     SetFsrSharpness(f32),
     SetPipeline(PipelineFactory),
+    SetPaused(bool),
     Shutdown,
 }

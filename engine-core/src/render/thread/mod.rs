@@ -11,7 +11,7 @@ use crate::assets::upload::GpuUploadRequest;
 use crate::render::frame_stats::FrameStats;
 use crate::render::triple_buffer::TripleBuffer;
 use crate::render::world::RenderWorld;
-use crate::vulkan::VulkanContext;
+use crate::vulkan::{DynRenderer, VulkanContext};
 use crate::EngineFlags;
 
 use self::command::{PipelineFactory, RenderCommand};
@@ -65,43 +65,41 @@ fn render_loop(
 
     let mut render_idx: usize = 2;
     let mut initialized = false;
+    let mut paused = false;
     let mut last_present = Instant::now();
 
     let _ = ready_tx.send(());
 
-    loop {
+    'outer: loop {
         puffin::GlobalProfiler::lock().new_frame();
-        loop {
-            match cmd_rx.try_recv() {
-                Ok(cmd) => match cmd {
-                    RenderCommand::Shutdown => {
-                        log::info!("Render thread: received Shutdown");
-                        unsafe { vk.device.handle.device_wait_idle().ok() };
-                        unsafe { vk.device.handle.destroy_command_pool(temp_pool, None) };
+
+        if paused {
+            match cmd_rx.recv() {
+                Ok(cmd) => {
+                    if !handle_render_command(cmd, &mut vk, &mut renderer, &mut gpu_assets, &mut paused, temp_pool)? {
                         return Ok(());
                     }
-                    RenderCommand::Resize { width, height } => {
-                        unsafe { vk.device.handle.device_wait_idle().ok() };
-                        vk.recreate_swapchain(width, height, false)?;
-                        renderer.resize_output(width, height, &gpu_assets)?;
-                        log::debug!("Render thread: resize {width}x{height}");
+                    if paused {
+                        continue 'outer;
                     }
-                    RenderCommand::SetInternalScale(scale) => {
-                        let sw = vk.swapchain.as_ref().unwrap();
-                        let w = (sw.extent.width as f32 * scale) as u32;
-                        let h = (sw.extent.height as f32 * scale) as u32;
-                        renderer.resize_internal(w.max(1), h.max(1), &gpu_assets)?;
+                }
+                Err(_) => {
+                    log::warn!("Render thread: cmd channel closed while paused, shutting down");
+                    return Ok(());
+                }
+            }
+        }
+
+        loop {
+            match cmd_rx.try_recv() {
+                Ok(cmd) => {
+                    if !handle_render_command(cmd, &mut vk, &mut renderer, &mut gpu_assets, &mut paused, temp_pool)? {
+                        return Ok(());
                     }
-                    RenderCommand::SetExposure(v) => renderer.set_exposure(v),
-                    RenderCommand::SetFsrSharpness(v) => renderer.set_fsr_sharpness(v),
-                    RenderCommand::SetPipeline(factory) => {
-                        unsafe { vk.device.handle.device_wait_idle().ok() };
-                        let prev_exp = renderer.exposure();
-                        let prev_fsr = renderer.fsr_sharpness();
-                        renderer = factory.build(&vk, &mut gpu_assets, prev_exp, prev_fsr)?;
-                        log::info!("Render thread: frame_pipeline switched");
+                    if paused {
+                        continue 'outer;
                     }
-                },
+                }
                 Err(std::sync::mpsc::TryRecvError::Empty) => break,
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     log::warn!("Render thread: cmd channel closed, shutting down");
@@ -143,6 +141,50 @@ fn render_loop(
             renderer.resize_output(w, h, &gpu_assets)?;
         }
     }
+}
+
+fn handle_render_command(
+    cmd: RenderCommand,
+    vk: &mut VulkanContext,
+    renderer: &mut Box<dyn DynRenderer>,
+    gpu_assets: &mut GpuAssetServer,
+    paused: &mut bool,
+    temp_pool: ash::vk::CommandPool,
+) -> anyhow::Result<bool> {
+    match cmd {
+        RenderCommand::Shutdown => {
+            log::info!("Render thread: received Shutdown");
+            unsafe { vk.device.handle.device_wait_idle().ok() };
+            unsafe { vk.device.handle.destroy_command_pool(temp_pool, None) };
+            return Ok(false);
+        }
+        RenderCommand::Resize { width, height } => {
+            unsafe { vk.device.handle.device_wait_idle().ok() };
+            vk.recreate_swapchain(width, height, false)?;
+            renderer.resize_output(width, height, gpu_assets)?;
+            log::debug!("Render thread: resize {width}x{height}");
+        }
+        RenderCommand::SetInternalScale(scale) => {
+            let sw = vk.swapchain.as_ref().unwrap();
+            let w = (sw.extent.width as f32 * scale) as u32;
+            let h = (sw.extent.height as f32 * scale) as u32;
+            renderer.resize_internal(w.max(1), h.max(1), gpu_assets)?;
+        }
+        RenderCommand::SetExposure(v) => renderer.set_exposure(v),
+        RenderCommand::SetFsrSharpness(v) => renderer.set_fsr_sharpness(v),
+        RenderCommand::SetPipeline(factory) => {
+            unsafe { vk.device.handle.device_wait_idle().ok() };
+            let prev_exp = renderer.exposure();
+            let prev_fsr = renderer.fsr_sharpness();
+            *renderer = factory.build(vk, gpu_assets, prev_exp, prev_fsr)?;
+            log::info!("Render thread: frame_pipeline switched");
+        }
+        RenderCommand::SetPaused(p) => {
+            *paused = p;
+            log::info!("Render thread: paused={p}");
+        }
+    }
+    Ok(true)
 }
 
 fn flush_uploads_gpu(rx: &Receiver<GpuUploadRequest>, gpu: &mut GpuAssetServer) -> anyhow::Result<()> {

@@ -21,39 +21,47 @@ use crate::render::triple_buffer::TripleBuffer;
 use crate::render::world::RenderWorld;
 use crate::EngineFlags;
 
-enum Phase {
-    WaitingForRender {
-        ready_rx: Receiver<()>,
-    },
-    Running {
-        last: Instant,
-        tick_accumulator: f32,
-        tick_duration: f32,
-    },
+struct RenderLoopState {
+    last: Instant,
+    tick_accumulator: f32,
+    tick_duration: f32,
 }
 
 struct EngineState {
     window: Window,
     ctx: EngineContext,
     render_thread: JoinHandle<()>,
-    phase: Phase,
+    ready_rx: Receiver<()>,
+    render_loop: Option<RenderLoopState>,
+    rendering_paused: bool,
 }
 
 impl EngineState {
-    fn poll_ready(&mut self, tick_rate: f32) -> bool {
-        let Phase::WaitingForRender { ready_rx } = &self.phase else {
-            return false;
-        };
-
-        match ready_rx.try_recv() {
-            Ok(()) => {}
-            Err(mpsc::TryRecvError::Empty) => return false,
-            Err(mpsc::TryRecvError::Disconnected) => return false,
+    fn try_start_render_loop(&mut self, tick_rate: f32) -> bool {
+        if self.render_loop.is_some() {
+            return true;
         }
+        match self.ready_rx.try_recv() {
+            Ok(()) => {
+                self.window.set_visible(true);
+                self.render_loop = Some(RenderLoopState {
+                    last: Instant::now(),
+                    tick_accumulator: 0.0,
+                    tick_duration: 1.0 / tick_rate,
+                });
+                true
+            }
+            Err(_) => false,
+        }
+    }
 
-        self.window.set_visible(true);
-        self.phase = Phase::Running { last: Instant::now(), tick_accumulator: 0.0, tick_duration: 1.0 / tick_rate };
-        true
+    fn set_rendering_paused(&mut self, paused: bool) {
+        if self.rendering_paused == paused {
+            return;
+        }
+        self.rendering_paused = paused;
+        self.ctx.send_render_cmd(RenderCommand::SetPaused(paused));
+        log::debug!("Rendering paused={paused}");
     }
 }
 
@@ -141,7 +149,8 @@ impl ApplicationHandler for EngineHandler {
             })
             .expect("Failed to spawn render thread");
 
-        self.state = Some(EngineState { window, ctx, render_thread, phase: Phase::WaitingForRender { ready_rx } });
+        self.state =
+            Some(EngineState { window, ctx, render_thread, ready_rx, render_loop: None, rendering_paused: false });
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: winit::window::WindowId, event: WindowEvent) {
@@ -157,17 +166,16 @@ impl ApplicationHandler for EngineHandler {
             return;
         }
 
-        if let Phase::WaitingForRender { .. } = &state.phase {
-            let transitioned = state.poll_ready(self.app.tick_rate());
-            if !transitioned {
-                state.ctx.publish_frame([0.0, 0.0, 0.0, 1.0], 1.0);
-                return;
-            }
+        if let WindowEvent::Focused(focused) = event {
+            state.set_rendering_paused(!focused);
         }
 
-        let Phase::Running { last, tick_accumulator, tick_duration } = &mut state.phase else {
+        if !state.try_start_render_loop(self.app.tick_rate()) {
+            state.ctx.publish_frame([0.0, 0.0, 0.0, 1.0], 1.0);
             return;
-        };
+        }
+
+        let Some(rl) = state.render_loop.as_mut() else { return };
 
         match event {
             WindowEvent::Resized(size) => {
@@ -182,20 +190,24 @@ impl ApplicationHandler for EngineHandler {
                 state.ctx.poll_assets();
 
                 let now = Instant::now();
-                let dt = now.duration_since(*last).as_secs_f32().min(0.1);
-                *last = now;
+                let dt = now.duration_since(rl.last).as_secs_f32().min(0.1);
+                rl.last = now;
 
-                *tick_accumulator += dt;
-                while *tick_accumulator >= *tick_duration {
-                    state.ctx.tick_schedule.run(&mut state.ctx.world, *tick_duration);
-                    self.app.on_update(&mut state.ctx, *tick_duration);
-                    *tick_accumulator -= *tick_duration;
+                rl.tick_accumulator += dt;
+                while rl.tick_accumulator >= rl.tick_duration {
+                    state.ctx.tick_schedule.run(&mut state.ctx.world, rl.tick_duration);
+                    self.app.on_update(&mut state.ctx, rl.tick_duration);
+                    rl.tick_accumulator -= rl.tick_duration;
                 }
 
-                let alpha = (*tick_accumulator / *tick_duration).clamp(0.0, 1.0);
-                state.ctx.publish_frame([0.0, 0.0, 0.0, 1.0], alpha);
+                let alpha = (rl.tick_accumulator / rl.tick_duration).clamp(0.0, 1.0);
 
-                self.app.on_render(&mut state.ctx);
+                // Skip publishing/redraw-request while rendering is paused -
+                // logic still ticked above, only presentation is suppressed.
+                if !state.rendering_paused {
+                    state.ctx.publish_frame([0.0, 0.0, 0.0, 1.0], alpha);
+                    self.app.on_render(&mut state.ctx);
+                }
 
                 state.window.request_redraw();
             }
