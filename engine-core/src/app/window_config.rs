@@ -1,4 +1,5 @@
-use winit::window::{Fullscreen, WindowAttributes};
+use winit::dpi::LogicalSize;
+use winit::window::{Fullscreen, Icon, WindowAttributes};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowMode {
@@ -71,7 +72,7 @@ impl WindowConfig {
     pub(crate) fn to_winit_attributes(&self) -> WindowAttributes {
         let mut attrs = WindowAttributes::default()
             .with_title(&self.title)
-            .with_inner_size(winit::dpi::LogicalSize::new(self.width, self.height))
+            .with_inner_size(LogicalSize::new(self.width, self.height))
             .with_resizable(self.resizable)
             .with_visible(false);
 
@@ -86,8 +87,8 @@ impl WindowConfig {
         attrs
     }
 
-    fn build_icon(&self) -> Option<winit::window::Icon> {
+    fn build_icon(&self) -> Option<Icon> {
         let (pixels, w, h) = self.icon_rgba.as_ref()?;
-        winit::window::Icon::from_rgba(pixels.clone(), *w, *h).ok()
+        Icon::from_rgba(pixels.clone(), *w, *h).ok()
     }
 }
