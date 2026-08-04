@@ -115,6 +115,13 @@ pub fn alloc_buffer(
     Ok((buf, mem))
 }
 
+/// # Safety
+///
+/// - `image`, `view`, and `memory` must be created via the same `device`.
+/// - None of the objects must be currently in use by the GPU
+///   (all command buffers referencing them must be finalized -
+///   usually guaranteed via `device_wait_idle` or a fence/semaphore before the call).
+/// - Each object must not be destroyed more than once.
 pub unsafe fn destroy_image_resources(
     device: &ash::Device,
     image: vk::Image,

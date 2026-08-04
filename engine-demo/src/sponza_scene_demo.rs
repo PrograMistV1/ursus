@@ -52,7 +52,7 @@ impl App for MyApp {
     fn on_update(&mut self, ctx: &mut EngineContext, _dt: f32) {
         self.tick += 1;
 
-        if self.tick % 60 == 0 {
+        if self.tick.is_multiple_of(60) {
             let fps = ctx.frame_stats().current_fps();
             for text in ctx.world.inner.query_mut::<&mut UiText>() {
                 text.text = format!("FPS: {:.0}", fps);
@@ -64,7 +64,7 @@ impl App for MyApp {
                 for (mesh, mat, transform, _) in ctx.cpu_assets.get_mesh_instances(handle).unwrap() {
                     let mut builder = ctx.world.spawn();
                     builder = builder.insert(mesh);
-                    builder = builder.insert(transform.clone());
+                    builder = builder.insert(transform);
                     if let Some(m) = mat {
                         builder = builder.insert(m);
                     }

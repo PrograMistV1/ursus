@@ -16,7 +16,7 @@ use std::collections::HashMap;
 pub const BINDLESS_SLOT_WHITE: u32 = 0;
 
 enum GpuMeshState {
-    Ready(GpuMesh),
+    Ready(Box<GpuMesh>),
     Failed,
 }
 
@@ -324,7 +324,7 @@ impl GpuAssetServer {
             self.queue,
         ) {
             Ok(gpu) => {
-                self.gpu_meshes.insert(handle, GpuMeshState::Ready(gpu));
+                self.gpu_meshes.insert(handle, GpuMeshState::Ready(Box::new(gpu)));
                 Ok(())
             }
             Err(e) => {

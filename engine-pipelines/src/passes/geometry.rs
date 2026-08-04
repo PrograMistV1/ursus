@@ -75,6 +75,8 @@ impl GeometryPass {
         Ok(id)
     }
 
+    //todo: this function has too many arguments (8/7)
+    #[allow(clippy::too_many_arguments)]
     pub fn record(
         &mut self,
         enc: &mut CommandEncoder,

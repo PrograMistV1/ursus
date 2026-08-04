@@ -4,9 +4,11 @@ use crate::vulkan::renderer::{build_dyn_renderer, DynRenderer};
 use crate::vulkan::VulkanContext;
 use std::fmt::{Debug, Formatter, Result};
 
+type PipelineBuildFn =
+    dyn FnOnce(&VulkanContext, &mut GpuAssetServer, f32, f32) -> anyhow::Result<Box<dyn DynRenderer>> + Send;
+
 pub struct PipelineFactory {
-    build:
-        Box<dyn FnOnce(&VulkanContext, &mut GpuAssetServer, f32, f32) -> anyhow::Result<Box<dyn DynRenderer>> + Send>,
+    build: Box<PipelineBuildFn>,
 }
 
 impl PipelineFactory {

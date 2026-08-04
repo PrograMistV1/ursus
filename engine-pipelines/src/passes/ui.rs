@@ -96,6 +96,8 @@ impl UiPass {
         Ok(())
     }
 
+    //todo: error: this function has too many arguments (8/7)
+    #[allow(clippy::too_many_arguments)]
     fn make_pc(
         &self,
         screen: [f32; 2],

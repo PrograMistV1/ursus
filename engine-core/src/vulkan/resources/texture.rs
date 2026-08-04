@@ -15,6 +15,8 @@ pub struct GpuTexture {
 }
 
 impl GpuTexture {
+    //todo: this function has too many arguments (10/7)
+    #[allow(clippy::too_many_arguments)]
     pub fn upload(
         device: &ash::Device,
         physical_device: vk::PhysicalDevice,
@@ -201,6 +203,8 @@ impl GpuTexture {
         Ok(Self { image, view, memory, format: format.to_vk(), width, height, name, device: device.clone() })
     }
 
+    //todo: this function has too many arguments (10/7)
+    #[allow(clippy::too_many_arguments)]
     pub fn upload_no_mip(
         device: &ash::Device,
         physical_device: vk::PhysicalDevice,

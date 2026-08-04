@@ -393,7 +393,7 @@ impl RenderGraph {
     }
 }
 
-fn build_resource_edges(nodes: &[PassNode], adj: &mut Vec<HashSet<usize>>, in_degree: &mut Vec<usize>) {
+fn build_resource_edges(nodes: &[PassNode], adj: &mut [HashSet<usize>], in_degree: &mut [usize]) {
     let mut last_writer: HashMap<ResourceHandle, usize> = HashMap::new();
     let mut last_readers: HashMap<ResourceHandle, Vec<usize>> = HashMap::new();
 
@@ -415,7 +415,7 @@ fn build_resource_edges(nodes: &[PassNode], adj: &mut Vec<HashSet<usize>>, in_de
     }
 }
 
-fn build_explicit_edges(nodes: &[PassNode], adj: &mut Vec<HashSet<usize>>, in_degree: &mut Vec<usize>) {
+fn build_explicit_edges(nodes: &[PassNode], adj: &mut [HashSet<usize>], in_degree: &mut [usize]) {
     for (i, node) in nodes.iter().enumerate() {
         for &dep_handle in &node.depends_on {
             add_edge(adj, in_degree, Some(dep_handle.0 as usize), i);
@@ -423,7 +423,7 @@ fn build_explicit_edges(nodes: &[PassNode], adj: &mut Vec<HashSet<usize>>, in_de
     }
 }
 
-fn add_edge(adj: &mut Vec<HashSet<usize>>, in_degree: &mut Vec<usize>, from: Option<usize>, to: usize) {
+fn add_edge(adj: &mut [HashSet<usize>], in_degree: &mut [usize], from: Option<usize>, to: usize) {
     let Some(from) = from else { return };
     if from != to && !adj[from].contains(&to) {
         adj[from].insert(to);
@@ -432,8 +432,8 @@ fn add_edge(adj: &mut Vec<HashSet<usize>>, in_degree: &mut Vec<usize>, from: Opt
 }
 
 fn add_edges_from_readers(
-    adj: &mut Vec<HashSet<usize>>,
-    in_degree: &mut Vec<usize>,
+    adj: &mut [HashSet<usize>],
+    in_degree: &mut [usize],
     last_readers: &HashMap<ResourceHandle, Vec<usize>>,
     handle: ResourceHandle,
     to: usize,

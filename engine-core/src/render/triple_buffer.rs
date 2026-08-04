@@ -37,6 +37,10 @@ impl<T: Send> TripleBuffer<T> {
         }
     }
 
+    // todo: Currently, writer exclusivity is guaranteed by the architecture,
+    // not by the type system. The API should be redesigned so that ownership of the write handle
+    // is explicit, so that clippy::mut_from_ref doesn't have to be manually muted.
+    #[allow(clippy::mut_from_ref)]
     pub fn write_slot(&self) -> &mut T {
         let state = self.state.load(Ordering::Relaxed);
         let idx = ((state >> WRITE_SHIFT) & IDX_MASK) as usize;

@@ -83,6 +83,8 @@ impl TextRenderer {
         px * 1.2
     }
 
+    //todo: this function has too many arguments (8/7)
+    #[allow(clippy::too_many_arguments)]
     pub fn prepare_text(
         &mut self,
         font: FontId,

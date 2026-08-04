@@ -31,10 +31,6 @@ pub struct ExtractSchedule {
 }
 
 impl ExtractSchedule {
-    pub fn new() -> Self {
-        Self { systems: Vec::new() }
-    }
-
     pub fn add(&mut self, system: impl ExtractSystem + 'static) {
         self.systems.push(Box::new(system));
     }
@@ -53,12 +49,14 @@ impl ExtractSchedule {
     }
 }
 
-pub fn default_extract_schedule() -> ExtractSchedule {
-    let mut schedule = ExtractSchedule::new();
-    schedule.add(CameraExtract);
-    schedule.add(MeshExtract);
-    schedule.add(LightExtract);
-    schedule.add(UiExtract);
-    schedule.add(ShapeUiSystem);
-    schedule
+impl Default for ExtractSchedule {
+    fn default() -> Self {
+        let mut schedule = ExtractSchedule { systems: Vec::new() };
+        schedule.add(CameraExtract);
+        schedule.add(MeshExtract);
+        schedule.add(LightExtract);
+        schedule.add(UiExtract);
+        schedule.add(ShapeUiSystem);
+        schedule
+    }
 }

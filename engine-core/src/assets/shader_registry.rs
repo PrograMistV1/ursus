@@ -76,7 +76,7 @@ impl ShaderRegistry {
             let frag_spv = def
                 .frag
                 .as_ref()
-                .map(|src| load_source(src))
+                .map(load_source)
                 .transpose()
                 .map_err(|e| anyhow::anyhow!("Ошибка загрузки frag шейдера '{}': {}", def.name, e))?;
 

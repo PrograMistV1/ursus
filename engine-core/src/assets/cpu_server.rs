@@ -61,11 +61,14 @@ fn hash_texture(pixels: &[u8], width: u32, height: u32, format: Format) -> Textu
     TextureContentKey(hasher.finish(), len, width, height, format)
 }
 
+pub type MeshInstance = (MeshHandle, Option<MaterialHandle>, Transform, Aabb);
+pub type MeshPathCache = Arc<Mutex<HashMap<PathBuf, Vec<MeshInstance>>>>;
+
 pub struct CpuAssetServer {
     pub cpu_meshes: Vec<CpuMesh>,
     next_material_handle: u32,
 
-    pub mesh_path_cache: Arc<Mutex<HashMap<PathBuf, Vec<(MeshHandle, Option<MaterialHandle>, Transform, Aabb)>>>>,
+    pub mesh_path_cache: MeshPathCache,
 
     pub load_progress: LoadProgress,
 
@@ -267,10 +270,7 @@ impl CpuAssetServer {
         self.text_renderer.flush_atlas_to_channel(&mut self.next_texture_handle, upload_tx);
     }
 
-    pub fn get_mesh_instances(
-        &self,
-        handle: &AsyncMeshHandle,
-    ) -> Option<Vec<(MeshHandle, Option<MaterialHandle>, Transform, Aabb)>> {
+    pub fn get_mesh_instances(&self, handle: &AsyncMeshHandle) -> Option<Vec<MeshInstance>> {
         self.mesh_path_cache.lock().unwrap().get(&handle.0).cloned()
     }
 }

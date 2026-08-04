@@ -79,7 +79,7 @@ impl RenderPipeline for DefaultPipeline {
             pass("shadow")
                 .write(h_shadow_map, ImageLayout::DepthAttachment)
                 .record(move |enc, rw, gpu| shadow_pass.record(enc, rw, gpu, &material_buffer, h_shadow_map))
-                .build(graph, &gpu_assets);
+                .build(graph, gpu_assets);
         }
 
         {
@@ -87,7 +87,7 @@ impl RenderPipeline for DefaultPipeline {
             pass("depth_prepass")
                 .write(h_depth, ImageLayout::DepthAttachment)
                 .record(move |enc, rw, gpu| depth_prepass.record(enc, rw, gpu, &material_buffer, h_depth))
-                .build(graph, &gpu_assets);
+                .build(graph, gpu_assets);
         }
 
         {
@@ -106,7 +106,7 @@ impl RenderPipeline for DefaultPipeline {
                     material_buffer.upload(&collected);
                     geometry_pass.record(enc, rw, gpu, &material_buffer, h_gbuffer_albedo, h_gbuffer_normal, h_depth)
                 })
-                .build(graph, &gpu_assets);
+                .build(graph, gpu_assets);
         }
 
         pass("lighting")
@@ -120,14 +120,14 @@ impl RenderPipeline for DefaultPipeline {
             .bind_sampled(h_depth, lighting_pass.descriptor_set, 2, lighting_pass.sampler)
             .bind_sampled(h_shadow_map, lighting_pass.descriptor_set, 4, lighting_pass.shadow_sampler)
             .record(move |enc, rw, gpu| lighting_pass.record(enc, rw, gpu, h_hdr))
-            .build(graph, &gpu_assets);
+            .build(graph, gpu_assets);
 
         pass("post_process")
             .read(h_hdr, ImageLayout::ShaderReadOnly)
             .write(h_ldr, ImageLayout::ColorAttachment)
             .bind_sampled(h_hdr, post_pass.descriptor_set, 0, post_pass.sampler)
             .record(move |enc, rw, gpu| post_pass.record(enc, rw, gpu, h_ldr))
-            .build(graph, &gpu_assets);
+            .build(graph, gpu_assets);
 
         let fsr_pass = Arc::new(FsrPass::new(gpu_assets, LDR_FORMAT)?);
         let (fsr_easu_set, fsr_rcas_set, fsr_sampler) =
@@ -139,14 +139,14 @@ impl RenderPipeline for DefaultPipeline {
             .write(h_fsr_easu, ImageLayout::ColorAttachment)
             .bind_sampled(h_ldr, fsr_easu_set, 0, fsr_sampler)
             .record(move |enc, rw, gpu| fsr_easu.record_easu_pass(enc, rw, gpu, h_ldr, h_fsr_easu))
-            .build(graph, &gpu_assets);
+            .build(graph, gpu_assets);
 
         pass("fsr_rcas")
             .read(h_fsr_easu, ImageLayout::ShaderReadOnly)
             .write(h_fsr_rcas, ImageLayout::ColorAttachment)
             .bind_sampled(h_fsr_easu, fsr_rcas_set, 0, fsr_sampler)
             .record(move |enc, rw, gpu| fsr_rcas.record_rcas_pass(enc, rw, gpu, h_fsr_rcas))
-            .build(graph, &gpu_assets);
+            .build(graph, gpu_assets);
 
         let blit_handle = pass("blit_to_swapchain")
             .read(h_fsr_rcas, ImageLayout::TransferSrc)
@@ -155,7 +155,7 @@ impl RenderPipeline for DefaultPipeline {
                 enc.blit_to_swapchain(h_fsr_rcas, h_swapchain);
                 Ok(())
             })
-            .build(graph, &gpu_assets);
+            .build(graph, gpu_assets);
 
         let ui_pass = UiPass::new(gpu_assets, swapchain.format)?;
 
@@ -163,7 +163,7 @@ impl RenderPipeline for DefaultPipeline {
             .after(blit_handle)
             .read_write(h_swapchain, ImageLayout::ColorAttachment)
             .record(move |enc, rw, gpu| ui_pass.record(enc, rw, gpu, h_swapchain))
-            .build(graph, &gpu_assets);
+            .build(graph, gpu_assets);
 
         Ok(PipelineHandles { swapchain: h_swapchain })
     }

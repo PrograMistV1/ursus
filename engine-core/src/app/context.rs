@@ -6,13 +6,14 @@ use crate::assets::loader_registry::LoaderRegistry;
 use crate::assets::upload::GpuUploadRequest;
 use crate::ecs::tick::default_tick_schedule;
 use crate::ecs::{GameWorld, TickSchedule};
-use crate::render::extract::{default_extract_schedule, ExtractSchedule};
+use crate::render::extract::ExtractSchedule;
 use crate::render::frame_pipeline::render_pipeline::RenderPipeline;
 use crate::render::frame_stats::FrameStats;
 use crate::render::thread::command::{PipelineFactory, RenderCommand};
 use crate::render::triple_buffer::TripleBuffer;
 use crate::render::world::{ExtractedRenderSettings, RenderWorld};
 
+#[allow(clippy::enum_variant_names)]
 pub enum WindowCommand {
     SetTitle(String),
     SetSize(u32, u32),
@@ -48,7 +49,7 @@ impl EngineContext {
         Ok(Self {
             world: GameWorld::new(),
             cpu_assets,
-            extract_schedule: default_extract_schedule(),
+            extract_schedule: ExtractSchedule::default(),
             tick_schedule: default_tick_schedule(),
             cmd_tx,
             upload_tx,

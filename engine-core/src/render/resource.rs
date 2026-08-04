@@ -153,7 +153,7 @@ struct ExternalSlot {
 enum ResourceEntry {
     Transient {
         desc: ResourceDesc,
-        image: Option<TransientImage>,
+        image: Box<Option<TransientImage>>,
     },
     External(ExternalSlot),
 }
@@ -188,7 +188,7 @@ impl ResourcePool {
 
     pub fn register(&mut self, desc: ResourceDesc) -> ResourceHandle {
         let handle = ResourceHandle(self.entries.len() as u32);
-        self.entries.push(ResourceEntry::Transient { desc, image: None });
+        self.entries.push(ResourceEntry::Transient { desc, image: Box::new(None) });
         handle
     }
 
@@ -249,7 +249,7 @@ impl ResourcePool {
                         set_object_name(du, ti.view, &format!("{}_view", desc.name));
                         set_object_name(du, ti.memory, &format!("{}_memory", desc.name));
                     }
-                    *image = Some(ti);
+                    **image = Some(ti);
                 }
             }
         }
@@ -260,9 +260,10 @@ impl ResourcePool {
         for entry in &mut self.entries {
             if let ResourceEntry::Transient { desc, image } = entry {
                 if matches!(desc.extent, ResourceExtent::ScaleOutput(_)) {
-                    *image = None;
+                    **image = None;
                     let (w, h) = desc.extent.resolve(internal, new_output);
-                    *image = Some(TransientImage::new(&self.device, self.physical_device, &self.instance, desc, w, h)?);
+                    **image =
+                        Some(TransientImage::new(&self.device, self.physical_device, &self.instance, desc, w, h)?);
                 }
             }
         }
@@ -273,9 +274,10 @@ impl ResourcePool {
         for entry in &mut self.entries {
             if let ResourceEntry::Transient { desc, image } = entry {
                 if matches!(desc.extent, ResourceExtent::ScaleInternal(_)) {
-                    *image = None;
+                    **image = None;
                     let (w, h) = desc.extent.resolve(new_internal, output);
-                    *image = Some(TransientImage::new(&self.device, self.physical_device, &self.instance, desc, w, h)?);
+                    **image =
+                        Some(TransientImage::new(&self.device, self.physical_device, &self.instance, desc, w, h)?);
                 }
             }
         }
@@ -285,7 +287,7 @@ impl ResourcePool {
     pub fn image(&self, handle: ResourceHandle) -> ImageRef<'_> {
         match &self.entries[handle.0 as usize] {
             ResourceEntry::Transient { desc, image } => {
-                let ti = image
+                let ti = (**image)
                     .as_ref()
                     .unwrap_or_else(|| panic!("ResourcePool: transient ресурс '{}' не выделен", desc.name));
                 ImageRef {
@@ -451,7 +453,7 @@ impl DescriptorBindingRegistry {
 
     pub fn flush_all(&self, pool: &ResourcePool, gpu: &GpuAssetServer) {
         let all: Vec<ResourceHandle> = self.bindings.iter().map(|b| b.resource).collect();
-        self.flush(pool, &all, &gpu);
+        self.flush(pool, &all, gpu);
     }
 }
 

@@ -194,7 +194,7 @@ fn image_bytes(images: &[gltf::image::Data], index: usize) -> Option<(Vec<u8>, u
             image::RgbaImage::from_raw(data.width, data.height, data.pixels.clone()).map(DynamicImage::ImageRgba8)?
         }
         gltf::image::Format::R8G8B8 => {
-            image::RgbImage::from_raw(data.width, data.height, data.pixels.clone()).map(DynamicImage::ImageRgb8)?.into()
+            image::RgbImage::from_raw(data.width, data.height, data.pixels.clone()).map(DynamicImage::ImageRgb8)?
         }
         _ => {
             log::warn!("Неподдерживаемый формат текстуры glTF: {:?}", data.format);

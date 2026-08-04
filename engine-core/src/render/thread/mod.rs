@@ -23,6 +23,8 @@ pub struct WindowHandles {
 
 unsafe impl Send for WindowHandles {}
 
+//todo: this function has too many arguments (8/7)
+#[allow(clippy::too_many_arguments)]
 pub fn render_thread_main(
     handles: WindowHandles,
     flags: EngineFlags,
@@ -39,6 +41,8 @@ pub fn render_thread_main(
     }
 }
 
+//todo: this function has too many arguments (8/7)
+#[allow(clippy::too_many_arguments)]
 fn render_loop(
     handles: WindowHandles,
     flags: EngineFlags,

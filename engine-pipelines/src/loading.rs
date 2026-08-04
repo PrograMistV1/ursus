@@ -7,6 +7,7 @@ use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::render::world::{PreparedUiDrawList, UiPrimitive};
 use engine_core::vulkan::{GpuTexture, VulkanContext};
 use glam::Vec2;
+use std::cell::RefCell;
 use std::sync::Arc;
 
 const LOGO_SVG: &str = r#"<svg width="215" height="185" viewBox="0 0 215 185" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -27,8 +28,8 @@ struct PendingState {
 }
 
 thread_local! {
-    static PENDING: std::cell::RefCell<Option<PendingState>> =
-        std::cell::RefCell::new(None);
+    static PENDING: RefCell<Option<PendingState>> =
+        const { RefCell::new(None) };
 }
 
 pub struct LoadingPipeline {
@@ -147,7 +148,7 @@ impl RenderPipeline for LoadingPipeline {
                 enc.end_rendering();
                 Ok(())
             })
-            .build(graph, &gpu_assets);
+            .build(graph, gpu_assets);
 
         let ui_pass = Arc::new(UiPass::new(gpu_assets, swapchain.format)?);
         let ui_pass_cap = Arc::clone(&ui_pass);
@@ -173,7 +174,7 @@ impl RenderPipeline for LoadingPipeline {
 
                 ui_pass_cap.record_draw_list(enc, &draw_list, gpu, h_swapchain)
             })
-            .build(graph, &gpu_assets);
+            .build(graph, gpu_assets);
 
         PENDING.with(|c| {
             *c.borrow_mut() = Some(PendingState { logo_texture });

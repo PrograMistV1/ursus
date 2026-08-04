@@ -57,6 +57,8 @@ impl PipelineCache {
         Ok(self.insert(handle, layout))
     }
 
+    //todo: this function has too many arguments (8/7)
+    #[allow(clippy::too_many_arguments)]
     pub fn create_fullscreen_pipeline(
         &mut self,
         device: &ash::Device,
@@ -79,6 +81,8 @@ impl PipelineCache {
         Ok(self.insert(handle, layout))
     }
 
+    //todo: this function has too many arguments (8/7)
+    #[allow(clippy::too_many_arguments)]
     pub fn create_depth_only_pipeline(
         &mut self,
         device: &ash::Device,
