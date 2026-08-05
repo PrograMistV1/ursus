@@ -35,7 +35,7 @@ impl ShadowPass {
             &layout,
             std::slice::from_ref(&push_range),
             &set_layouts,
-            Some((2.0, 1.5)),
+            None,
         )?;
 
         Ok(Self { pipeline })

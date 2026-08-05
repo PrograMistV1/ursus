@@ -1,7 +1,7 @@
 use crate::vulkan::core::memory::{alloc_image, destroy_image_resources, ImageDesc};
 use ash::vk;
 
-pub const SHADOW_MAP_SIZE: u32 = 2048;
+pub const SHADOW_MAP_SIZE: u32 = 2048; //todo: must be transmitted via push constant
 
 pub struct ShadowMap {
     pub image: vk::Image,
