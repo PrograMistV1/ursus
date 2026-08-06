@@ -1,12 +1,15 @@
 use crate::assets::loader_job::{BackgroundLoader, LoaderMessage, MeshSource};
 use crate::assets::loader_registry::{AssetLoader, LoaderRegistry};
+use crate::assets::material::MaterialPayload;
 use crate::assets::mesh::{Aabb, CpuMesh};
 use crate::assets::text::{FontId, TextRenderer};
 use crate::assets::upload::GpuUploadRequest;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::components::transform::Transform;
 use crate::render::gfx::Format;
+use crate::render::world::PreparedUiDrawList;
 use cosmic_text::fontdb::Family;
+use glam::Vec2;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -62,15 +65,16 @@ fn hash_texture(pixels: &[u8], width: u32, height: u32, format: Format) -> Textu
 }
 
 pub type MeshInstance = (MeshHandle, Option<MaterialHandle>, Transform, Aabb);
-pub type MeshPathCache = Arc<Mutex<HashMap<PathBuf, Vec<MeshInstance>>>>;
+type MeshPathCache = Arc<Mutex<HashMap<PathBuf, Vec<MeshInstance>>>>;
 
 pub struct CpuAssetServer {
-    pub cpu_meshes: Vec<CpuMesh>,
+    // ==================== Internal state ====================
+    cpu_meshes: Vec<CpuMesh>,
     next_material_handle: u32,
 
-    pub mesh_path_cache: MeshPathCache,
+    mesh_path_cache: MeshPathCache,
 
-    pub load_progress: LoadProgress,
+    load_progress: LoadProgress,
 
     pending_uploads: Vec<GpuUploadRequest>,
     pub(crate) next_texture_handle: u32,
@@ -79,12 +83,12 @@ pub struct CpuAssetServer {
     loader: BackgroundLoader,
     pending_paths: HashMap<PathBuf, ()>,
 
-    pub text_renderer: TextRenderer,
-    pub default_font: FontId,
+    text_renderer: TextRenderer,
+    default_font: FontId,
 }
 
 impl CpuAssetServer {
-    pub fn new(registry: LoaderRegistry) -> Self {
+    pub(crate) fn new(registry: LoaderRegistry) -> Self {
         let text_renderer = TextRenderer::new();
         let default_font = text_renderer
             .find_system_font(Family::Monospace)
@@ -105,13 +109,136 @@ impl CpuAssetServer {
         }
     }
 
-    pub fn register_loader(&self, loader: impl AssetLoader + 'static) {
+    // ==================== Public API ====================
+    // Intended for `App` implementors, called from the game thread only.
+
+    pub fn register_mesh(&mut self, mesh: CpuMesh) -> MeshHandle {
+        let id = self.cpu_meshes.len() as u32;
+        self.cpu_meshes.push(mesh);
+        MeshHandle(id)
+    }
+
+    pub fn register_and_upload_mesh(&mut self, mesh: CpuMesh) -> MeshHandle {
+        let name = mesh.name.clone();
+        let vertices = mesh.vertices.clone();
+        let indices = mesh.indices.clone();
+
+        let handle = self.register_mesh(mesh);
+
+        self.pending_uploads.push(GpuUploadRequest::Mesh { handle, vertices, indices, name });
+
+        handle
+    }
+
+    pub fn is_loading(&self) -> bool {
+        !self.load_progress.is_done()
+    }
+
+    pub fn load_mesh_async(&mut self, path: impl AsRef<Path>) -> AsyncMeshHandle {
+        let path = path.as_ref().to_path_buf();
+        if self.pending_paths.contains_key(&path) || self.mesh_path_cache.lock().unwrap().contains_key(&path) {
+            return AsyncMeshHandle(path);
+        }
+        log::info!("load_mesh_async: {:?}", path);
+        self.loader.request_mesh(path.clone());
+        self.pending_paths.insert(path.clone(), ());
+        self.load_progress.total += 1;
+        self.load_progress.current = path.to_string_lossy().to_string();
+        AsyncMeshHandle(path)
+    }
+
+    pub fn get_mesh_instances(&self, handle: &AsyncMeshHandle) -> Option<Vec<MeshInstance>> {
+        self.mesh_path_cache.lock().unwrap().get(&handle.0).cloned()
+    }
+
+    pub fn load_progress(&self) -> &LoadProgress {
+        &self.load_progress
+    }
+
+    pub fn default_font(&self) -> FontId {
+        self.default_font
+    }
+
+    pub fn measure_text(&mut self, text: &str, px: f32) -> Vec2 {
+        self.text_renderer.measure(self.default_font, text, px)
+    }
+
+    pub fn upload_texture_rgba8(
+        &mut self,
+        pixels: Vec<u8>,
+        width: u32,
+        height: u32,
+        format: Format,
+        name: impl Into<String>,
+    ) -> TextureHandle {
+        self.dedup_or_upload_texture(pixels, width, height, format, name.into())
+    }
+
+    pub fn register_material(
+        &mut self,
+        payload: Box<dyn MaterialPayload>,
+        texture_slots: Vec<(String, TextureHandle)>,
+    ) -> MaterialHandle {
+        let handle = MaterialHandle(self.next_material_handle);
+        self.next_material_handle += 1;
+
+        self.pending_uploads.push(GpuUploadRequest::Material { handle, payload, texture_slots });
+
+        handle
+    }
+
+    // ==================== Crate-internal API ====================
+    // Used by other engine-core modules (extract systems, EngineContext, etc.), never by
+    // App implementors directly.
+
+    pub(crate) fn register_loader(&self, loader: impl AssetLoader + 'static) {
         self.loader.register_loader(Arc::new(loader));
     }
 
-    pub fn register_loader_arc(&self, loader: Arc<dyn AssetLoader>) {
+    pub(crate) fn register_loader_arc(&self, loader: Arc<dyn AssetLoader>) {
         self.loader.register_loader(loader);
     }
+
+    pub(crate) fn get_cpu_mesh(&self, handle: MeshHandle) -> Option<&CpuMesh> {
+        self.cpu_meshes.get(handle.0 as usize)
+    }
+
+    pub(crate) fn poll_loader(&mut self) {
+        loop {
+            match self.loader.msg_rx.try_recv() {
+                Ok(msg) => self.apply_message(msg),
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    log::warn!("asset-loader thread отключился");
+                    break;
+                }
+            }
+        }
+    }
+
+    pub(crate) fn flush_uploads_cpu(&mut self, tx: &Sender<GpuUploadRequest>) {
+        for req in self.pending_uploads.drain(..) {
+            let _ = tx.send(req);
+        }
+    }
+
+    pub(crate) fn flush_text_atlas(&mut self, upload_tx: &Sender<GpuUploadRequest>) {
+        self.text_renderer.flush_atlas_to_channel(&mut self.next_texture_handle, upload_tx);
+    }
+
+    pub(crate) fn prepare_text(
+        &mut self,
+        text: &str,
+        font_size: f32,
+        pos: Vec2,
+        color: [f32; 4],
+        out: &mut PreparedUiDrawList,
+    ) {
+        let font = self.default_font;
+        self.text_renderer.prepare_text(font, text, font_size, pos, color, None, out);
+    }
+
+    // ==================== Private helpers ====================
 
     fn alloc_texture_handle(&mut self) -> TextureHandle {
         let h = TextureHandle(self.next_texture_handle);
@@ -137,58 +264,6 @@ impl CpuAssetServer {
         handle
     }
 
-    pub fn register_mesh(&mut self, mesh: CpuMesh) -> MeshHandle {
-        let id = self.cpu_meshes.len() as u32;
-        self.cpu_meshes.push(mesh);
-        MeshHandle(id)
-    }
-
-    pub fn register_and_upload_mesh(&mut self, mesh: CpuMesh) -> MeshHandle {
-        let name = mesh.name.clone();
-        let vertices = mesh.vertices.clone();
-        let indices = mesh.indices.clone();
-
-        let handle = self.register_mesh(mesh);
-
-        self.pending_uploads.push(GpuUploadRequest::Mesh { handle, vertices, indices, name });
-
-        handle
-    }
-
-    pub fn get_cpu_mesh(&self, handle: MeshHandle) -> Option<&CpuMesh> {
-        self.cpu_meshes.get(handle.0 as usize)
-    }
-
-    pub fn is_loading(&self) -> bool {
-        !self.load_progress.is_done()
-    }
-
-    pub fn load_mesh_async(&mut self, path: impl AsRef<Path>) -> AsyncMeshHandle {
-        let path = path.as_ref().to_path_buf();
-        if self.pending_paths.contains_key(&path) || self.mesh_path_cache.lock().unwrap().contains_key(&path) {
-            return AsyncMeshHandle(path);
-        }
-        log::info!("load_mesh_async: {:?}", path);
-        self.loader.request_mesh(path.clone());
-        self.pending_paths.insert(path.clone(), ());
-        self.load_progress.total += 1;
-        self.load_progress.current = path.to_string_lossy().to_string();
-        AsyncMeshHandle(path)
-    }
-
-    pub fn poll_loader(&mut self) {
-        loop {
-            match self.loader.msg_rx.try_recv() {
-                Ok(msg) => self.apply_message(msg),
-                Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    log::warn!("asset-loader thread отключился");
-                    break;
-                }
-            }
-        }
-    }
-
     fn apply_message(&mut self, msg: LoaderMessage) {
         match msg {
             LoaderMessage::MeshReady { path, source } => {
@@ -207,10 +282,7 @@ impl CpuAssetServer {
         }
     }
 
-    fn build_instances_and_queue_uploads(
-        &mut self,
-        source: MeshSource,
-    ) -> Vec<(MeshHandle, Option<MaterialHandle>, Transform, Aabb)> {
+    fn build_instances_and_queue_uploads(&mut self, source: MeshSource) -> Vec<MeshInstance> {
         let mut instances = Vec::new();
 
         for prim in source.primitives {
@@ -236,16 +308,7 @@ impl CpuAssetServer {
                     texture_slots.push((role, tex_handle));
                 }
 
-                let handle = MaterialHandle(self.next_material_handle);
-                self.next_material_handle += 1;
-
-                self.pending_uploads.push(GpuUploadRequest::Material {
-                    handle,
-                    payload: loaded_material.payload,
-                    texture_slots,
-                });
-
-                handle
+                self.register_material(loaded_material.payload, texture_slots)
             });
 
             let transform = Transform {
@@ -258,20 +321,6 @@ impl CpuAssetServer {
         }
 
         instances
-    }
-
-    pub fn flush_uploads_cpu(&mut self, tx: &Sender<GpuUploadRequest>) {
-        for req in self.pending_uploads.drain(..) {
-            let _ = tx.send(req);
-        }
-    }
-
-    pub fn flush_text_atlas(&mut self, upload_tx: &Sender<GpuUploadRequest>) {
-        self.text_renderer.flush_atlas_to_channel(&mut self.next_texture_handle, upload_tx);
-    }
-
-    pub fn get_mesh_instances(&self, handle: &AsyncMeshHandle) -> Option<Vec<MeshInstance>> {
-        self.mesh_path_cache.lock().unwrap().get(&handle.0).cloned()
     }
 }
 
