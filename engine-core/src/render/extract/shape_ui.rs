@@ -26,9 +26,8 @@ impl ExtractSystem for ShapeUiSystem {
 
         // текст — шейпинг + растеризация в атлас
         if let Some(texts) = rw.get::<ExtractedUiTexts>() {
-            let font = cpu_assets.default_font;
             for t in &texts.texts.clone() {
-                cpu_assets.text_renderer.prepare_text(font, &t.text, t.font_size, t.pos, t.color, None, &mut draw_list);
+                cpu_assets.prepare_text(&t.text, t.font_size, t.pos, t.color, &mut draw_list);
             }
         }
 
