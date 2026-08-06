@@ -67,6 +67,19 @@ fn hash_texture(pixels: &[u8], width: u32, height: u32, format: Format) -> Textu
 pub type MeshInstance = (MeshHandle, Option<MaterialHandle>, Transform, Aabb);
 type MeshPathCache = Arc<Mutex<HashMap<PathBuf, Vec<MeshInstance>>>>;
 
+/// CPU-side asset registration and staging surface.
+///
+/// `CpuAssetServer` is the API `App` implementors use from the game thread to register
+/// meshes, textures, materials, and fonts. It never touches the GPU directly - every
+/// upload is staged into `pending_uploads` and later drained by [`Self::flush_uploads_cpu`]
+/// (called once per frame from [`crate::app::EngineContext::poll_assets`]) onto a channel.
+/// The render thread receives those requests and performs the actual GPU upload
+/// (`flush_uploads_gpu` in `render/thread/mod.rs`), keeping all Vulkan calls off the game
+/// thread.
+///
+/// Mesh/material loading from disk (`.gltf`, `.obj`, ...) happens on a background thread
+/// (see `loader_job.rs`); results are polled every frame via [`Self::poll_loader`] and
+/// queued onto `pending_uploads` the same way as synchronous registrations.
 pub struct CpuAssetServer {
     // ==================== Internal state ====================
     cpu_meshes: Vec<CpuMesh>,
@@ -93,7 +106,7 @@ impl CpuAssetServer {
         let default_font = text_renderer
             .find_system_font(Family::Monospace)
             .or_else(|| text_renderer.find_system_font(Family::SansSerif))
-            .expect("Не найден ни один системный шрифт (Monospace/SansSerif) - установите шрифты в системе");
+            .expect("No system fonts found (Monospace/SansSerif) - install fonts in the system");
         Self {
             cpu_meshes: Vec::new(),
             next_material_handle: 0,
@@ -112,12 +125,21 @@ impl CpuAssetServer {
     // ==================== Public API ====================
     // Intended for `App` implementors, called from the game thread only.
 
+    /// Registers a CPU-side mesh without queuing a GPU upload.
+    ///
+    /// Use this together with [`Self::register_and_upload_mesh`] when you want to build up
+    /// mesh data first and upload it later, or when the mesh is uploaded through some other
+    /// path. Synchronous, no channel traffic.
     pub fn register_mesh(&mut self, mesh: CpuMesh) -> MeshHandle {
         let id = self.cpu_meshes.len() as u32;
         self.cpu_meshes.push(mesh);
         MeshHandle(id)
     }
 
+    /// Registers a CPU-side mesh and queues it for GPU upload.
+    ///
+    /// Game thread only. Synchronous registration; the actual GPU upload happens later on
+    /// the render thread once [`Self::flush_uploads_cpu`] drains `pending_uploads`.
     pub fn register_and_upload_mesh(&mut self, mesh: CpuMesh) -> MeshHandle {
         let name = mesh.name.clone();
         let vertices = mesh.vertices.clone();
@@ -130,10 +152,12 @@ impl CpuAssetServer {
         handle
     }
 
-    pub fn is_loading(&self) -> bool {
-        !self.load_progress.is_done()
-    }
-
+    /// Queues an async load of a mesh file (`.gltf`/`.glb`/`.obj`, depending on registered
+    /// loaders) from disk on a background thread.
+    ///
+    /// Game thread only. Returns immediately with a handle you can poll via
+    /// [`Self::get_mesh_instances`] once loading completes (tracked by [`Self::is_loading`]).
+    /// Repeated calls with the same path are deduplicated.
     pub fn load_mesh_async(&mut self, path: impl AsRef<Path>) -> AsyncMeshHandle {
         let path = path.as_ref().to_path_buf();
         if self.pending_paths.contains_key(&path) || self.mesh_path_cache.lock().unwrap().contains_key(&path) {
@@ -147,22 +171,47 @@ impl CpuAssetServer {
         AsyncMeshHandle(path)
     }
 
+    /// Returns the mesh/material/transform instances produced by a completed
+    /// [`Self::load_mesh_async`] call, or `None` if it hasn't finished yet.
+    ///
+    /// Game thread only. Synchronous, reads from an in-memory cache populated by
+    /// [`Self::poll_loader`].
     pub fn get_mesh_instances(&self, handle: &AsyncMeshHandle) -> Option<Vec<MeshInstance>> {
         self.mesh_path_cache.lock().unwrap().get(&handle.0).cloned()
     }
 
+    /// Returns `true` while any [`Self::load_mesh_async`] request is still in flight.
+    pub fn is_loading(&self) -> bool {
+        !self.load_progress.is_done()
+    }
+
+    /// Read-only progress snapshot for in-flight async mesh loads (see
+    /// [`Self::load_mesh_async`]). Use [`LoadProgress::fraction`] for a 0.0-1.0 value
+    /// suitable for a loading bar.
     pub fn load_progress(&self) -> &LoadProgress {
         &self.load_progress
     }
 
+    /// The engine's default UI font, picked at startup from installed system fonts
+    /// (Monospace, falling back to SansSerif).
     pub fn default_font(&self) -> FontId {
         self.default_font
     }
 
+    /// Measures the on-screen size (in pixels) that `text` would occupy at font size `px`,
+    /// using the default font. Game thread only; synchronous, does no GPU work.
     pub fn measure_text(&mut self, text: &str, px: f32) -> Vec2 {
         self.text_renderer.measure(self.default_font, text, px)
     }
 
+    /// Registers an RGBA8 texture and queues it for GPU upload.
+    ///
+    /// Game thread only. Identical pixel content is deduplicated - calling this twice with
+    /// the same bytes returns the same [`TextureHandle`] without a second upload.
+    /// `pixels` must be tightly packed RGBA8 (4 bytes per pixel, `width * height * 4` bytes
+    /// total) unless `format` says otherwise.
+    ///
+    /// Pairs with [`Self::register_material`] - see that method's docs for a worked example.
     pub fn upload_texture_rgba8(
         &mut self,
         pixels: Vec<u8>,
@@ -174,6 +223,20 @@ impl CpuAssetServer {
         self.dedup_or_upload_texture(pixels, width, height, format, name.into())
     }
 
+    /// Registers a material payload and queues its texture bindings.
+    ///
+    /// Game thread only. `payload` carries whatever material data your render pipeline
+    /// expects (e.g. `PbrMetallicRoughness` from `engine-gltf-loader`); `texture_slots` maps
+    /// role names (e.g. `"base_color"`, `"normal"`) to texture handles obtained from
+    /// [`Self::upload_texture_rgba8`].
+    ///
+    /// ```ignore
+    /// let diffuse = cpu_assets.upload_texture_rgba8(pixels, w, h, Format::Rgba8Srgb, "brick_diffuse");
+    /// let material = cpu_assets.register_material(
+    ///     Box::new(PbrMetallicRoughness { name: "brick".into(), base_color: [1.0; 4], metallic: 0.0, roughness: 0.8, emissive: [0.0; 3] }),
+    ///     vec![("base_color".to_string(), diffuse)],
+    /// );
+    /// ```
     pub fn register_material(
         &mut self,
         payload: Box<dyn MaterialPayload>,
@@ -226,6 +289,9 @@ impl CpuAssetServer {
         self.text_renderer.flush_atlas_to_channel(&mut self.next_texture_handle, upload_tx);
     }
 
+    /// Shapes and rasterizes `text` into `out`, using the engine's default font. Used by the
+    /// built-in UI extract system; not part of the public API since it writes directly into
+    /// a [`PreparedUiDrawList`] rather than returning owned data.
     pub(crate) fn prepare_text(
         &mut self,
         text: &str,
