@@ -1,6 +1,6 @@
 use crate::assets::mesh::Aabb;
 use crate::assets::upload::GpuUploadRequest;
-use crate::assets::CpuAssetServer;
+use crate::assets::AssetRegistry;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::components::transform::Transform;
 use crate::components::transform_interpolation::TransformInterpolation;
@@ -17,7 +17,7 @@ impl ExtractSystem for MeshExtract {
         &self,
         world: &GameWorld,
         rw: &mut RenderWorld,
-        _cpu_assets: &mut CpuAssetServer,
+        _cpu_assets: &mut AssetRegistry,
         _upload_tx: &Sender<GpuUploadRequest>,
     ) {
         let alpha = rw.get::<ExtractedRenderSettings>().map(|s| s.interpolation_alpha).unwrap_or(1.0);

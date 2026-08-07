@@ -5,7 +5,7 @@ mod shape_ui;
 pub mod ui;
 
 use crate::assets::upload::GpuUploadRequest;
-use crate::assets::CpuAssetServer;
+use crate::assets::AssetRegistry;
 use crate::render::extract::camera::CameraExtract;
 use crate::render::extract::lights::LightExtract;
 use crate::render::extract::meshes::MeshExtract;
@@ -20,7 +20,7 @@ pub trait ExtractSystem: Send + Sync {
         &self,
         world: &GameWorld,
         rw: &mut RenderWorld,
-        cpu_assets: &mut CpuAssetServer,
+        cpu_assets: &mut AssetRegistry,
         upload_tx: &Sender<GpuUploadRequest>,
     );
     fn name(&self) -> &'static str;
@@ -39,7 +39,7 @@ impl ExtractSchedule {
         &self,
         world: &GameWorld,
         dst: &mut RenderWorld,
-        cpu_assets: &mut CpuAssetServer,
+        cpu_assets: &mut AssetRegistry,
         upload_tx: &Sender<GpuUploadRequest>,
     ) {
         for system in &self.systems {

@@ -1,4 +1,4 @@
-pub mod cpu_server;
+pub mod asset_registry;
 pub mod gpu_server;
 pub mod loader_job;
 pub mod loader_registry;
@@ -8,7 +8,7 @@ pub mod shader_registry;
 pub mod text;
 pub mod upload;
 
-pub use cpu_server::{AsyncMeshHandle, CpuAssetServer, LoadProgress, TextureHandle};
+pub use asset_registry::{AssetRegistry, AsyncMeshHandle, LoadProgress, TextureHandle};
 pub use loader_registry::{
     AssetLoader, LoadedMaterial, LoadedMeshSource, LoadedPrimitive, LoadedTexture, LoaderRegistry,
 };

@@ -1,5 +1,5 @@
 use crate::assets::upload::GpuUploadRequest;
-use crate::assets::CpuAssetServer;
+use crate::assets::AssetRegistry;
 use crate::components::light::{DirectionalLightComponent, PointLightComponent};
 use crate::math::light_frustum::compute_light_view_proj;
 use crate::render::extract::ExtractSystem;
@@ -14,7 +14,7 @@ impl ExtractSystem for LightExtract {
         &self,
         world: &GameWorld,
         rw: &mut RenderWorld,
-        _cpu_assets: &mut CpuAssetServer,
+        _cpu_assets: &mut AssetRegistry,
         _upload_tx: &Sender<GpuUploadRequest>,
     ) {
         let directional = match world.inner.query::<&DirectionalLightComponent>().iter().next() {

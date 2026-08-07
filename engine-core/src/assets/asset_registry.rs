@@ -69,7 +69,7 @@ type MeshPathCache = Arc<Mutex<HashMap<PathBuf, Vec<MeshInstance>>>>;
 
 /// CPU-side asset registration and staging surface.
 ///
-/// `CpuAssetServer` is the API `App` implementors use from the game thread to register
+/// `AssetRegistry` is the API `App` implementors use from the game thread to register
 /// meshes, textures, materials, and fonts. It never touches the GPU directly - every
 /// upload is staged into `pending_uploads` and later drained by [`Self::flush_uploads_cpu`]
 /// (called once per frame from [`crate::app::EngineContext::poll_assets`]) onto a channel.
@@ -80,7 +80,7 @@ type MeshPathCache = Arc<Mutex<HashMap<PathBuf, Vec<MeshInstance>>>>;
 /// Mesh/material loading from disk (`.gltf`, `.obj`, ...) happens on a background thread
 /// (see `loader_job.rs`); results are polled every frame via [`Self::poll_loader`] and
 /// queued onto `pending_uploads` the same way as synchronous registrations.
-pub struct CpuAssetServer {
+pub struct AssetRegistry {
     // ==================== Internal state ====================
     cpu_meshes: Vec<CpuMesh>,
     next_material_handle: u32,
@@ -100,7 +100,7 @@ pub struct CpuAssetServer {
     default_font: FontId,
 }
 
-impl CpuAssetServer {
+impl AssetRegistry {
     pub(crate) fn new(registry: LoaderRegistry) -> Self {
         let text_renderer = TextRenderer::new();
         let default_font = text_renderer

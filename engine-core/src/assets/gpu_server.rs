@@ -1,4 +1,4 @@
-use crate::assets::cpu_server::TextureHandle;
+use crate::assets::asset_registry::TextureHandle;
 use crate::assets::material::MaterialPayload;
 use crate::assets::mesh::{CpuMesh, GpuMesh};
 use crate::assets::ShaderRegistry;

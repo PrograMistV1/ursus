@@ -1,5 +1,5 @@
 use crate::assets::upload::GpuUploadRequest;
-use crate::assets::CpuAssetServer;
+use crate::assets::AssetRegistry;
 use crate::components::camera::{ActiveCamera, CameraComponent};
 use crate::render::extract::ExtractSystem;
 use crate::render::world::{ExtractedCamera, ExtractedRenderSettings, RenderWorld};
@@ -14,7 +14,7 @@ impl ExtractSystem for CameraExtract {
         &self,
         world: &GameWorld,
         rw: &mut RenderWorld,
-        _cpu_assets: &mut CpuAssetServer,
+        _cpu_assets: &mut AssetRegistry,
         _upload_tx: &Sender<GpuUploadRequest>,
     ) {
         let camera = world

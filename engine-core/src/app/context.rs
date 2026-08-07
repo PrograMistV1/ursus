@@ -1,7 +1,7 @@
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
-use crate::assets::cpu_server::CpuAssetServer;
+use crate::assets::asset_registry::AssetRegistry;
 use crate::assets::loader_registry::LoaderRegistry;
 use crate::assets::upload::GpuUploadRequest;
 use crate::ecs::tick::default_tick_schedule;
@@ -22,7 +22,7 @@ pub enum WindowCommand {
 
 pub struct EngineContext {
     pub world: GameWorld,
-    pub cpu_assets: CpuAssetServer,
+    pub cpu_assets: AssetRegistry,
     pub extract_schedule: ExtractSchedule,
     pub tick_schedule: TickSchedule,
 
@@ -44,7 +44,7 @@ impl EngineContext {
         frame_stats: FrameStats,
         window_cmd_tx: Sender<WindowCommand>,
     ) -> anyhow::Result<Self> {
-        let cpu_assets = CpuAssetServer::new(loader_registry);
+        let cpu_assets = AssetRegistry::new(loader_registry);
 
         Ok(Self {
             world: GameWorld::new(),

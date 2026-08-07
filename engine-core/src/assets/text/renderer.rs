@@ -1,4 +1,4 @@
-use crate::assets::cpu_server::TextureHandle;
+use crate::assets::asset_registry::TextureHandle;
 use crate::assets::text::atlas::TextAtlas;
 use crate::assets::text::atlas::ATLAS_SIZE;
 use crate::assets::upload::GpuUploadRequest;

@@ -27,7 +27,7 @@ enum LoaderCommand {
 
 pub struct BackgroundLoader {
     cmd_tx: Sender<LoaderCommand>,
-    pub msg_rx: Receiver<LoaderMessage>,
+    pub(crate) msg_rx: Receiver<LoaderMessage>,
 }
 
 impl BackgroundLoader {

@@ -1,5 +1,5 @@
 use crate::assets::upload::GpuUploadRequest;
-use crate::assets::CpuAssetServer;
+use crate::assets::AssetRegistry;
 use crate::components::ui::{UiLayout, UiRect, UiText};
 use crate::render::extract::ExtractSystem;
 use crate::render::world::{
@@ -15,7 +15,7 @@ impl ExtractSystem for UiExtract {
         &self,
         world: &GameWorld,
         rw: &mut RenderWorld,
-        _cpu_assets: &mut CpuAssetServer,
+        _cpu_assets: &mut AssetRegistry,
         _upload_tx: &Sender<GpuUploadRequest>,
     ) {
         let (screen_w, screen_h) =

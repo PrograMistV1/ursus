@@ -1,5 +1,5 @@
 use crate::assets::upload::GpuUploadRequest;
-use crate::assets::CpuAssetServer;
+use crate::assets::AssetRegistry;
 use crate::render::extract::ExtractSystem;
 use crate::render::world::{ExtractedUiRects, ExtractedUiTexts, PreparedUiDrawList, RenderWorld};
 use crate::GameWorld;
@@ -12,7 +12,7 @@ impl ExtractSystem for ShapeUiSystem {
         &self,
         _world: &GameWorld,
         rw: &mut RenderWorld,
-        cpu_assets: &mut CpuAssetServer,
+        cpu_assets: &mut AssetRegistry,
         upload_tx: &Sender<GpuUploadRequest>,
     ) {
         let mut draw_list = PreparedUiDrawList::default();
