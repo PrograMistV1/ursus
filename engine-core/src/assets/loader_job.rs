@@ -31,13 +31,13 @@ pub struct BackgroundLoader {
 }
 
 impl BackgroundLoader {
-    pub fn new(initial_registry: LoaderRegistry) -> Self {
+    pub fn new() -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<LoaderCommand>();
         let (msg_tx, msg_rx) = mpsc::channel::<LoaderMessage>();
 
         thread::Builder::new()
             .name("asset-loader".into())
-            .spawn(move || loader_thread(cmd_rx, msg_tx, initial_registry))
+            .spawn(move || loader_thread(cmd_rx, msg_tx))
             .expect("failed to spawn asset-loader thread");
 
         Self { cmd_tx, msg_rx }
@@ -62,7 +62,8 @@ impl Drop for BackgroundLoader {
     }
 }
 
-fn loader_thread(cmd_rx: Receiver<LoaderCommand>, msg_tx: Sender<LoaderMessage>, mut registry: LoaderRegistry) {
+fn loader_thread(cmd_rx: Receiver<LoaderCommand>, msg_tx: Sender<LoaderMessage>) {
+    let mut registry = LoaderRegistry::new();
     while let Ok(cmd) = cmd_rx.recv() {
         match cmd {
             LoaderCommand::Shutdown => break,

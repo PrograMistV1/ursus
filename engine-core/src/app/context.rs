@@ -2,7 +2,6 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 use crate::assets::asset_registry::AssetRegistry;
-use crate::assets::loader_registry::LoaderRegistry;
 use crate::assets::upload::GpuUploadRequest;
 use crate::ecs::tick::default_tick_schedule;
 use crate::ecs::{GameWorld, TickSchedule};
@@ -22,7 +21,7 @@ pub enum WindowCommand {
 
 pub struct EngineContext {
     pub world: GameWorld,
-    pub cpu_assets: AssetRegistry,
+    pub asset_registry: AssetRegistry,
     pub extract_schedule: ExtractSchedule,
     pub tick_schedule: TickSchedule,
 
@@ -40,15 +39,12 @@ impl EngineContext {
         upload_tx: Sender<GpuUploadRequest>,
         triple_buf: Arc<TripleBuffer<RenderWorld>>,
         output_size: (f32, f32),
-        loader_registry: LoaderRegistry,
         frame_stats: FrameStats,
         window_cmd_tx: Sender<WindowCommand>,
     ) -> anyhow::Result<Self> {
-        let cpu_assets = AssetRegistry::new(loader_registry);
-
         Ok(Self {
             world: GameWorld::new(),
-            cpu_assets,
+            asset_registry: AssetRegistry::new(),
             extract_schedule: ExtractSchedule::default(),
             tick_schedule: default_tick_schedule(),
             cmd_tx,
@@ -76,8 +72,8 @@ impl EngineContext {
     }
 
     pub fn poll_assets(&mut self) {
-        self.cpu_assets.poll_loader();
-        self.cpu_assets.flush_uploads_cpu(&self.upload_tx);
+        self.asset_registry.poll_loader();
+        self.asset_registry.flush_uploads_cpu(&self.upload_tx);
     }
 
     pub(crate) fn publish_frame(&mut self, clear_color: [f32; 4], interpolation_alpha: f32) {
@@ -90,7 +86,7 @@ impl EngineContext {
             exposure: 0.5,
             interpolation_alpha,
         });
-        self.extract_schedule.run(&self.world, write, &mut self.cpu_assets, &self.upload_tx);
+        self.extract_schedule.run(&self.world, write, &mut self.asset_registry, &self.upload_tx);
         self.triple_buf.publish();
     }
 

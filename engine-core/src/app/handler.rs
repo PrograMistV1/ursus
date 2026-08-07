@@ -8,7 +8,6 @@ use winit::{application::ApplicationHandler, event::WindowEvent, event_loop::Act
 use crate::app::context::{EngineContext, WindowCommand};
 use crate::app::traits::App;
 use crate::app::window_config::WindowConfig;
-use crate::assets::loader_registry::LoaderRegistry;
 use crate::assets::upload::GpuUploadRequest;
 use crate::render::frame_stats::FrameStats;
 use crate::render::thread::command::{PipelineFactory, RenderCommand};
@@ -80,7 +79,6 @@ impl EngineState {
 pub(crate) struct EngineHandler {
     pub app: Box<dyn App>,
     pub initial_pipeline: Option<PipelineFactory>,
-    pub loader_registry: Option<LoaderRegistry>,
     pub flags: EngineFlags,
     window_config: WindowConfig,
     state: Option<EngineState>,
@@ -90,18 +88,10 @@ impl EngineHandler {
     pub fn new(
         app: Box<dyn App>,
         initial_pipeline: PipelineFactory,
-        loader_registry: LoaderRegistry,
         flags: EngineFlags,
         window_config: WindowConfig,
     ) -> Self {
-        Self {
-            app,
-            initial_pipeline: Some(initial_pipeline),
-            loader_registry: Some(loader_registry),
-            flags,
-            state: None,
-            window_config,
-        }
+        Self { app, initial_pipeline: Some(initial_pipeline), flags, state: None, window_config }
     }
 }
 
@@ -128,21 +118,13 @@ impl ApplicationHandler for EngineHandler {
         let triple_buf = Arc::new(TripleBuffer::<RenderWorld>::new());
         let triple_buf_render = Arc::clone(&triple_buf);
 
-        let loader_registry = self.loader_registry.take().expect("loader_registry already used");
         let frame_stats = FrameStats::new();
 
         let (window_cmd_tx, window_cmd_rx) = mpsc::channel::<WindowCommand>();
 
-        let mut ctx = EngineContext::new(
-            cmd_tx,
-            upload_tx,
-            triple_buf,
-            output_size,
-            loader_registry,
-            frame_stats.clone(),
-            window_cmd_tx,
-        )
-        .expect("Failed to create EngineContext");
+        let mut ctx =
+            EngineContext::new(cmd_tx, upload_tx, triple_buf, output_size, frame_stats.clone(), window_cmd_tx)
+                .expect("Failed to create EngineContext");
 
         self.app.on_start(&mut ctx);
         ctx.publish_frame([0.0, 0.0, 0.0, 1.0], 1.0);

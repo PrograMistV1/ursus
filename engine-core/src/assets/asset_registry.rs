@@ -1,5 +1,5 @@
 use crate::assets::loader_job::{BackgroundLoader, LoaderMessage, MeshSource};
-use crate::assets::loader_registry::{AssetLoader, LoaderRegistry};
+use crate::assets::loader_registry::AssetLoader;
 use crate::assets::material::MaterialPayload;
 use crate::assets::mesh::{Aabb, CpuMesh};
 use crate::assets::text::{FontId, TextRenderer};
@@ -101,7 +101,7 @@ pub struct AssetRegistry {
 }
 
 impl AssetRegistry {
-    pub(crate) fn new(registry: LoaderRegistry) -> Self {
+    pub(crate) fn new() -> Self {
         let text_renderer = TextRenderer::new();
         let default_font = text_renderer
             .find_system_font(Family::Monospace)
@@ -115,7 +115,7 @@ impl AssetRegistry {
             pending_uploads: Vec::new(),
             next_texture_handle: 1,
             texture_dedup: HashMap::new(),
-            loader: BackgroundLoader::new(registry),
+            loader: BackgroundLoader::new(),
             pending_paths: HashMap::new(),
             text_renderer,
             default_font,
@@ -163,7 +163,7 @@ impl AssetRegistry {
         if self.pending_paths.contains_key(&path) || self.mesh_path_cache.lock().unwrap().contains_key(&path) {
             return AsyncMeshHandle(path);
         }
-        log::info!("load_mesh_async: {:?}", path);
+        log::trace!("load_mesh_async: {:?}", path);
         self.loader.request_mesh(path.clone());
         self.pending_paths.insert(path.clone(), ());
         self.load_progress.total += 1;
@@ -250,21 +250,23 @@ impl AssetRegistry {
         handle
     }
 
-    // ==================== Crate-internal API ====================
-    // Used by other engine-core modules (extract systems, EngineContext, etc.), never by
-    // App implementors directly.
-
-    pub(crate) fn register_loader(&self, loader: impl AssetLoader + 'static) {
+    /// Registers a custom [`AssetLoader`] for background mesh loading.
+    ///
+    /// It can be called at any point after the engine has started - registration is sent to
+    /// the background loading thread over the same channel as load requests, so any
+    /// [`Self::load_mesh_async`] call made after this returns is guaranteed to see the loader,
+    /// even though registration itself happens asynchronously. Calls made before registration
+    /// will fail with an error reporting that no loader is registered for that extension.
+    ///
+    /// `engine-pipelines` registers its built-in glTF/OBJ loaders this way (see
+    /// `register_builtin_loaders` in that crate), typically called once from `App::on_start`.
+    pub fn register_loader(&self, loader: impl AssetLoader + 'static) {
         self.loader.register_loader(Arc::new(loader));
     }
 
-    pub(crate) fn register_loader_arc(&self, loader: Arc<dyn AssetLoader>) {
-        self.loader.register_loader(loader);
-    }
-
-    pub(crate) fn get_cpu_mesh(&self, handle: MeshHandle) -> Option<&CpuMesh> {
-        self.cpu_meshes.get(handle.0 as usize)
-    }
+    // ==================== Crate-internal API ====================
+    // Used by other engine-core modules (extract systems, EngineContext, etc.), never by
+    // App implementors directly.
 
     pub(crate) fn poll_loader(&mut self) {
         loop {

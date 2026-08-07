@@ -28,17 +28,15 @@ impl App for MyApp {
         PipelineFactory::of::<LoadingPipeline>()
     }
 
-    fn register_loaders(registry: &mut engine_core::assets::loader_registry::LoaderRegistry) {
-        engine_pipelines::register_builtin_loaders(registry);
-    }
-
     fn window_config() -> WindowConfig {
         WindowConfig::new().with_title("Sponza Demo").with_size(1600, 900).with_resizable(true)
     }
 
     fn on_start(&mut self, ctx: &mut EngineContext) {
+        engine_pipelines::register_builtin_loaders(&ctx.asset_registry);
+
         let sponza_path = assets_dir().join("sponza/glTF/Sponza.gltf");
-        self.sponza = Some(ctx.cpu_assets.load_mesh_async(sponza_path));
+        self.sponza = Some(ctx.asset_registry.load_mesh_async(sponza_path));
 
         ctx.world
             .spawn()
@@ -59,9 +57,9 @@ impl App for MyApp {
             }
         }
 
-        if !self.spawned && !ctx.cpu_assets.is_loading() {
+        if !self.spawned && !ctx.asset_registry.is_loading() {
             if let Some(handle) = &self.sponza {
-                for (mesh, mat, transform, _) in ctx.cpu_assets.get_mesh_instances(handle).unwrap() {
+                for (mesh, mat, transform, _) in ctx.asset_registry.get_mesh_instances(handle).unwrap() {
                     let mut builder = ctx.world.spawn();
                     builder = builder.insert(mesh);
                     builder = builder.insert(transform);

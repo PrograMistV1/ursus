@@ -8,7 +8,6 @@ pub use traits::App;
 
 use handler::EngineHandler;
 
-use crate::assets::loader_registry::LoaderRegistry;
 use crate::EngineFlags;
 use winit::event_loop::{ControlFlow, EventLoop};
 
@@ -50,13 +49,10 @@ impl Engine {
         let window_config = A::window_config();
         let initial_pipeline = A::initial_pipeline();
 
-        let mut loader_registry = LoaderRegistry::new();
-        A::register_loaders(&mut loader_registry);
-
         let event_loop = EventLoop::new()?;
         event_loop.set_control_flow(ControlFlow::Poll);
 
-        let mut handler = EngineHandler::new(Box::new(app), initial_pipeline, loader_registry, flags, window_config);
+        let mut handler = EngineHandler::new(Box::new(app), initial_pipeline, flags, window_config);
         event_loop.run_app(&mut handler)?;
         Ok(())
     }
