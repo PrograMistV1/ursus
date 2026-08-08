@@ -1,9 +1,11 @@
 use crate::assets::loader_job::{BackgroundLoader, LoaderMessage, MeshSource};
 use crate::assets::loader_registry::AssetLoader;
 use crate::assets::material::MaterialPayload;
+use crate::assets::material_handle_allocator::MaterialHandleAllocator;
 use crate::assets::mesh::{Aabb, CpuMesh};
 use crate::assets::mesh_store::MeshStore;
-use crate::assets::text::{FontId, TextRenderer};
+use crate::assets::text::FontId;
+use crate::assets::text_service::TextService;
 use crate::assets::texture_handle_allocator::TextureHandleAllocator;
 use crate::assets::texture_store::{TextureRegistration, TextureStore};
 use crate::assets::upload::GpuUploadRequest;
@@ -12,7 +14,6 @@ use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::components::transform::Transform;
 use crate::render::gfx::Format;
 use crate::render::world::PreparedUiDrawList;
-use cosmic_text::fontdb::Family;
 use glam::Vec2;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -62,7 +63,7 @@ type MeshPathCache = Arc<Mutex<HashMap<PathBuf, Vec<MeshInstance>>>>;
 pub struct AssetRegistry {
     // ==================== Internal state ====================
     meshes: MeshStore,
-    next_material_handle: u32,
+    material_handles: MaterialHandleAllocator,
 
     mesh_path_cache: MeshPathCache,
 
@@ -75,20 +76,14 @@ pub struct AssetRegistry {
     loader: BackgroundLoader,
     pending_paths: HashMap<PathBuf, ()>,
 
-    text_renderer: TextRenderer,
-    default_font: FontId,
+    text: TextService,
 }
 
 impl AssetRegistry {
     pub(crate) fn new() -> Self {
-        let text_renderer = TextRenderer::new();
-        let default_font = text_renderer
-            .find_system_font(Family::Monospace)
-            .or_else(|| text_renderer.find_system_font(Family::SansSerif))
-            .expect("No system fonts found (Monospace/SansSerif) - install fonts in the system");
         Self {
             meshes: MeshStore::new(),
-            next_material_handle: 0,
+            material_handles: MaterialHandleAllocator::new(),
             mesh_path_cache: Arc::new(Mutex::new(HashMap::new())),
             load_progress: LoadProgress::default(),
             upload_queue: UploadQueue::new(),
@@ -96,8 +91,7 @@ impl AssetRegistry {
             textures: TextureStore::new(),
             loader: BackgroundLoader::new(),
             pending_paths: HashMap::new(),
-            text_renderer,
-            default_font,
+            text: TextService::new(),
         }
     }
 
@@ -172,13 +166,13 @@ impl AssetRegistry {
     /// The engine's default UI font, picked at startup from installed system fonts
     /// (Monospace, falling back to SansSerif).
     pub fn default_font(&self) -> FontId {
-        self.default_font
+        self.text.default_font()
     }
 
     /// Measures the on-screen size (in pixels) that `text` would occupy at font size `px`,
     /// using the default font. Game thread only; synchronous, does no GPU work.
     pub fn measure_text(&mut self, text: &str, px: f32) -> Vec2 {
-        self.text_renderer.measure(self.default_font, text, px)
+        self.text.measure(text, px)
     }
 
     /// Registers an RGBA8 texture and queues it for GPU upload.
@@ -219,8 +213,7 @@ impl AssetRegistry {
         payload: Box<dyn MaterialPayload>,
         texture_slots: Vec<(String, TextureHandle)>,
     ) -> MaterialHandle {
-        let handle = MaterialHandle(self.next_material_handle);
-        self.next_material_handle += 1;
+        let handle = self.material_handles.alloc();
 
         self.upload_queue.push(GpuUploadRequest::Material { handle, payload, texture_slots });
 
@@ -263,7 +256,7 @@ impl AssetRegistry {
     }
 
     pub(crate) fn flush_text_atlas(&mut self, upload_tx: &Sender<GpuUploadRequest>) {
-        self.text_renderer.flush_atlas_to_channel(&mut self.texture_handles, upload_tx);
+        self.text.flush_atlas(&mut self.texture_handles, upload_tx);
     }
 
     /// Shapes and rasterizes `text` into `out`, using the engine's default font. Used by the
@@ -277,8 +270,7 @@ impl AssetRegistry {
         color: [f32; 4],
         out: &mut PreparedUiDrawList,
     ) {
-        let font = self.default_font;
-        self.text_renderer.prepare_text(font, text, font_size, pos, color, None, out);
+        self.text.prepare(text, font_size, pos, color, out);
     }
 
     // ==================== Private helpers ====================
