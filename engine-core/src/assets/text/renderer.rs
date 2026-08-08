@@ -1,6 +1,6 @@
-use crate::assets::asset_registry::TextureHandle;
 use crate::assets::text::atlas::TextAtlas;
 use crate::assets::text::atlas::ATLAS_SIZE;
+use crate::assets::texture_handle_allocator::TextureHandleAllocator;
 use crate::assets::upload::GpuUploadRequest;
 use crate::render::gfx::Format;
 use crate::render::world::PreparedUiDrawList;
@@ -160,7 +160,11 @@ impl TextRenderer {
         }
     }
 
-    pub fn flush_atlas_to_channel(&mut self, next_texture_handle: &mut u32, upload_tx: &Sender<GpuUploadRequest>) {
+    pub(crate) fn flush_atlas_to_channel(
+        &mut self,
+        texture_handles: &mut TextureHandleAllocator,
+        upload_tx: &Sender<GpuUploadRequest>,
+    ) {
         for (idx, page) in self.atlas.pages.iter_mut().enumerate() {
             if !page.dirty {
                 continue;
@@ -169,8 +173,7 @@ impl TextRenderer {
             let handle = match page.texture_handle {
                 Some(h) => h,
                 None => {
-                    let h = TextureHandle(*next_texture_handle);
-                    *next_texture_handle += 1;
+                    let h = texture_handles.alloc();
                     page.texture_handle = Some(h);
                     h
                 }

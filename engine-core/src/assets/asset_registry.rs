@@ -4,6 +4,8 @@ use crate::assets::material::MaterialPayload;
 use crate::assets::mesh::{Aabb, CpuMesh};
 use crate::assets::mesh_store::MeshStore;
 use crate::assets::text::{FontId, TextRenderer};
+use crate::assets::texture_handle_allocator::TextureHandleAllocator;
+use crate::assets::texture_store::{TextureRegistration, TextureStore};
 use crate::assets::upload::GpuUploadRequest;
 use crate::assets::upload_queue::UploadQueue;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
@@ -13,7 +15,7 @@ use crate::render::world::PreparedUiDrawList;
 use cosmic_text::fontdb::Family;
 use glam::Vec2;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
@@ -39,31 +41,6 @@ impl LoadProgress {
     pub fn is_done(&self) -> bool {
         self.total == 0 || self.completed >= self.total
     }
-}
-
-const TEXTURE_HASH_SAMPLE_COUNT: usize = 64;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct TextureContentKey(u64, usize, u32, u32, Format);
-
-fn hash_texture(pixels: &[u8], width: u32, height: u32, format: Format) -> TextureContentKey {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-
-    let len = pixels.len();
-    if len <= TEXTURE_HASH_SAMPLE_COUNT * 2 {
-        pixels.hash(&mut hasher);
-    } else {
-        let step = len / TEXTURE_HASH_SAMPLE_COUNT;
-        let mut i = 0;
-        while i < len {
-            hasher.write_u8(pixels[i]);
-            i += step;
-        }
-        hasher.write(&pixels[..32.min(len)]);
-        hasher.write(&pixels[len - 32.min(len)..]);
-    }
-
-    TextureContentKey(hasher.finish(), len, width, height, format)
 }
 
 pub type MeshInstance = (MeshHandle, Option<MaterialHandle>, Transform, Aabb);
@@ -92,8 +69,8 @@ pub struct AssetRegistry {
     load_progress: LoadProgress,
 
     upload_queue: UploadQueue,
-    pub(crate) next_texture_handle: u32,
-    texture_dedup: HashMap<TextureContentKey, TextureHandle>,
+    texture_handles: TextureHandleAllocator,
+    textures: TextureStore,
 
     loader: BackgroundLoader,
     pending_paths: HashMap<PathBuf, ()>,
@@ -115,8 +92,8 @@ impl AssetRegistry {
             mesh_path_cache: Arc::new(Mutex::new(HashMap::new())),
             load_progress: LoadProgress::default(),
             upload_queue: UploadQueue::new(),
-            next_texture_handle: 1,
-            texture_dedup: HashMap::new(),
+            texture_handles: TextureHandleAllocator::new(),
+            textures: TextureStore::new(),
             loader: BackgroundLoader::new(),
             pending_paths: HashMap::new(),
             text_renderer,
@@ -286,7 +263,7 @@ impl AssetRegistry {
     }
 
     pub(crate) fn flush_text_atlas(&mut self, upload_tx: &Sender<GpuUploadRequest>) {
-        self.text_renderer.flush_atlas_to_channel(&mut self.next_texture_handle, upload_tx);
+        self.text_renderer.flush_atlas_to_channel(&mut self.texture_handles, upload_tx);
     }
 
     /// Shapes and rasterizes `text` into `out`, using the engine's default font. Used by the
@@ -306,12 +283,6 @@ impl AssetRegistry {
 
     // ==================== Private helpers ====================
 
-    fn alloc_texture_handle(&mut self) -> TextureHandle {
-        let h = TextureHandle(self.next_texture_handle);
-        self.next_texture_handle += 1;
-        h
-    }
-
     fn dedup_or_upload_texture(
         &mut self,
         pixels: Vec<u8>,
@@ -320,14 +291,13 @@ impl AssetRegistry {
         format: Format,
         name: String,
     ) -> TextureHandle {
-        let key = hash_texture(&pixels, width, height, format);
-        if let Some(&handle) = self.texture_dedup.get(&key) {
-            return handle;
+        match self.textures.register(&pixels, width, height, format, &mut self.texture_handles) {
+            TextureRegistration::Existing(handle) => handle,
+            TextureRegistration::New(handle) => {
+                self.upload_queue.push(GpuUploadRequest::Texture { handle, pixels, width, height, format, name });
+                handle
+            }
         }
-        let handle = self.alloc_texture_handle();
-        self.upload_queue.push(GpuUploadRequest::Texture { handle, pixels, width, height, format, name });
-        self.texture_dedup.insert(key, handle);
-        handle
     }
 
     fn apply_message(&mut self, msg: LoaderMessage) {

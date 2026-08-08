@@ -1,11 +1,14 @@
 use crate::assets::mesh::CpuMesh;
 use crate::components::mesh::MeshHandle;
 
-/// CPU-хранилище зарегистрированных мешей.
+/// CPU-side storage for registered meshes.
 ///
-/// Только хранение + выдача хендлов по индексу - ничего не знает про GPU-аплоад
-/// (это дело [`UploadQueue`](crate::assets::upload_queue::UploadQueue)) и про то, откуда меш взялся (синхронная регистрация
-/// или результат фонового `.gltf`/`.obj`-загрузчика - это дело [`AsyncMeshLoader`](crate::assets::upload_queue::AsyncMeshLoader)).
+/// Only handles storage and retrieval by index - it knows nothing about GPU uploads
+/// (that is handled by [`UploadQueue`](crate::assets::upload_queue::UploadQueue))
+/// or where the mesh came from (synchronous registration or the result of a background
+/// `.gltf`/`.obj` loader - that is handled by
+/// [`AsyncMeshLoader`](crate::assets::upload_queue::AsyncMeshLoader)).
+
 #[derive(Default)]
 pub(crate) struct MeshStore {
     cpu_meshes: Vec<CpuMesh>,

@@ -7,6 +7,8 @@ pub mod mesh;
 pub(crate) mod mesh_store;
 pub mod shader_registry;
 pub mod text;
+pub(crate) mod texture_handle_allocator;
+pub(crate) mod texture_store;
 pub mod upload;
 pub(crate) mod upload_queue;
 
