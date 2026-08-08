@@ -7,6 +7,7 @@ pub mod mesh;
 pub mod shader_registry;
 pub mod text;
 pub mod upload;
+pub(crate) mod upload_queue;
 
 pub use asset_registry::{AssetRegistry, AsyncMeshHandle, LoadProgress, TextureHandle};
 pub use loader_registry::{

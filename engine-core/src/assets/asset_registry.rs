@@ -4,6 +4,7 @@ use crate::assets::material::MaterialPayload;
 use crate::assets::mesh::{Aabb, CpuMesh};
 use crate::assets::text::{FontId, TextRenderer};
 use crate::assets::upload::GpuUploadRequest;
+use crate::assets::upload_queue::UploadQueue;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::components::transform::Transform;
 use crate::render::gfx::Format;
@@ -89,7 +90,7 @@ pub struct AssetRegistry {
 
     load_progress: LoadProgress,
 
-    pending_uploads: Vec<GpuUploadRequest>,
+    upload_queue: UploadQueue,
     pub(crate) next_texture_handle: u32,
     texture_dedup: HashMap<TextureContentKey, TextureHandle>,
 
@@ -112,7 +113,7 @@ impl AssetRegistry {
             next_material_handle: 0,
             mesh_path_cache: Arc::new(Mutex::new(HashMap::new())),
             load_progress: LoadProgress::default(),
-            pending_uploads: Vec::new(),
+            upload_queue: UploadQueue::new(),
             next_texture_handle: 1,
             texture_dedup: HashMap::new(),
             loader: BackgroundLoader::new(),
@@ -147,7 +148,7 @@ impl AssetRegistry {
 
         let handle = self.register_mesh(mesh);
 
-        self.pending_uploads.push(GpuUploadRequest::Mesh { handle, vertices, indices, name });
+        self.upload_queue.push(GpuUploadRequest::Mesh { handle, vertices, indices, name });
 
         handle
     }
@@ -245,7 +246,7 @@ impl AssetRegistry {
         let handle = MaterialHandle(self.next_material_handle);
         self.next_material_handle += 1;
 
-        self.pending_uploads.push(GpuUploadRequest::Material { handle, payload, texture_slots });
+        self.upload_queue.push(GpuUploadRequest::Material { handle, payload, texture_slots });
 
         handle
     }
@@ -282,9 +283,7 @@ impl AssetRegistry {
     }
 
     pub(crate) fn flush_uploads_cpu(&mut self, tx: &Sender<GpuUploadRequest>) {
-        for req in self.pending_uploads.drain(..) {
-            let _ = tx.send(req);
-        }
+        self.upload_queue.drain_to(tx);
     }
 
     pub(crate) fn flush_text_atlas(&mut self, upload_tx: &Sender<GpuUploadRequest>) {
@@ -327,7 +326,7 @@ impl AssetRegistry {
             return handle;
         }
         let handle = self.alloc_texture_handle();
-        self.pending_uploads.push(GpuUploadRequest::Texture { handle, pixels, width, height, format, name });
+        self.upload_queue.push(GpuUploadRequest::Texture { handle, pixels, width, height, format, name });
         self.texture_dedup.insert(key, handle);
         handle
     }
@@ -360,7 +359,7 @@ impl AssetRegistry {
             let indices = prim.mesh.indices.clone();
             let mesh_handle = self.register_mesh(prim.mesh);
 
-            self.pending_uploads.push(GpuUploadRequest::Mesh {
+            self.upload_queue.push(GpuUploadRequest::Mesh {
                 handle: mesh_handle,
                 vertices,
                 indices,
