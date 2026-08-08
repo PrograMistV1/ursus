@@ -1,4 +1,5 @@
-use crate::assets::loader_job::{BackgroundLoader, LoaderMessage, MeshSource};
+use crate::assets::async_mesh_loader::AsyncMeshLoader;
+use crate::assets::loader_job::{LoaderMessage, MeshSource};
 use crate::assets::loader_registry::AssetLoader;
 use crate::assets::material::MaterialPayload;
 use crate::assets::material_handle_allocator::MaterialHandleAllocator;
@@ -10,42 +11,22 @@ use crate::assets::texture_handle_allocator::TextureHandleAllocator;
 use crate::assets::texture_store::{TextureRegistration, TextureStore};
 use crate::assets::upload::GpuUploadRequest;
 use crate::assets::upload_queue::UploadQueue;
+use crate::assets::LoadProgress;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::components::transform::Transform;
 use crate::render::gfx::Format;
 use crate::render::world::PreparedUiDrawList;
+use crate::AsyncMeshHandle;
 use glam::Vec2;
-use std::collections::HashMap;
 use std::hash::Hash;
-use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Sender};
-use std::sync::{Arc, Mutex};
+use std::path::Path;
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextureHandle(pub u32);
 
-#[derive(Debug, Clone, Default)]
-pub struct LoadProgress {
-    pub total: usize,
-    pub completed: usize,
-    pub current: String,
-}
-
-impl LoadProgress {
-    pub fn fraction(&self) -> f32 {
-        if self.total == 0 {
-            1.0
-        } else {
-            self.completed as f32 / self.total as f32
-        }
-    }
-    pub fn is_done(&self) -> bool {
-        self.total == 0 || self.completed >= self.total
-    }
-}
-
 pub type MeshInstance = (MeshHandle, Option<MaterialHandle>, Transform, Aabb);
-type MeshPathCache = Arc<Mutex<HashMap<PathBuf, Vec<MeshInstance>>>>;
 
 /// CPU-side asset registration and staging surface.
 ///
@@ -61,22 +42,13 @@ type MeshPathCache = Arc<Mutex<HashMap<PathBuf, Vec<MeshInstance>>>>;
 /// (see `loader_job.rs`); results are polled every frame via [`Self::poll_loader`] and
 /// queued onto `pending_uploads` the same way as synchronous registrations.
 pub struct AssetRegistry {
-    // ==================== Internal state ====================
     meshes: MeshStore,
-    material_handles: MaterialHandleAllocator,
-
-    mesh_path_cache: MeshPathCache,
-
-    load_progress: LoadProgress,
-
-    upload_queue: UploadQueue,
     texture_handles: TextureHandleAllocator,
     textures: TextureStore,
-
-    loader: BackgroundLoader,
-    pending_paths: HashMap<PathBuf, ()>,
-
+    material_handles: MaterialHandleAllocator,
     text: TextService,
+    upload_queue: UploadQueue,
+    async_loader: AsyncMeshLoader,
 }
 
 impl AssetRegistry {
@@ -84,13 +56,10 @@ impl AssetRegistry {
         Self {
             meshes: MeshStore::new(),
             material_handles: MaterialHandleAllocator::new(),
-            mesh_path_cache: Arc::new(Mutex::new(HashMap::new())),
-            load_progress: LoadProgress::default(),
             upload_queue: UploadQueue::new(),
             texture_handles: TextureHandleAllocator::new(),
             textures: TextureStore::new(),
-            loader: BackgroundLoader::new(),
-            pending_paths: HashMap::new(),
+            async_loader: AsyncMeshLoader::new(),
             text: TextService::new(),
         }
     }
@@ -130,16 +99,7 @@ impl AssetRegistry {
     /// [`Self::get_mesh_instances`] once loading completes (tracked by [`Self::is_loading`]).
     /// Repeated calls with the same path are deduplicated.
     pub fn load_mesh_async(&mut self, path: impl AsRef<Path>) -> AsyncMeshHandle {
-        let path = path.as_ref().to_path_buf();
-        if self.pending_paths.contains_key(&path) || self.mesh_path_cache.lock().unwrap().contains_key(&path) {
-            return AsyncMeshHandle(path);
-        }
-        log::trace!("load_mesh_async: {:?}", path);
-        self.loader.request_mesh(path.clone());
-        self.pending_paths.insert(path.clone(), ());
-        self.load_progress.total += 1;
-        self.load_progress.current = path.to_string_lossy().to_string();
-        AsyncMeshHandle(path)
+        self.async_loader.request(path)
     }
 
     /// Returns the mesh/material/transform instances produced by a completed
@@ -148,19 +108,19 @@ impl AssetRegistry {
     /// Game thread only. Synchronous, reads from an in-memory cache populated by
     /// [`Self::poll_loader`].
     pub fn get_mesh_instances(&self, handle: &AsyncMeshHandle) -> Option<Vec<MeshInstance>> {
-        self.mesh_path_cache.lock().unwrap().get(&handle.0).cloned()
+        self.async_loader.get_instances(handle)
     }
 
     /// Returns `true` while any [`Self::load_mesh_async`] request is still in flight.
     pub fn is_loading(&self) -> bool {
-        !self.load_progress.is_done()
+        self.async_loader.is_loading()
     }
 
     /// Read-only progress snapshot for in-flight async mesh loads (see
     /// [`Self::load_mesh_async`]). Use [`LoadProgress::fraction`] for a 0.0-1.0 value
     /// suitable for a loading bar.
     pub fn load_progress(&self) -> &LoadProgress {
-        &self.load_progress
+        self.async_loader.progress()
     }
 
     /// The engine's default UI font, picked at startup from installed system fonts
@@ -231,7 +191,7 @@ impl AssetRegistry {
     /// `engine-pipelines` registers its built-in glTF/OBJ loaders this way (see
     /// `register_builtin_loaders` in that crate), typically called once from `App::on_start`.
     pub fn register_loader(&self, loader: impl AssetLoader + 'static) {
-        self.loader.register_loader(Arc::new(loader));
+        self.async_loader.register_loader(Arc::new(loader));
     }
 
     // ==================== Crate-internal API ====================
@@ -239,15 +199,8 @@ impl AssetRegistry {
     // App implementors directly.
 
     pub(crate) fn poll_loader(&mut self) {
-        loop {
-            match self.loader.msg_rx.try_recv() {
-                Ok(msg) => self.apply_message(msg),
-                Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    log::warn!("asset-loader thread отключился");
-                    break;
-                }
-            }
+        for msg in self.async_loader.poll() {
+            self.apply_message(msg);
         }
     }
 
@@ -295,22 +248,19 @@ impl AssetRegistry {
     fn apply_message(&mut self, msg: LoaderMessage) {
         match msg {
             LoaderMessage::MeshReady { path, source } => {
-                self.load_progress.current = path.to_string_lossy().to_string();
-                let instances = self.build_instances_and_queue_uploads(source);
-                self.mesh_path_cache.lock().unwrap().insert(path.clone(), instances);
-                self.pending_paths.remove(&path);
-                self.load_progress.completed += 1;
+                self.async_loader.set_current_progress_path(&path);
+                let instances = self.apply_loaded_mesh(source);
+                self.async_loader.mark_completed(&path, Some(instances));
             }
             LoaderMessage::TextureReady { .. } => {}
             LoaderMessage::Error { path, error } => {
                 log::error!("Ошибка загрузки {:?}: {}", path, error);
-                self.pending_paths.remove(&path);
-                self.load_progress.completed += 1;
+                self.async_loader.mark_completed(&path, None);
             }
         }
     }
 
-    fn build_instances_and_queue_uploads(&mut self, source: MeshSource) -> Vec<MeshInstance> {
+    fn apply_loaded_mesh(&mut self, source: MeshSource) -> Vec<MeshInstance> {
         let mut instances = Vec::new();
 
         for prim in source.primitives {
@@ -349,14 +299,5 @@ impl AssetRegistry {
         }
 
         instances
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AsyncMeshHandle(pub PathBuf);
-
-impl AsyncMeshHandle {
-    pub fn path(&self) -> &Path {
-        &self.0
     }
 }

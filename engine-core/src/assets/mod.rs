@@ -1,4 +1,5 @@
 pub mod asset_registry;
+pub(crate) mod async_mesh_loader;
 pub mod gpu_server;
 pub mod loader_job;
 pub mod loader_registry;
@@ -14,7 +15,8 @@ pub(crate) mod texture_store;
 pub mod upload;
 pub(crate) mod upload_queue;
 
-pub use asset_registry::{AssetRegistry, AsyncMeshHandle, LoadProgress, TextureHandle};
+pub use asset_registry::{AssetRegistry, TextureHandle};
+pub use async_mesh_loader::{AsyncMeshHandle, LoadProgress};
 pub use loader_registry::{
     AssetLoader, LoadedMaterial, LoadedMeshSource, LoadedPrimitive, LoadedTexture, LoaderRegistry,
 };
