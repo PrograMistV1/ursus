@@ -2,6 +2,7 @@ use crate::assets::loader_job::{BackgroundLoader, LoaderMessage, MeshSource};
 use crate::assets::loader_registry::AssetLoader;
 use crate::assets::material::MaterialPayload;
 use crate::assets::mesh::{Aabb, CpuMesh};
+use crate::assets::mesh_store::MeshStore;
 use crate::assets::text::{FontId, TextRenderer};
 use crate::assets::upload::GpuUploadRequest;
 use crate::assets::upload_queue::UploadQueue;
@@ -83,7 +84,7 @@ type MeshPathCache = Arc<Mutex<HashMap<PathBuf, Vec<MeshInstance>>>>;
 /// queued onto `pending_uploads` the same way as synchronous registrations.
 pub struct AssetRegistry {
     // ==================== Internal state ====================
-    cpu_meshes: Vec<CpuMesh>,
+    meshes: MeshStore,
     next_material_handle: u32,
 
     mesh_path_cache: MeshPathCache,
@@ -109,7 +110,7 @@ impl AssetRegistry {
             .or_else(|| text_renderer.find_system_font(Family::SansSerif))
             .expect("No system fonts found (Monospace/SansSerif) - install fonts in the system");
         Self {
-            cpu_meshes: Vec::new(),
+            meshes: MeshStore::new(),
             next_material_handle: 0,
             mesh_path_cache: Arc::new(Mutex::new(HashMap::new())),
             load_progress: LoadProgress::default(),
@@ -132,9 +133,7 @@ impl AssetRegistry {
     /// mesh data first and upload it later, or when the mesh is uploaded through some other
     /// path. Synchronous, no channel traffic.
     pub fn register_mesh(&mut self, mesh: CpuMesh) -> MeshHandle {
-        let id = self.cpu_meshes.len() as u32;
-        self.cpu_meshes.push(mesh);
-        MeshHandle(id)
+        self.meshes.register(mesh)
     }
 
     /// Registers a CPU-side mesh and queues it for GPU upload.

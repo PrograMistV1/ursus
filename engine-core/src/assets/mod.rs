@@ -4,6 +4,7 @@ pub mod loader_job;
 pub mod loader_registry;
 pub mod material;
 pub mod mesh;
+pub(crate) mod mesh_store;
 pub mod shader_registry;
 pub mod text;
 pub mod upload;
