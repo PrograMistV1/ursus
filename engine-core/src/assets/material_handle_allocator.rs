@@ -12,8 +12,8 @@ impl MaterialHandleAllocator {
     }
 
     pub(crate) fn alloc(&mut self) -> MaterialHandle {
-        let h = MaterialHandle(self.next);
+        let id = self.next;
         self.next += 1;
-        h
+        MaterialHandle(id)
     }
 }

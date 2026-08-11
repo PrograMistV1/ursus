@@ -72,7 +72,6 @@ impl EngineContext {
     }
 
     pub fn poll_assets(&mut self) {
-        self.asset_registry.poll_loader();
         self.asset_registry.flush_uploads_cpu(&self.upload_tx);
     }
 

@@ -40,7 +40,7 @@ impl App for InterpolationDemoApp {
         ctx.world.spawn().insert(CameraComponent::default()).insert(ActiveCamera).build();
         ctx.world.spawn().insert(DirectionalLightComponent::default()).build();
 
-        let cube_mesh = ctx.asset_registry.register_and_upload_mesh(CpuMesh::cube());
+        let cube_mesh = ctx.asset_registry.upload_mesh(CpuMesh::cube());
 
         let interpolated = ctx
             .world

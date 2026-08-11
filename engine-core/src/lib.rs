@@ -8,7 +8,6 @@ pub mod math;
 pub mod render;
 pub mod vulkan;
 
-pub use assets::AsyncMeshHandle;
 pub use ecs::{components, GameWorld};
 pub use flags::EngineFlags;
 pub use vulkan::VulkanContext;

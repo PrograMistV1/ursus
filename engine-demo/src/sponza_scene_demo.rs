@@ -2,21 +2,20 @@ use engine_core::app::window_config::WindowConfig;
 use engine_core::app::{App, Engine, EngineContext};
 use engine_core::components::camera::{ActiveCamera, CameraComponent};
 use engine_core::components::light::DirectionalLightComponent;
+use engine_core::components::mesh::MaterialHandle;
 use engine_core::components::ui::{UiLayout, UiText};
+use engine_core::render::gfx::Format;
 use engine_core::render::thread::command::PipelineFactory;
-use engine_core::AsyncMeshHandle;
-use engine_pipelines::{DefaultPipeline, LoadingPipeline};
-use glam::{Vec2, Vec3};
+use engine_pipelines::DefaultPipeline;
+use glam::{Quat, Vec2, Vec3};
 
 struct MyApp {
-    sponza: Option<AsyncMeshHandle>,
-    spawned: bool,
     tick: u64,
 }
 
 impl MyApp {
     fn new() -> Self {
-        Self { sponza: None, spawned: false, tick: 0 }
+        Self { tick: 0 }
     }
 }
 
@@ -25,7 +24,7 @@ impl App for MyApp {
     where
         Self: Sized,
     {
-        PipelineFactory::of::<LoadingPipeline>()
+        PipelineFactory::of::<DefaultPipeline>()
     }
 
     fn window_config() -> WindowConfig {
@@ -33,17 +32,62 @@ impl App for MyApp {
     }
 
     fn on_start(&mut self, ctx: &mut EngineContext) {
-        engine_pipelines::register_builtin_loaders(&ctx.asset_registry);
-
         let sponza_path = assets_dir().join("sponza/glTF/Sponza.gltf");
-        self.sponza = Some(ctx.asset_registry.load_mesh_async(sponza_path));
+        let primitives = engine_gltf_loader::load_gltf(&sponza_path).expect("failed to load Sponza");
+
+        for prim in primitives {
+            let mesh_handle = ctx.asset_registry.upload_mesh(prim.mesh);
+
+            let material_handle: Option<MaterialHandle> = prim.material.map(|payload| {
+                let texture_slots = prim
+                    .textures
+                    .into_iter()
+                    .map(|(role, pixels, w, h, name, _image_index)| {
+                        let format = match role.as_str() {
+                            "base_color" | "emissive" => Format::Rgba8Srgb,
+                            _ => Format::Rgba8Unorm,
+                        };
+                        let tex = ctx.asset_registry.upload_texture_rgba8(pixels, w, h, format, name);
+                        (role, tex)
+                    })
+                    .collect();
+
+                ctx.asset_registry.register_material(payload, texture_slots)
+            });
+
+            let transform = engine_core::components::transform::Transform {
+                position: Vec3::from(prim.node_translation),
+                rotation: Quat::from_array(prim.node_rotation),
+                scale: Vec3::from(prim.node_scale),
+            };
+
+            let mut builder = ctx.world.spawn().insert(mesh_handle).insert(transform);
+            if let Some(m) = material_handle {
+                builder = builder.insert(m);
+            }
+            builder.build();
+        }
+
+        log::info!("Sponza spawned");
 
         ctx.world
             .spawn()
             .insert(UiLayout::top_left(Vec2::new(16.0, 16.0)))
             .insert(UiText::new("FPS: 60").with_size(18.0).with_color([1.0; 4]))
             .build();
-        ctx.world.spawn().insert(CameraComponent::default()).insert(ActiveCamera).build();
+
+        ctx.world
+            .spawn()
+            .insert(CameraComponent {
+                eye: Vec3::new(8.0, 4.0, 0.0),
+                target: Vec3::new(0.0, 4.0, 0.0),
+                z_near: 0.01,
+                z_far: 50.0,
+                ..Default::default()
+            })
+            .insert(ActiveCamera)
+            .build();
+
         ctx.world.spawn().insert(DirectionalLightComponent::default()).build();
     }
 
@@ -57,38 +101,10 @@ impl App for MyApp {
             }
         }
 
-        if !self.spawned && !ctx.asset_registry.is_loading() {
-            if let Some(handle) = &self.sponza {
-                for (mesh, mat, transform, _) in ctx.asset_registry.get_mesh_instances(handle).unwrap() {
-                    let mut builder = ctx.world.spawn();
-                    builder = builder.insert(mesh);
-                    builder = builder.insert(transform);
-                    if let Some(m) = mat {
-                        builder = builder.insert(m);
-                    }
-                    builder.build();
-                }
-                log::info!("Sponza заспавнена");
-            }
-
-            for (cam, _) in ctx.world.inner.query_mut::<(&mut CameraComponent, &ActiveCamera)>() {
-                cam.eye = Vec3::new(8.0, 4.0, 0.0);
-                cam.target = Vec3::new(0.0, 4.0, 0.0);
-                cam.z_near = 0.01;
-                cam.z_far = 50.0;
-            }
-
-            ctx.set_pipeline::<DefaultPipeline>();
-            self.spawned = true;
-            log::info!("Загрузка завершена - переключились на DefaultPipeline");
-        }
-
         let t = self.tick as f32 * 0.003;
         for (cam, _) in ctx.world.inner.query_mut::<(&mut CameraComponent, &ActiveCamera)>() {
-            if self.spawned {
-                cam.eye = Vec3::new(t.sin() * 9.0, 2.0, t.cos() * 4.0);
-                cam.target = Vec3::new(0.0, 2.0, 0.0);
-            }
+            cam.eye = Vec3::new(t.sin() * 9.0, 2.0, t.cos() * 4.0);
+            cam.target = Vec3::new(0.0, 2.0, 0.0);
         }
     }
 
@@ -101,9 +117,9 @@ impl App for MyApp {
 
 fn assets_dir() -> std::path::PathBuf {
     std::env::current_exe()
-        .expect("не удалось получить путь к исполняемому файлу")
+        .expect("failed to get path to executable file")
         .parent()
-        .expect("у исполняемого файла должна быть родительская директория")
+        .expect("the executable file must have a parent directory")
         .join("assets")
 }
 

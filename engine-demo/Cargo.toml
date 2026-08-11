@@ -14,6 +14,7 @@ path = "src/interpolation_demo.rs"
 [dependencies]
 engine-core = { path = "../engine-core" }
 engine-pipelines = { path = "../engine-pipelines" }
+engine-gltf-loader = { path = "../engine-gltf-loader" }
 anyhow = "1"
 log = "0.4"
 glam = "0.33.0"
