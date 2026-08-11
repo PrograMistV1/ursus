@@ -1,9 +1,9 @@
 use crate::assets::asset_registry::MeshInstance;
-use crate::assets::loader_job::{BackgroundLoader, LoaderMessage};
+use crate::assets::loader_backend::LoaderBackend;
+use crate::assets::loader_job::LoaderMessage;
 use crate::assets::loader_registry::AssetLoader;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, Mutex};
 
 pub(crate) type MeshPathCache = Arc<Mutex<HashMap<PathBuf, Vec<MeshInstance>>>>;
@@ -40,16 +40,16 @@ impl AsyncMeshHandle {
 /// Manages background mesh loading: query submission, deduplication
 /// along the way, progress tracking, and a cache of the finished results.
 pub(crate) struct AsyncMeshLoader {
-    loader: BackgroundLoader,
+    loader: Box<dyn LoaderBackend>,
     pending_paths: HashMap<PathBuf, ()>,
     mesh_path_cache: MeshPathCache,
     load_progress: LoadProgress,
 }
 
 impl AsyncMeshLoader {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(loader: Box<dyn LoaderBackend>) -> Self {
         Self {
-            loader: BackgroundLoader::new(),
+            loader,
             pending_paths: HashMap::new(),
             mesh_path_cache: Arc::new(Mutex::new(HashMap::new())),
             load_progress: LoadProgress::default(),
@@ -87,18 +87,7 @@ impl AsyncMeshLoader {
 
     /// Retrieves all accumulated messages from the background thread. Does not block.
     pub(crate) fn poll(&mut self) -> Vec<LoaderMessage> {
-        let mut messages = Vec::new();
-        loop {
-            match self.loader.msg_rx.try_recv() {
-                Ok(msg) => messages.push(msg),
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => {
-                    log::warn!("asset-loader thread disconnected");
-                    break;
-                }
-            }
-        }
-        messages
+        self.loader.poll()
     }
 
     /// Marks the mesh loading at `path` as complete: caches the completed

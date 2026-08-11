@@ -1,6 +1,7 @@
 pub mod asset_registry;
 pub(crate) mod async_mesh_loader;
 pub mod gpu_server;
+pub mod loader_backend;
 pub mod loader_job;
 pub mod loader_registry;
 pub mod material;

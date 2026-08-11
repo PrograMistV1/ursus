@@ -1,5 +1,5 @@
 use crate::assets::async_mesh_loader::AsyncMeshLoader;
-use crate::assets::loader_job::{LoaderMessage, MeshSource};
+use crate::assets::loader_job::{BackgroundLoader, LoaderMessage, MeshSource};
 use crate::assets::loader_registry::AssetLoader;
 use crate::assets::material::MaterialPayload;
 use crate::assets::material_handle_allocator::MaterialHandleAllocator;
@@ -59,7 +59,7 @@ impl AssetRegistry {
             upload_queue: UploadQueue::new(),
             texture_handles: TextureHandleAllocator::new(),
             textures: TextureStore::new(),
-            async_loader: AsyncMeshLoader::new(),
+            async_loader: AsyncMeshLoader::new(Box::new(BackgroundLoader::new())),
             text: TextService::new(),
         }
     }

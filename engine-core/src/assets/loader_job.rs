@@ -1,10 +1,10 @@
+use crate::assets::loader_backend::LoaderBackend;
+pub use crate::assets::loader_registry::LoadedMeshSource as MeshSource;
+use crate::assets::loader_registry::{AssetLoader, LoaderRegistry};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread;
-
-pub use crate::assets::loader_registry::LoadedMeshSource as MeshSource;
-use crate::assets::loader_registry::{AssetLoader, LoaderRegistry};
 
 pub struct TextureSource {
     pub pixels: Vec<u8>,
@@ -42,17 +42,30 @@ impl BackgroundLoader {
 
         Self { cmd_tx, msg_rx }
     }
+}
 
-    pub fn request_mesh(&self, path: PathBuf) {
+impl LoaderBackend for BackgroundLoader {
+    fn request_mesh(&self, path: PathBuf) {
         let _ = self.cmd_tx.send(LoaderCommand::LoadMesh(path));
     }
 
-    pub fn request_texture(&self, path: PathBuf) {
-        let _ = self.cmd_tx.send(LoaderCommand::LoadTexture(path));
+    fn register_loader(&self, loader: Arc<dyn AssetLoader>) {
+        let _ = self.cmd_tx.send(LoaderCommand::RegisterLoader(loader));
     }
 
-    pub fn register_loader(&self, loader: Arc<dyn AssetLoader>) {
-        let _ = self.cmd_tx.send(LoaderCommand::RegisterLoader(loader));
+    fn poll(&mut self) -> Vec<LoaderMessage> {
+        let mut messages = Vec::new();
+        loop {
+            match self.msg_rx.try_recv() {
+                Ok(msg) => messages.push(msg),
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    log::warn!("asset-loader thread disconnected");
+                    break;
+                }
+            }
+        }
+        messages
     }
 }
 
