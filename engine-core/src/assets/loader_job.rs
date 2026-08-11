@@ -20,7 +20,6 @@ pub enum LoaderMessage {
 
 enum LoaderCommand {
     LoadMesh(PathBuf),
-    LoadTexture(PathBuf),
     RegisterLoader(Arc<dyn AssetLoader>),
     Shutdown,
 }
@@ -98,23 +97,22 @@ fn loader_thread(cmd_rx: Receiver<LoaderCommand>, msg_tx: Sender<LoaderMessage>)
                 if msg_tx.send(msg).is_err() {
                     break;
                 }
-            }
-
-            LoaderCommand::LoadTexture(path) => {
-                let result = load_texture_cpu(&path);
-                let msg = match result {
-                    Ok(source) => LoaderMessage::TextureReady { path, source },
-                    Err(e) => LoaderMessage::Error { path, error: e.to_string() },
-                };
-                if msg_tx.send(msg).is_err() {
-                    break;
-                }
-            }
+            } //unused
+              /*LoaderCommand::LoadTexture(path) => {
+                  let result = load_texture_cpu(&path);
+                  let msg = match result {
+                      Ok(source) => LoaderMessage::TextureReady { path, source },
+                      Err(e) => LoaderMessage::Error { path, error: e.to_string() },
+                  };
+                  if msg_tx.send(msg).is_err() {
+                      break;
+                  }
+              }*/
         }
     }
 }
 
-fn load_texture_cpu(path: &std::path::Path) -> anyhow::Result<TextureSource> {
+/*fn load_texture_cpu(path: &std::path::Path) -> anyhow::Result<TextureSource> {
     let img =
         image::open(path).map_err(|e| anyhow::anyhow!("не удалось загрузить текстуру {:?}: {}", path, e))?.into_rgba8();
 
@@ -123,3 +121,4 @@ fn load_texture_cpu(path: &std::path::Path) -> anyhow::Result<TextureSource> {
 
     Ok(TextureSource { pixels, width, height })
 }
+*/
