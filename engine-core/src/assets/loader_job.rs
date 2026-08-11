@@ -62,6 +62,12 @@ impl Drop for BackgroundLoader {
     }
 }
 
+impl Default for BackgroundLoader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn loader_thread(cmd_rx: Receiver<LoaderCommand>, msg_tx: Sender<LoaderMessage>) {
     let mut registry = LoaderRegistry::new();
     while let Ok(cmd) = cmd_rx.recv() {
