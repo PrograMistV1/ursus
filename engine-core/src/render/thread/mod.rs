@@ -208,7 +208,7 @@ fn flush_uploads_gpu(rx: &Receiver<GpuUploadRequest>, gpu: &mut GpuAssetServer) 
                     }
                 }
                 GpuUploadRequest::Material { handle, payload, texture_slots } => {
-                    gpu.register_material_payload(handle, payload, texture_slots);
+                    gpu.materials.register(handle, payload, texture_slots);
                 }
             },
             Err(std::sync::mpsc::TryRecvError::Empty) => break,

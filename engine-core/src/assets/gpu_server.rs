@@ -1,7 +1,4 @@
-use crate::assets::asset_registry::TextureHandle;
-use crate::assets::material::MaterialPayload;
-use crate::assets::{GpuTextureStore, MeshStore, ShaderRegistry};
-use crate::components::mesh::MaterialHandle;
+use crate::assets::{GpuTextureStore, MaterialStore, MeshStore, ShaderRegistry};
 use crate::render::gfx::{
     sampler, BlendState, DescriptorAllocator, DescriptorSetId, Format, PushConstantRange, SamplerDesc, SamplerId,
     TechniqueRegistry, VertexLayout,
@@ -10,7 +7,6 @@ use crate::render::gfx::{PipelineCache, PipelineId};
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use crate::vulkan::MappedGpuBuffer;
 use ash::vk;
-use std::collections::HashMap;
 
 pub const BINDLESS_SLOT_WHITE: u32 = 0;
 
@@ -21,9 +17,7 @@ struct StoredSampler {
 pub struct GpuAssetServer {
     pub meshes: MeshStore,
     pub textures: GpuTextureStore,
-
-    material_payloads: HashMap<MaterialHandle, Box<dyn MaterialPayload>>,
-    material_textures: HashMap<MaterialHandle, Vec<(String, TextureHandle)>>,
+    pub materials: MaterialStore,
 
     pub shaders: ShaderRegistry,
     pub techniques: TechniqueRegistry,
@@ -63,9 +57,6 @@ impl GpuAssetServer {
         Ok(Self {
             meshes,
             textures,
-            material_payloads: HashMap::new(),
-            material_textures: HashMap::new(),
-            samplers: Vec::new(),
             shaders,
             techniques,
             pipeline_cache,
@@ -75,6 +66,8 @@ impl GpuAssetServer {
             command_pool,
             descriptors,
             bindless_set_id,
+            materials: MaterialStore::new(),
+            samplers: Vec::new(),
         })
     }
 
@@ -182,28 +175,6 @@ impl GpuAssetServer {
         capacity: usize,
     ) -> anyhow::Result<MappedGpuBuffer<T>> {
         MappedGpuBuffer::new(&self.device, self.physical_device, &self.instance, usage.to_vk(), capacity)
-    }
-
-    pub fn register_material_payload(
-        &mut self,
-        handle: MaterialHandle,
-        payload: Box<dyn MaterialPayload>,
-        texture_slots: Vec<(String, TextureHandle)>,
-    ) {
-        self.material_payloads.insert(handle, payload);
-        self.material_textures.insert(handle, texture_slots);
-    }
-
-    pub fn get_material<T: 'static>(&self, handle: MaterialHandle) -> Option<&T> {
-        self.material_payloads.get(&handle)?.as_ref().as_any().downcast_ref::<T>()
-    }
-
-    pub fn material_textures(&self, handle: MaterialHandle) -> &[(String, TextureHandle)] {
-        self.material_textures.get(&handle).map(Vec::as_slice).unwrap_or(&[])
-    }
-
-    pub fn material_handles(&self) -> impl Iterator<Item = MaterialHandle> + '_ {
-        self.material_payloads.keys().copied()
     }
 
     pub fn pipeline_cache(&self) -> &PipelineCache {

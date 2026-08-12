@@ -63,10 +63,10 @@ pub fn resolve_material(gpu: &GpuAssetServer, handle: MaterialHandle) -> Materia
     #[cfg(feature = "gltf-loader")]
     {
         use engine_gltf_loader::{PbrMetallicRoughness, UnlitMaterial};
-        if let Some(pbr) = gpu.get_material::<PbrMetallicRoughness>(handle) {
+        if let Some(pbr) = gpu.materials.get::<PbrMetallicRoughness>(handle) {
             return pack_pbr(gpu, handle, pbr);
         }
-        if let Some(unlit) = gpu.get_material::<UnlitMaterial>(handle) {
+        if let Some(unlit) = gpu.materials.get::<UnlitMaterial>(handle) {
             return pack_unlit(gpu, handle, unlit);
         }
     }
@@ -82,7 +82,7 @@ fn pack_pbr(
     handle: MaterialHandle,
     m: &engine_gltf_loader::PbrMetallicRoughness,
 ) -> MaterialData {
-    let slots = gpu.material_textures(handle);
+    let slots = gpu.materials.textures(handle);
     let find = |role: &str| slots.iter().find(|(r, _)| r == role).map(|(_, h)| gpu.textures.slot(*h)).unwrap_or(0);
     MaterialData {
         base_color: m.base_color,
@@ -102,7 +102,7 @@ fn pack_pbr(
 
 #[cfg(feature = "gltf-loader")]
 fn pack_unlit(gpu: &GpuAssetServer, handle: MaterialHandle, m: &engine_gltf_loader::UnlitMaterial) -> MaterialData {
-    let slots = gpu.material_textures(handle);
+    let slots = gpu.materials.textures(handle);
     let base_color_tex = slots.iter().find(|(r, _)| r == "base_color").map(|(_, h)| gpu.textures.slot(*h)).unwrap_or(0);
     MaterialData {
         base_color: m.base_color,
