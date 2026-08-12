@@ -64,7 +64,7 @@ impl GpuAssetServer {
         let pipeline_cache = PipelineCache::new(device.clone());
         let mut descriptors = DescriptorAllocator::new(device.clone());
 
-        descriptors.register_external(bindless.layout, bindless.set, bindless.pool);
+        let bindless_set_id = descriptors.register_external(bindless.layout, bindless.set, bindless.pool);
 
         log::info!("GpuAssetServer: white=slot0, next_slot={}", bindless.next_slot());
 
@@ -74,6 +74,7 @@ impl GpuAssetServer {
             gpu_textures: HashMap::new(),
             material_payloads: HashMap::new(),
             material_textures: HashMap::new(),
+            samplers: Vec::new(),
             shaders,
             techniques,
             bindless,
@@ -84,8 +85,7 @@ impl GpuAssetServer {
             command_pool,
             queue,
             descriptors,
-            samplers: Vec::new(),
-            bindless_set_id: DescriptorSetId(0),
+            bindless_set_id,
         })
     }
 
