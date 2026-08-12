@@ -198,7 +198,7 @@ fn flush_uploads_gpu(rx: &Receiver<GpuUploadRequest>, gpu: &mut GpuAssetServer) 
                 GpuUploadRequest::Mesh { handle, vertices, indices, name } => {
                     use crate::assets::mesh::CpuMesh;
                     let cpu = CpuMesh::new(name, vertices, indices);
-                    if let Err(e) = gpu.upload_mesh(handle, &cpu) {
+                    if let Err(e) = gpu.meshes.upload(handle, &cpu) {
                         log::error!("GPU upload mesh failed: {e}");
                     }
                 }

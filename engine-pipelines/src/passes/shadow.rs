@@ -57,7 +57,7 @@ impl ShadowPass {
         enc.bind_descriptor_sets(self.pipeline, &[gpu.bindless_set(), material_buffer.descriptor_set]);
 
         for inst in meshes {
-            let Some(mesh) = gpu.get_gpu_mesh(inst.mesh) else {
+            let Some(mesh) = gpu.meshes.get(inst.mesh) else {
                 continue;
             };
             let mvp = lights.light_view_proj * inst.model;

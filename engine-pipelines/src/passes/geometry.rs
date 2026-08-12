@@ -103,7 +103,7 @@ impl GeometryPass {
                     .and_then(|name| gpu.techniques.by_name(name))
                     .unwrap_or(self.default_technique);
                 Some(DrawCall {
-                    gpu_mesh: gpu.get_gpu_mesh(inst.mesh)?,
+                    gpu_mesh: gpu.meshes.get(inst.mesh)?,
                     model: inst.model,
                     material: inst.material,
                     technique,

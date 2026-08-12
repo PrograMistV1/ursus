@@ -1,8 +1,7 @@
 use crate::assets::asset_registry::TextureHandle;
 use crate::assets::material::MaterialPayload;
-use crate::assets::mesh::{CpuMesh, GpuMesh};
-use crate::assets::ShaderRegistry;
-use crate::components::mesh::{MaterialHandle, MeshHandle};
+use crate::assets::{MeshStore, ShaderRegistry};
+use crate::components::mesh::MaterialHandle;
 use crate::render::gfx::{
     sampler, BlendState, DescriptorAllocator, DescriptorSetId, Format, PushConstantRange, SamplerDesc, SamplerId,
     TechniqueRegistry, VertexLayout,
@@ -15,17 +14,12 @@ use std::collections::HashMap;
 
 pub const BINDLESS_SLOT_WHITE: u32 = 0;
 
-enum GpuMeshState {
-    Ready(Box<GpuMesh>),
-    Failed,
-}
-
 struct StoredSampler {
     handle: vk::Sampler,
 }
 
 pub struct GpuAssetServer {
-    gpu_meshes: HashMap<MeshHandle, GpuMeshState>,
+    pub meshes: MeshStore,
     texture_slots: HashMap<TextureHandle, u32>,
     gpu_textures: HashMap<u32, GpuTexture>,
 
@@ -63,13 +57,14 @@ impl GpuAssetServer {
         let techniques = TechniqueRegistry::default();
         let pipeline_cache = PipelineCache::new(device.clone());
         let mut descriptors = DescriptorAllocator::new(device.clone());
+        let meshes = MeshStore::new(device.clone(), physical_device, instance.clone(), command_pool, queue);
 
         let bindless_set_id = descriptors.register_external(bindless.layout, bindless.set, bindless.pool);
 
         log::info!("GpuAssetServer: white=slot0, next_slot={}", bindless.next_slot());
 
         Ok(Self {
-            gpu_meshes: HashMap::new(),
+            meshes,
             texture_slots: HashMap::new(),
             gpu_textures: HashMap::new(),
             material_payloads: HashMap::new(),
@@ -195,26 +190,6 @@ impl GpuAssetServer {
         MappedGpuBuffer::new(&self.device, self.physical_device, &self.instance, usage.to_vk(), capacity)
     }
 
-    pub fn upload_mesh(&mut self, handle: MeshHandle, cpu_mesh: &CpuMesh) -> anyhow::Result<()> {
-        match GpuMesh::upload(
-            &self.device,
-            self.physical_device,
-            &self.instance,
-            cpu_mesh,
-            self.command_pool,
-            self.queue,
-        ) {
-            Ok(gpu) => {
-                self.gpu_meshes.insert(handle, GpuMeshState::Ready(Box::new(gpu)));
-                Ok(())
-            }
-            Err(e) => {
-                self.gpu_meshes.insert(handle, GpuMeshState::Failed);
-                Err(e)
-            }
-        }
-    }
-
     pub fn upload_texture(
         &mut self,
         handle: TextureHandle,
@@ -269,23 +244,12 @@ impl GpuAssetServer {
         self.material_payloads.keys().copied()
     }
 
-    pub fn get_gpu_mesh(&self, handle: MeshHandle) -> Option<&GpuMesh> {
-        match self.gpu_meshes.get(&handle)? {
-            GpuMeshState::Ready(gpu) => Some(gpu),
-            GpuMeshState::Failed => None,
-        }
-    }
-
     pub fn pipeline_cache(&self) -> &PipelineCache {
         &self.pipeline_cache
     }
 
     pub fn device(&self) -> &ash::Device {
         &self.device
-    }
-
-    pub fn is_mesh_ready(&self, handle: MeshHandle) -> bool {
-        matches!(self.gpu_meshes.get(&handle), Some(GpuMeshState::Ready(_)))
     }
 
     pub fn command_pool(&self) -> vk::CommandPool {
