@@ -1,7 +1,7 @@
 use crate::assets::mesh::Aabb;
 use crate::assets::upload::GpuUploadRequest;
 use crate::assets::AssetRegistry;
-use crate::components::mesh::{MaterialHandle, MeshHandle};
+use crate::components::mesh::{MaterialHandle, MeshHandle, TechniqueHandle};
 use crate::components::transform::Transform;
 use crate::components::transform_interpolation::TransformInterpolation;
 use crate::render::extract::ExtractSystem;
@@ -25,13 +25,14 @@ impl ExtractSystem for MeshExtract {
         let mut meshes = ExtractedMeshes::default();
         let mut shadow_meshes = ExtractedShadowMeshes::default();
 
-        for (mesh, transform, interp, mat, aabb) in world
+        for (mesh, transform, interp, mat, technique, aabb) in world
             .inner
             .query::<(
                 &MeshHandle,
                 &Transform,
                 Option<&TransformInterpolation>,
                 Option<&MaterialHandle>,
+                Option<&TechniqueHandle>,
                 Option<&Aabb>,
             )>()
             .iter()
@@ -41,7 +42,13 @@ impl ExtractSystem for MeshExtract {
                 None => transform.matrix(),
             };
 
-            let instance = ExtractedInstance { mesh: *mesh, material: mat.copied(), model, aabb: aabb.copied() };
+            let instance = ExtractedInstance {
+                mesh: *mesh,
+                material: mat.copied(),
+                technique: technique.map(|t| t.0.clone()),
+                model,
+                aabb: aabb.copied(),
+            };
 
             shadow_meshes.instances.push(instance.clone());
             meshes.instances.push(instance);

@@ -43,6 +43,7 @@ impl Default for RenderWorld {
 pub struct ExtractedInstance {
     pub mesh: MeshHandle,
     pub material: Option<MaterialHandle>,
+    pub technique: Option<String>,
     pub model: Mat4,
     pub aabb: Option<Aabb>,
 }

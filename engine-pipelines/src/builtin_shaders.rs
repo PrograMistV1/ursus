@@ -8,6 +8,12 @@ pub fn register_builtin(reg: &mut ShaderRegistry) {
     ));
 
     reg.register_if_absent(ShaderDef::from_bytes(
+        "unlit",
+        include_bytes!(concat!(env!("OUT_DIR"), "/unlit.vert.spv")).to_vec(),
+        include_bytes!(concat!(env!("OUT_DIR"), "/unlit.frag.spv")).to_vec(),
+    ));
+
+    reg.register_if_absent(ShaderDef::from_bytes(
         "shadow",
         include_bytes!(concat!(env!("OUT_DIR"), "/shadow.vert.spv")).to_vec(),
         include_bytes!(concat!(env!("OUT_DIR"), "/shadow.frag.spv")).to_vec(),

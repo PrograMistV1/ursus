@@ -18,3 +18,4 @@ engine-gltf-loader = { path = "../engine-gltf-loader" }
 anyhow = "1"
 log = "0.4"
 glam = "0.33.0"
+resvg = "0.48.1"

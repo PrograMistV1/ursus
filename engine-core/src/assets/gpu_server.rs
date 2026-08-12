@@ -5,7 +5,7 @@ use crate::assets::ShaderRegistry;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::render::gfx::{
     sampler, BindingKind, BlendState, DescriptorBindingDesc, DescriptorSetDesc, DescriptorSetId, Format,
-    PushConstantRange, SamplerDesc, SamplerId, VertexLayout,
+    PushConstantRange, SamplerDesc, SamplerId, TechniqueRegistry, VertexLayout,
 };
 use crate::render::gfx::{PipelineCache, PipelineId};
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
@@ -40,6 +40,7 @@ pub struct GpuAssetServer {
     material_textures: HashMap<MaterialHandle, Vec<(String, TextureHandle)>>,
 
     pub shaders: ShaderRegistry,
+    pub techniques: TechniqueRegistry,
     pub bindless: BindlessSet,
     pipeline_cache: PipelineCache,
 
@@ -66,6 +67,7 @@ impl GpuAssetServer {
         assert_eq!(bindless.next_slot(), 1, "slot 0 must be white fallback");
 
         let shaders = ShaderRegistry::empty();
+        let techniques = TechniqueRegistry::default();
         let pipeline_cache = PipelineCache::new(device.clone());
 
         log::info!("GpuAssetServer: white=slot0, next_slot={}", bindless.next_slot());
@@ -77,6 +79,7 @@ impl GpuAssetServer {
             material_payloads: HashMap::new(),
             material_textures: HashMap::new(),
             shaders,
+            techniques,
             bindless,
             pipeline_cache,
             device,

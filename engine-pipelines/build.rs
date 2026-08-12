@@ -12,6 +12,8 @@ fn compile_shaders() {
         ("shaders/triangle.frag", "triangle.frag.spv"),
         ("shaders/mesh.vert", "mesh.vert.spv"),
         ("shaders/mesh.frag", "mesh.frag.spv"),
+        ("shaders/unlit.vert", "unlit.vert.spv"),
+        ("shaders/unlit.frag", "unlit.frag.spv"),
         ("shaders/post_process.vert", "post_process.vert.spv"),
         ("shaders/post_process.frag", "post_process.frag.spv"),
         ("shaders/lighting.frag", "lighting.frag.spv"),
@@ -34,7 +36,7 @@ fn compile_shaders() {
         let status = Command::new("glslc")
             .args([src, "-o", &dst_path, "-I", "shaders"])
             .status()
-            .expect("glslc not found — install Vulkan SDK");
+            .expect("glslc not found - install Vulkan SDK");
 
         assert!(status.success(), "glslc failed: {src}");
     }

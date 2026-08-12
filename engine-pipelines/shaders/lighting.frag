@@ -82,6 +82,11 @@ void main() {
         return;
     }
 
+    if (normal_data.a < 0.0) {
+        outColor = albedo_data;
+        return;
+    }
+
     vec3 albedo = albedo_data.rgb;
     vec3 N = normalize(normal_data.xyz * 2.0 - 1.0);
     float roughness = normal_data.a;

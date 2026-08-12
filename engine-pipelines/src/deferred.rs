@@ -8,7 +8,7 @@ use crate::passes::shadow::ShadowPass;
 use crate::passes::ui::UiPass;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
-use engine_core::render::gfx::{Format, ImageLayout, ImageUsage};
+use engine_core::render::gfx::{Format, ImageLayout, ImageUsage, TechniqueDesc};
 use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::render::resource::{ResourceDesc, ResourceExtent};
 use engine_core::vulkan::resources::gbuffer::GBuffer;
@@ -33,6 +33,12 @@ impl RenderPipeline for DefaultPipeline {
         graph: &mut RenderGraph,
     ) -> anyhow::Result<PipelineHandles> {
         crate::builtin_shaders::register_builtin(&mut gpu_assets.shaders);
+
+        let diffuse_shader = gpu_assets.shaders.by_name("diffuse").unwrap();
+        let diffuse_technique = gpu_assets.techniques.register(TechniqueDesc::new("diffuse", diffuse_shader));
+
+        let unlit_shader = gpu_assets.shaders.by_name("unlit").unwrap();
+        let unlit_technique = gpu_assets.techniques.register(TechniqueDesc::new("unlit", unlit_shader));
 
         let swapchain = ctx.swapchain.as_ref().unwrap();
 
@@ -69,7 +75,9 @@ impl RenderPipeline for DefaultPipeline {
         let shadow_pass = ShadowPass::new(gpu_assets, &material_buffer)?;
         let depth_prepass = DepthPrepass::new(gpu_assets, &material_buffer)?;
 
-        let mut geometry_pass = GeometryPass::new(gpu_assets, GBuffer::color_formats(), &material_buffer)?;
+        let mut geometry_pass =
+            GeometryPass::new(gpu_assets, GBuffer::color_formats(), &material_buffer, diffuse_technique)?;
+        geometry_pass.get_or_create_pipeline(gpu_assets, unlit_technique, &material_buffer)?;
 
         let lighting_pass = LightingPass::new(gpu_assets, Format::Rgba16Float)?;
         let post_pass = PostProcessPass::new(gpu_assets, LDR_FORMAT)?;

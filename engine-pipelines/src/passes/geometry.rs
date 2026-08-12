@@ -1,9 +1,9 @@
 use crate::passes::material_buffer::MaterialBuffer;
 use engine_core::assets::gpu_server::GpuAssetServer;
-use engine_core::assets::{GpuMesh, ShaderHandle, Vertex};
+use engine_core::assets::{GpuMesh, Vertex};
 use engine_core::components::mesh::MaterialHandle;
 use engine_core::render::gfx::format::Format;
-use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage, VertexFormat};
+use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage, TechniqueId, VertexFormat};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedCamera, ExtractedMeshes, ExtractedRenderSettings, RenderWorld};
 use engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
@@ -23,12 +23,13 @@ pub struct DrawCall<'a> {
     pub gpu_mesh: &'a GpuMesh,
     pub model: Mat4,
     pub material: Option<MaterialHandle>,
-    pub shader: ShaderHandle,
+    pub technique: TechniqueId,
 }
 
 pub struct GeometryPass {
-    pipelines: HashMap<ShaderHandle, PipelineId>,
+    pipelines: HashMap<TechniqueId, PipelineId>,
     color_formats: [Format; 2],
+    default_technique: TechniqueId,
 }
 
 impl GeometryPass {
@@ -36,46 +37,48 @@ impl GeometryPass {
         gpu: &mut GpuAssetServer,
         color_formats: [Format; 2],
         material_buffer: &MaterialBuffer,
+        default_technique: TechniqueId,
     ) -> anyhow::Result<Self> {
-        let mut pass = Self { pipelines: HashMap::new(), color_formats };
-        let default = gpu.shaders.by_name("diffuse").unwrap();
-        pass.get_or_create_pipeline(gpu, default, material_buffer)?;
+        let mut pass = Self { pipelines: HashMap::new(), color_formats, default_technique };
+        pass.get_or_create_pipeline(gpu, default_technique, material_buffer)?;
         Ok(pass)
     }
 
     pub fn get_or_create_pipeline(
         &mut self,
         gpu: &mut GpuAssetServer,
-        shader: ShaderHandle,
+        technique: TechniqueId,
         material_buffer: &MaterialBuffer,
     ) -> anyhow::Result<PipelineId> {
-        if let Some(&id) = self.pipelines.get(&shader) {
+        if let Some(&id) = self.pipelines.get(&technique) {
             return Ok(id);
         }
 
-        let (vert_spv, frag_spv) = gpu.shaders.load_spv(shader)?;
+        let desc = gpu.techniques.get(technique).clone();
+
+        let (vert_spv, frag_spv) = gpu.shaders.load_spv(desc.shader)?;
         let vert_spv = vert_spv.to_vec();
-        let frag_spv = frag_spv.unwrap().to_vec();
+        let frag_spv =
+            frag_spv.unwrap_or_else(|| panic!("техника '{}' ссылается на шейдер без frag-стадии", desc.name)).to_vec();
 
         let layout = Vertex::layout();
         let push_range = PushConstantRange::of::<MeshPushConstants>(ShaderStage::VertexFragment);
-
         let set_layouts = [gpu.bindless_set(), material_buffer.descriptor_set];
 
-        let desc = PipelineDesc::with_depth_equal(
+        let mut pipeline_desc = PipelineDesc::with_depth_equal(
             &vert_spv,
             &frag_spv,
             &self.color_formats,
             &layout,
             std::slice::from_ref(&push_range),
         );
+        pipeline_desc.cull_mode = desc.cull_mode;
 
-        let id = gpu.create_graphics_pipeline(&desc, &set_layouts)?;
-        self.pipelines.insert(shader, id);
+        let id = gpu.create_graphics_pipeline(&pipeline_desc, &set_layouts)?;
+        self.pipelines.insert(technique, id);
         Ok(id)
     }
 
-    //todo: this function has too many arguments (8/7)
     #[allow(clippy::too_many_arguments)]
     pub fn record(
         &mut self,
@@ -91,37 +94,44 @@ impl GeometryPass {
         let meshes = rw.get::<ExtractedMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
         let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
 
-        let default_shader = gpu.shaders.by_name("diffuse").unwrap();
         let mut draw_calls: Vec<DrawCall> = meshes
             .iter()
             .filter_map(|inst| {
+                let technique = inst
+                    .technique
+                    .as_deref()
+                    .and_then(|name| gpu.techniques.by_name(name))
+                    .unwrap_or(self.default_technique);
                 Some(DrawCall {
                     gpu_mesh: gpu.get_gpu_mesh(inst.mesh)?,
                     model: inst.model,
                     material: inst.material,
-                    shader: default_shader,
+                    technique,
                 })
             })
             .collect();
 
-        draw_calls.sort_by_key(|dc| (dc.shader.0, dc.gpu_mesh as *const _ as usize));
+        draw_calls.sort_by_key(|dc| (dc.technique.0, dc.gpu_mesh as *const _ as usize));
 
         enc.begin_rendering_gbuffer(albedo, normal, depth, settings.clear_color);
 
-        let mut current_shader: Option<ShaderHandle> = None;
+        let mut current_technique: Option<TechniqueId> = None;
 
         for dc in &draw_calls {
-            if current_shader != Some(dc.shader) {
-                let Some(&pipeline) = self.pipelines.get(&dc.shader) else {
-                    log::warn!("Pipeline для шейдера {:?} не найден", dc.shader);
+            if current_technique != Some(dc.technique) {
+                let Some(&pipeline) = self.pipelines.get(&dc.technique) else {
+                    log::warn!(
+                        "GeometryPass: pipeline for technique {:?} was not created in advance (get_or_create_pipeline was not called) - instance skipped",
+                        dc.technique
+                    );
                     continue;
                 };
                 enc.bind_pipeline(pipeline);
                 enc.bind_descriptor_sets(pipeline, &[gpu.bindless_set(), material_buffer.descriptor_set]);
-                current_shader = Some(dc.shader);
+                current_technique = Some(dc.technique);
             }
 
-            let Some(&pipeline) = self.pipelines.get(&dc.shader) else {
+            let Some(&pipeline) = self.pipelines.get(&dc.technique) else {
                 continue;
             };
             let mvp = camera.view_proj * dc.model;
