@@ -203,7 +203,7 @@ fn flush_uploads_gpu(rx: &Receiver<GpuUploadRequest>, gpu: &mut GpuAssetServer) 
                     }
                 }
                 GpuUploadRequest::Texture { handle, pixels, width, height, format, name } => {
-                    if let Err(e) = gpu.upload_texture(handle, &pixels, width, height, format, &name) {
+                    if let Err(e) = gpu.textures.upload(handle, &pixels, width, height, format, &name) {
                         log::error!("GPU upload texture failed: {e}");
                     }
                 }

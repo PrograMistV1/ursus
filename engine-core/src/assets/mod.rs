@@ -1,5 +1,6 @@
 pub mod asset_registry;
 pub mod gpu_server;
+pub mod gpu_texture_store;
 pub mod loader_registry;
 pub mod material;
 pub(crate) mod material_handle_allocator;
@@ -15,6 +16,7 @@ pub mod upload;
 pub(crate) mod upload_queue;
 
 pub use asset_registry::{AssetRegistry, TextureHandle};
+pub use gpu_texture_store::GpuTextureStore;
 pub use loader_registry::{
     AssetLoader, LoadedMaterial, LoadedMeshSource, LoadedPrimitive, LoadedTexture, LoaderRegistry,
 };

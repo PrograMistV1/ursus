@@ -124,7 +124,7 @@ impl RenderPipeline for LoadingPipeline {
             Format::Rgba8Unorm,
             "ursus_logo",
         )?;
-        let logo_slot = gpu_assets.bindless.alloc_slot(logo_texture.view);
+        let logo_slot = gpu_assets.textures.bindless_mut().alloc_slot(logo_texture.view);
 
         let start_time = std::time::Instant::now();
         pass("loading_background")

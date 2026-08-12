@@ -1,6 +1,6 @@
 use crate::assets::asset_registry::TextureHandle;
 use crate::assets::material::MaterialPayload;
-use crate::assets::{MeshStore, ShaderRegistry};
+use crate::assets::{GpuTextureStore, MeshStore, ShaderRegistry};
 use crate::components::mesh::MaterialHandle;
 use crate::render::gfx::{
     sampler, BlendState, DescriptorAllocator, DescriptorSetId, Format, PushConstantRange, SamplerDesc, SamplerId,
@@ -8,7 +8,7 @@ use crate::render::gfx::{
 };
 use crate::render::gfx::{PipelineCache, PipelineId};
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
-use crate::vulkan::{BindlessSet, GpuTexture, MappedGpuBuffer};
+use crate::vulkan::MappedGpuBuffer;
 use ash::vk;
 use std::collections::HashMap;
 
@@ -20,8 +20,7 @@ struct StoredSampler {
 
 pub struct GpuAssetServer {
     pub meshes: MeshStore,
-    texture_slots: HashMap<TextureHandle, u32>,
-    gpu_textures: HashMap<u32, GpuTexture>,
+    pub textures: GpuTextureStore,
 
     material_payloads: HashMap<MaterialHandle, Box<dyn MaterialPayload>>,
     material_textures: HashMap<MaterialHandle, Vec<(String, TextureHandle)>>,
@@ -32,14 +31,12 @@ pub struct GpuAssetServer {
     pub descriptors: DescriptorAllocator,
     samplers: Vec<StoredSampler>,
     pipeline_cache: PipelineCache,
-    pub bindless: BindlessSet,
     bindless_set_id: DescriptorSetId,
 
     device: ash::Device,
     physical_device: vk::PhysicalDevice,
     instance: ash::Instance,
     command_pool: vk::CommandPool,
-    queue: vk::Queue,
 }
 
 impl GpuAssetServer {
@@ -50,8 +47,7 @@ impl GpuAssetServer {
         command_pool: vk::CommandPool,
         queue: vk::Queue,
     ) -> anyhow::Result<Self> {
-        let bindless = BindlessSet::new(&device, physical_device, &instance, command_pool, queue)?;
-        assert_eq!(bindless.next_slot(), 1, "slot 0 must be white fallback");
+        let textures = GpuTextureStore::new(device.clone(), physical_device, instance.clone(), command_pool, queue)?;
 
         let shaders = ShaderRegistry::empty();
         let techniques = TechniqueRegistry::default();
@@ -59,26 +55,24 @@ impl GpuAssetServer {
         let mut descriptors = DescriptorAllocator::new(device.clone());
         let meshes = MeshStore::new(device.clone(), physical_device, instance.clone(), command_pool, queue);
 
+        let bindless = textures.bindless();
         let bindless_set_id = descriptors.register_external(bindless.layout, bindless.set, bindless.pool);
 
         log::info!("GpuAssetServer: white=slot0, next_slot={}", bindless.next_slot());
 
         Ok(Self {
             meshes,
-            texture_slots: HashMap::new(),
-            gpu_textures: HashMap::new(),
+            textures,
             material_payloads: HashMap::new(),
             material_textures: HashMap::new(),
             samplers: Vec::new(),
             shaders,
             techniques,
-            bindless,
             pipeline_cache,
             device,
             physical_device,
             instance,
             command_pool,
-            queue,
             descriptors,
             bindless_set_id,
         })
@@ -188,38 +182,6 @@ impl GpuAssetServer {
         capacity: usize,
     ) -> anyhow::Result<MappedGpuBuffer<T>> {
         MappedGpuBuffer::new(&self.device, self.physical_device, &self.instance, usage.to_vk(), capacity)
-    }
-
-    pub fn upload_texture(
-        &mut self,
-        handle: TextureHandle,
-        pixels: &[u8],
-        width: u32,
-        height: u32,
-        format: Format,
-        name: &str,
-    ) -> anyhow::Result<()> {
-        let tex = GpuTexture::upload(
-            &self.device,
-            self.physical_device,
-            &self.instance,
-            self.command_pool,
-            self.queue,
-            pixels,
-            width,
-            height,
-            format,
-            name,
-        )?;
-        let slot = self.bindless.alloc_slot(tex.view);
-        self.texture_slots.insert(handle, slot);
-        self.gpu_textures.insert(slot, tex);
-        log::debug!("Texture '{}': handle={} -> slot={}", name, handle.0, slot);
-        Ok(())
-    }
-
-    pub fn texture_slot(&self, handle: TextureHandle) -> u32 {
-        self.texture_slots.get(&handle).copied().unwrap_or(BINDLESS_SLOT_WHITE)
     }
 
     pub fn register_material_payload(

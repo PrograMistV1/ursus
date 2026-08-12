@@ -84,7 +84,7 @@ impl UiPass {
                     self.make_pc(screen, *pos, *size, *color, *uv, *bindless_slot, 2)
                 }
                 UiPrimitive::GlyphRect { pos, size, color, texture_handle, uv } => {
-                    let slot = gpu.texture_slot(*texture_handle);
+                    let slot = gpu.textures.slot(*texture_handle);
                     self.make_pc(screen, *pos, *size, *color, *uv, slot, 1)
                 }
             };

@@ -83,7 +83,7 @@ fn pack_pbr(
     m: &engine_gltf_loader::PbrMetallicRoughness,
 ) -> MaterialData {
     let slots = gpu.material_textures(handle);
-    let find = |role: &str| slots.iter().find(|(r, _)| r == role).map(|(_, h)| gpu.texture_slot(*h)).unwrap_or(0);
+    let find = |role: &str| slots.iter().find(|(r, _)| r == role).map(|(_, h)| gpu.textures.slot(*h)).unwrap_or(0);
     MaterialData {
         base_color: m.base_color,
         emissive: [m.emissive[0], m.emissive[1], m.emissive[2], 0.0],
@@ -103,7 +103,7 @@ fn pack_pbr(
 #[cfg(feature = "gltf-loader")]
 fn pack_unlit(gpu: &GpuAssetServer, handle: MaterialHandle, m: &engine_gltf_loader::UnlitMaterial) -> MaterialData {
     let slots = gpu.material_textures(handle);
-    let base_color_tex = slots.iter().find(|(r, _)| r == "base_color").map(|(_, h)| gpu.texture_slot(*h)).unwrap_or(0);
+    let base_color_tex = slots.iter().find(|(r, _)| r == "base_color").map(|(_, h)| gpu.textures.slot(*h)).unwrap_or(0);
     MaterialData {
         base_color: m.base_color,
         emissive: [0.0; 4],
