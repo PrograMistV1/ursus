@@ -24,6 +24,12 @@
 A custom Vulkan game engine written in Rust, built around a render-graph architecture with automatic barrier tracking, a
 deferred rendering pipeline, and a threaded game/render split.
 
+### 🎬 Demo
+
+Two cubes rendered in a single pipeline, showcasing smooth transform interpolation and per-object shader selection.
+
+![URSUS engine demo](.github/assets/cubes_interpolation.gif)
+
 ## 📁 Workspace layout
 
 ```text
