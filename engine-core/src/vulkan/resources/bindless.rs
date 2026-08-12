@@ -143,8 +143,13 @@ impl BindlessSet {
 
 impl Drop for BindlessSet {
     fn drop(&mut self) {
+        // TODO: BindlessSet creates the layout/pool bypassing DescriptorAllocator
+        // (UPDATE_AFTER_BIND/PARTIALLY_BOUND/VARIABLE_DESCRIPTOR_COUNT flags are required) -
+        // add DescriptorAllocator::create_set_with_flags() and remove the owns_resources workaround.
         unsafe {
             self.device.destroy_sampler(self.sampler, None);
+            self.device.destroy_descriptor_pool(self.pool, None);
+            self.device.destroy_descriptor_set_layout(self.layout, None);
         }
     }
 }

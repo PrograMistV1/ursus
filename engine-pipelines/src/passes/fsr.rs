@@ -37,9 +37,9 @@ impl FsrPass {
         let sampler_id = gpu.create_sampler(SamplerDesc::linear_clamp())?;
 
         let easu_descriptor_set_id =
-            gpu.create_descriptor_set(DescriptorSetDesc::new().with_sampled_image(0, ShaderStage::Fragment))?;
+            gpu.descriptors.create_set(DescriptorSetDesc::new().with_sampled_image(0, ShaderStage::Fragment))?;
         let rcas_descriptor_set_id =
-            gpu.create_descriptor_set(DescriptorSetDesc::new().with_sampled_image(0, ShaderStage::Fragment))?;
+            gpu.descriptors.create_set(DescriptorSetDesc::new().with_sampled_image(0, ShaderStage::Fragment))?;
 
         let easu_push = PushConstantRange::of::<EasuPC>(ShaderStage::Fragment);
         let rcas_push = PushConstantRange::of::<RcasPC>(ShaderStage::Fragment);

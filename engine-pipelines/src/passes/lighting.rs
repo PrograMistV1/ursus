@@ -32,7 +32,7 @@ impl LightingPass {
         let sampler_id = gpu.create_sampler(SamplerDesc::nearest_clamp())?;
         let shadow_sampler_id = gpu.create_sampler(SamplerDesc::shadow_compare())?;
 
-        let set_id = gpu.create_descriptor_set(
+        let set_id = gpu.descriptors.create_set(
             DescriptorSetDesc::new()
                 .with_sampled_image(0, ShaderStage::Fragment)
                 .with_sampled_image(1, ShaderStage::Fragment)

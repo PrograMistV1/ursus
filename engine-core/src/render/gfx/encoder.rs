@@ -129,8 +129,7 @@ impl<'a> CommandEncoder<'a> {
 
     pub fn bind_descriptor_sets(&self, pipeline: PipelineId, sets: &[DescriptorSetId]) {
         let stored = self.pipelines.get(pipeline);
-        let vk_sets: Vec<vk::DescriptorSet> =
-            sets.iter().map(|&id| self.gpu_assets.descriptor_set_handle(id)).collect();
+        let vk_sets: Vec<vk::DescriptorSet> = sets.iter().map(|&id| self.gpu_assets.descriptors.handle(id)).collect();
 
         unsafe {
             self.device.cmd_bind_descriptor_sets(

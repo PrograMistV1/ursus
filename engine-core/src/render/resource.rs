@@ -439,7 +439,7 @@ impl DescriptorBindingRegistry {
                     DescriptorImageType::SampledImage => vk::DescriptorType::SAMPLED_IMAGE,
                 };
                 vk::WriteDescriptorSet::default()
-                    .dst_set(gpu.descriptor_set_handle(b.set))
+                    .dst_set(gpu.descriptors.handle(b.set))
                     .dst_binding(b.binding)
                     .dst_array_element(b.array_element)
                     .descriptor_type(desc_type)

@@ -4,12 +4,12 @@ use crate::assets::mesh::{CpuMesh, GpuMesh};
 use crate::assets::ShaderRegistry;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::render::gfx::{
-    sampler, BindingKind, BlendState, DescriptorBindingDesc, DescriptorSetDesc, DescriptorSetId, Format,
-    PushConstantRange, SamplerDesc, SamplerId, TechniqueRegistry, VertexLayout,
+    sampler, BlendState, DescriptorAllocator, DescriptorSetId, Format, PushConstantRange, SamplerDesc, SamplerId,
+    TechniqueRegistry, VertexLayout,
 };
 use crate::render::gfx::{PipelineCache, PipelineId};
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
-use crate::vulkan::{BindlessSet, GpuTexture};
+use crate::vulkan::{BindlessSet, GpuTexture, MappedGpuBuffer};
 use ash::vk;
 use std::collections::HashMap;
 
@@ -24,13 +24,6 @@ struct StoredSampler {
     handle: vk::Sampler,
 }
 
-struct StoredDescriptorSet {
-    layout: vk::DescriptorSetLayout,
-    set: vk::DescriptorSet,
-    pool: vk::DescriptorPool,
-    bindings: Vec<DescriptorBindingDesc>,
-}
-
 pub struct GpuAssetServer {
     gpu_meshes: HashMap<MeshHandle, GpuMeshState>,
     texture_slots: HashMap<TextureHandle, u32>,
@@ -41,18 +34,18 @@ pub struct GpuAssetServer {
 
     pub shaders: ShaderRegistry,
     pub techniques: TechniqueRegistry,
-    pub bindless: BindlessSet,
+
+    pub descriptors: DescriptorAllocator,
+    samplers: Vec<StoredSampler>,
     pipeline_cache: PipelineCache,
+    pub bindless: BindlessSet,
+    bindless_set_id: DescriptorSetId,
 
     device: ash::Device,
     physical_device: vk::PhysicalDevice,
     instance: ash::Instance,
     command_pool: vk::CommandPool,
     queue: vk::Queue,
-
-    samplers: Vec<StoredSampler>,
-    descriptor_sets: Vec<StoredDescriptorSet>,
-    bindless_set_id: DescriptorSetId,
 }
 
 impl GpuAssetServer {
@@ -69,10 +62,13 @@ impl GpuAssetServer {
         let shaders = ShaderRegistry::empty();
         let techniques = TechniqueRegistry::default();
         let pipeline_cache = PipelineCache::new(device.clone());
+        let mut descriptors = DescriptorAllocator::new(device.clone());
+
+        descriptors.register_external(bindless.layout, bindless.set, bindless.pool);
 
         log::info!("GpuAssetServer: white=slot0, next_slot={}", bindless.next_slot());
 
-        let mut this = Self {
+        Ok(Self {
             gpu_meshes: HashMap::new(),
             texture_slots: HashMap::new(),
             gpu_textures: HashMap::new(),
@@ -87,17 +83,10 @@ impl GpuAssetServer {
             instance,
             command_pool,
             queue,
+            descriptors,
             samplers: Vec::new(),
-            descriptor_sets: Vec::new(),
             bindless_set_id: DescriptorSetId(0),
-        };
-
-        let bindless_layout = this.bindless.layout;
-        let bindless_set = this.bindless.set;
-        let bindless_pool = this.bindless.pool;
-        this.bindless_set_id = this.register_external_descriptor_set(bindless_layout, bindless_set, bindless_pool);
-
-        Ok(this)
+        })
     }
 
     pub fn create_sampler(&mut self, desc: SamplerDesc) -> anyhow::Result<SamplerId> {
@@ -111,115 +100,23 @@ impl GpuAssetServer {
         self.samplers[id.0 as usize].handle
     }
 
-    pub fn create_descriptor_set(&mut self, desc: DescriptorSetDesc) -> anyhow::Result<DescriptorSetId> {
-        let vk_bindings: Vec<vk::DescriptorSetLayoutBinding> = desc
-            .bindings
-            .iter()
-            .map(|b| {
-                let ty = match b.kind {
-                    BindingKind::CombinedImageSampler => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                    BindingKind::UniformBuffer { .. } => vk::DescriptorType::UNIFORM_BUFFER,
-                    BindingKind::StorageBuffer { .. } => vk::DescriptorType::STORAGE_BUFFER,
-                };
-                vk::DescriptorSetLayoutBinding::default()
-                    .binding(b.binding)
-                    .descriptor_type(ty)
-                    .descriptor_count(1)
-                    .stage_flags(b.stage.to_vk())
-            })
-            .collect();
-
-        let layout = unsafe {
-            self.device.create_descriptor_set_layout(
-                &vk::DescriptorSetLayoutCreateInfo::default().bindings(&vk_bindings),
-                None,
-            )?
-        };
-
-        let pool_sizes: Vec<vk::DescriptorPoolSize> = desc
-            .bindings
-            .iter()
-            .map(|b| {
-                let ty = match b.kind {
-                    BindingKind::CombinedImageSampler => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                    BindingKind::UniformBuffer { .. } => vk::DescriptorType::UNIFORM_BUFFER,
-                    BindingKind::StorageBuffer { .. } => vk::DescriptorType::STORAGE_BUFFER,
-                };
-                vk::DescriptorPoolSize { ty, descriptor_count: 1 }
-            })
-            .collect();
-
-        let (pool, set) =
-            crate::vulkan::gfx_pipeline::builder::descriptor::alloc_single_set(&self.device, layout, &pool_sizes)?;
-
-        let id = DescriptorSetId(self.descriptor_sets.len() as u32);
-        self.descriptor_sets.push(StoredDescriptorSet { layout, set, pool, bindings: desc.bindings });
-        Ok(id)
-    }
-
-    pub(crate) fn descriptor_set_layout(&self, id: DescriptorSetId) -> vk::DescriptorSetLayout {
-        self.descriptor_sets[id.0 as usize].layout
-    }
-
     pub fn bindless_set(&self) -> DescriptorSetId {
         self.bindless_set_id
     }
 
-    pub fn descriptor_set_handle(&self, id: DescriptorSetId) -> vk::DescriptorSet {
-        self.descriptor_sets[id.0 as usize].set
-    }
-
     pub fn bind_uniform_buffer(&self, set: DescriptorSetId, binding: u32, buffer: vk::Buffer, size: vk::DeviceSize) {
-        let stored = &self.descriptor_sets[set.0 as usize];
-        debug_assert!(
-            stored.bindings.iter().any(|b| b.binding == binding && matches!(b.kind, BindingKind::UniformBuffer { .. })),
-            "bind_uniform_buffer: binding {} в этом сете не объявлен как UniformBuffer",
-            binding
-        );
-
-        let buf_info = vk::DescriptorBufferInfo::default().buffer(buffer).offset(0).range(size);
-        let write = vk::WriteDescriptorSet::default()
-            .dst_set(stored.set)
-            .dst_binding(binding)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .buffer_info(std::slice::from_ref(&buf_info));
-
-        unsafe { self.device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
+        self.descriptors.bind_uniform_buffer(set, binding, buffer, size).expect("bind_uniform_buffer failed");
     }
 
-    pub fn bind_mapped_uniform_buffer<T: Copy>(
-        &self,
-        set: DescriptorSetId,
-        binding: u32,
-        mapped: &crate::vulkan::MappedGpuBuffer<T>,
-    ) {
+    pub fn bind_mapped_uniform_buffer<T: Copy>(&self, set: DescriptorSetId, binding: u32, mapped: &MappedGpuBuffer<T>) {
         self.bind_uniform_buffer(set, binding, mapped.buffer, mapped.size());
     }
 
     pub fn bind_storage_buffer(&self, set: DescriptorSetId, binding: u32, buffer: vk::Buffer, size: vk::DeviceSize) {
-        let stored = &self.descriptor_sets[set.0 as usize];
-        debug_assert!(
-            stored.bindings.iter().any(|b| b.binding == binding && matches!(b.kind, BindingKind::StorageBuffer { .. })),
-            "bind_storage_buffer: binding {} в этом сете не объявлен как StorageBuffer",
-            binding
-        );
-
-        let buf_info = vk::DescriptorBufferInfo::default().buffer(buffer).offset(0).range(size);
-        let write = vk::WriteDescriptorSet::default()
-            .dst_set(stored.set)
-            .dst_binding(binding)
-            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .buffer_info(std::slice::from_ref(&buf_info));
-
-        unsafe { self.device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
+        self.descriptors.bind_storage_buffer(set, binding, buffer, size).expect("bind_storage_buffer failed");
     }
 
-    pub fn bind_mapped_storage_buffer<T: Copy>(
-        &self,
-        set: DescriptorSetId,
-        binding: u32,
-        mapped: &crate::vulkan::MappedGpuBuffer<T>,
-    ) {
+    pub fn bind_mapped_storage_buffer<T: Copy>(&self, set: DescriptorSetId, binding: u32, mapped: &MappedGpuBuffer<T>) {
         self.bind_storage_buffer(set, binding, mapped.buffer, mapped.size());
     }
 
@@ -231,24 +128,8 @@ impl GpuAssetServer {
         layout: vk::ImageLayout,
         sampler: SamplerId,
     ) {
-        let stored = &self.descriptor_sets[set.0 as usize];
-        debug_assert!(
-            stored.bindings.iter().any(|b| b.binding == binding && matches!(b.kind, BindingKind::CombinedImageSampler)),
-            "bind_sampled_image: binding {} в этом сете не объявлен как CombinedImageSampler",
-            binding
-        );
-
-        let image_info = vk::DescriptorImageInfo::default()
-            .image_view(view)
-            .image_layout(layout)
-            .sampler(self.sampler_handle(sampler));
-        let write = vk::WriteDescriptorSet::default()
-            .dst_set(stored.set)
-            .dst_binding(binding)
-            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .image_info(std::slice::from_ref(&image_info));
-
-        unsafe { self.device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
+        let vk_sampler = self.sampler_handle(sampler);
+        self.descriptors.bind_sampled_image(set, binding, view, layout, vk_sampler).expect("bind_sampled_image failed");
     }
 
     pub fn create_graphics_pipeline(
@@ -256,8 +137,7 @@ impl GpuAssetServer {
         desc: &PipelineDesc,
         set_layouts: &[DescriptorSetId],
     ) -> anyhow::Result<PipelineId> {
-        let layouts: Vec<vk::DescriptorSetLayout> =
-            set_layouts.iter().map(|&id| self.descriptor_set_layout(id)).collect();
+        let layouts: Vec<vk::DescriptorSetLayout> = set_layouts.iter().map(|&id| self.descriptors.layout(id)).collect();
         self.pipeline_cache.create_graphics_pipeline(&self.device, desc, &layouts)
     }
 
@@ -270,8 +150,7 @@ impl GpuAssetServer {
         push_constant_ranges: &[PushConstantRange],
         blend_attachments: Option<&[BlendState]>,
     ) -> anyhow::Result<PipelineId> {
-        let layouts: Vec<vk::DescriptorSetLayout> =
-            set_layouts.iter().map(|&id| self.descriptor_set_layout(id)).collect();
+        let layouts: Vec<vk::DescriptorSetLayout> = set_layouts.iter().map(|&id| self.descriptors.layout(id)).collect();
 
         let vk_blend: Option<Vec<vk::PipelineColorBlendAttachmentState>> =
             blend_attachments.map(|states| states.iter().map(|s| s.to_vk()).collect());
@@ -296,8 +175,7 @@ impl GpuAssetServer {
         set_layouts: &[DescriptorSetId],
         depth_bias: Option<(f32, f32)>,
     ) -> anyhow::Result<PipelineId> {
-        let layouts: Vec<vk::DescriptorSetLayout> =
-            set_layouts.iter().map(|&id| self.descriptor_set_layout(id)).collect();
+        let layouts: Vec<vk::DescriptorSetLayout> = set_layouts.iter().map(|&id| self.descriptors.layout(id)).collect();
         self.pipeline_cache.create_depth_only_pipeline(
             &self.device,
             vert_spv,
@@ -313,8 +191,8 @@ impl GpuAssetServer {
         &self,
         usage: crate::render::gfx::BufferUsage,
         capacity: usize,
-    ) -> anyhow::Result<crate::vulkan::MappedGpuBuffer<T>> {
-        crate::vulkan::MappedGpuBuffer::new(&self.device, self.physical_device, &self.instance, usage.to_vk(), capacity)
+    ) -> anyhow::Result<MappedGpuBuffer<T>> {
+        MappedGpuBuffer::new(&self.device, self.physical_device, &self.instance, usage.to_vk(), capacity)
     }
 
     pub fn upload_mesh(&mut self, handle: MeshHandle, cpu_mesh: &CpuMesh) -> anyhow::Result<()> {
@@ -369,17 +247,6 @@ impl GpuAssetServer {
         self.texture_slots.get(&handle).copied().unwrap_or(BINDLESS_SLOT_WHITE)
     }
 
-    pub(crate) fn register_external_descriptor_set(
-        &mut self,
-        layout: vk::DescriptorSetLayout,
-        set: vk::DescriptorSet,
-        pool: vk::DescriptorPool,
-    ) -> DescriptorSetId {
-        let id = DescriptorSetId(self.descriptor_sets.len() as u32);
-        self.descriptor_sets.push(StoredDescriptorSet { layout, set, pool, bindings: Vec::new() });
-        id
-    }
-
     pub fn register_material_payload(
         &mut self,
         handle: MaterialHandle,
@@ -431,10 +298,6 @@ impl Drop for GpuAssetServer {
         unsafe {
             for s in &self.samplers {
                 self.device.destroy_sampler(s.handle, None);
-            }
-            for ds in &self.descriptor_sets {
-                self.device.destroy_descriptor_pool(ds.pool, None);
-                self.device.destroy_descriptor_set_layout(ds.layout, None);
             }
         }
     }

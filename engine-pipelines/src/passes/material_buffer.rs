@@ -46,9 +46,9 @@ impl MaterialBuffer {
     pub fn new(gpu: &mut GpuAssetServer) -> anyhow::Result<Self> {
         let inner = gpu.create_mapped_buffer::<MaterialData>(BufferUsage::Storage, MAX_MATERIALS)?;
 
-        let descriptor_set = gpu.create_descriptor_set(
-            DescriptorSetDesc::new().with_storage_buffer::<MaterialData>(0, ShaderStage::Fragment),
-        )?;
+        let descriptor_set = gpu
+            .descriptors
+            .create_set(DescriptorSetDesc::new().with_storage_buffer::<MaterialData>(0, ShaderStage::Fragment))?;
         gpu.bind_mapped_storage_buffer(descriptor_set, 0, &inner);
 
         Ok(Self { inner, descriptor_set })

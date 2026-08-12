@@ -1,6 +1,7 @@
 pub mod blend;
 pub mod buffer_usage;
 pub mod descriptor;
+pub mod descriptor_allocator;
 pub mod encoder;
 pub mod format;
 pub mod handles;
@@ -13,6 +14,7 @@ pub mod vertex;
 pub use blend::{BlendFactor, BlendState};
 pub use buffer_usage::BufferUsage;
 pub use descriptor::{BindingKind, DescriptorBindingDesc, DescriptorSetDesc, ImageUsage};
+pub use descriptor_allocator::DescriptorAllocator;
 pub use encoder::CommandEncoder;
 pub use format::{Format, ImageLayout};
 pub use handles::{DescriptorSetId, PipelineId, PushConstantRange, SamplerId, ShaderStage};
