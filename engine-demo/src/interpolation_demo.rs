@@ -84,7 +84,7 @@ impl App for InterpolationDemoApp {
             .spawn()
             .insert(cube_mesh)
             .insert(interpolated_material)
-            .insert(Transform::at(-1.5, 1.5, -2.0))
+            .insert(Transform::at(-1.5, 2.0, -3.0))
             .insert(TransformInterpolation::default())
             .build();
         self.interpolated_cube = Some(interpolated);
@@ -94,7 +94,7 @@ impl App for InterpolationDemoApp {
             .spawn()
             .insert(cube_mesh)
             .insert(no_interpolated_material)
-            .insert(Transform::at(1.5, 1.5, -2.0))
+            .insert(Transform::at(1.5, 2.0, -3.0))
             .insert(TechniqueHandle("unlit".into()))
             .build();
         self.plain_cube = Some(plain);
