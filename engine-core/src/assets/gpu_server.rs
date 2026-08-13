@@ -1,18 +1,12 @@
 use crate::assets::{GpuTextureStore, MaterialStore, MeshStore, ShaderRegistry};
 use crate::render::gfx::{
-    sampler, BlendState, DescriptorAllocator, DescriptorSetId, Format, PushConstantRange, SamplerDesc, SamplerId,
+    BlendState, DescriptorAllocator, DescriptorSetId, Format, PushConstantRange, SamplerId, SamplerStore,
     TechniqueRegistry, VertexLayout,
 };
 use crate::render::gfx::{PipelineCache, PipelineId};
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use crate::vulkan::MappedGpuBuffer;
 use ash::vk;
-
-pub const BINDLESS_SLOT_WHITE: u32 = 0;
-
-struct StoredSampler {
-    handle: vk::Sampler,
-}
 
 pub struct GpuAssetServer {
     pub meshes: MeshStore,
@@ -23,7 +17,7 @@ pub struct GpuAssetServer {
     pub techniques: TechniqueRegistry,
 
     pub descriptors: DescriptorAllocator,
-    samplers: Vec<StoredSampler>,
+    pub samplers: SamplerStore,
     pipeline_cache: PipelineCache,
     bindless_set_id: DescriptorSetId,
 
@@ -48,6 +42,7 @@ impl GpuAssetServer {
         let pipeline_cache = PipelineCache::new(device.clone());
         let mut descriptors = DescriptorAllocator::new(device.clone());
         let meshes = MeshStore::new(device.clone(), physical_device, instance.clone(), command_pool, queue);
+        let samplers = SamplerStore::new(device.clone());
 
         let bindless = textures.bindless();
         let bindless_set_id = descriptors.register_external(bindless.layout, bindless.set, bindless.pool);
@@ -66,20 +61,9 @@ impl GpuAssetServer {
             command_pool,
             descriptors,
             bindless_set_id,
+            samplers,
             materials: MaterialStore::new(),
-            samplers: Vec::new(),
         })
-    }
-
-    pub fn create_sampler(&mut self, desc: SamplerDesc) -> anyhow::Result<SamplerId> {
-        let handle = sampler::create_from_desc(&self.device, desc)?;
-        let id = SamplerId(self.samplers.len() as u32);
-        self.samplers.push(StoredSampler { handle });
-        Ok(id)
-    }
-
-    pub(crate) fn sampler_handle(&self, id: SamplerId) -> vk::Sampler {
-        self.samplers[id.0 as usize].handle
     }
 
     pub fn bindless_set(&self) -> DescriptorSetId {
@@ -110,7 +94,7 @@ impl GpuAssetServer {
         layout: vk::ImageLayout,
         sampler: SamplerId,
     ) {
-        let vk_sampler = self.sampler_handle(sampler);
+        let vk_sampler = self.samplers.handle(sampler);
         self.descriptors.bind_sampled_image(set, binding, view, layout, vk_sampler).expect("bind_sampled_image failed");
     }
 
@@ -187,15 +171,5 @@ impl GpuAssetServer {
 
     pub fn command_pool(&self) -> vk::CommandPool {
         self.command_pool
-    }
-}
-
-impl Drop for GpuAssetServer {
-    fn drop(&mut self) {
-        unsafe {
-            for s in &self.samplers {
-                self.device.destroy_sampler(s.handle, None);
-            }
-        }
     }
 }

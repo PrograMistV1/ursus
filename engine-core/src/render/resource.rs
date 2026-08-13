@@ -423,7 +423,7 @@ impl DescriptorBindingRegistry {
             .map(|b| {
                 let img = pool.image(b.resource);
                 let sampler = match b.image_type {
-                    DescriptorImageType::CombinedImageSampler(s) => gpu.sampler_handle(s),
+                    DescriptorImageType::CombinedImageSampler(s) => gpu.samplers.handle(s),
                     DescriptorImageType::SampledImage => vk::Sampler::null(),
                 };
                 vk::DescriptorImageInfo::default().image_view(img.view).image_layout(b.image_layout).sampler(sampler)

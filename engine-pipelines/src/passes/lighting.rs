@@ -29,8 +29,8 @@ impl LightingPass {
     pub fn new(gpu: &mut GpuAssetServer, hdr_format: Format) -> anyhow::Result<Self> {
         let light_buffer = LightBuffer::new(gpu)?;
 
-        let sampler_id = gpu.create_sampler(SamplerDesc::nearest_clamp())?;
-        let shadow_sampler_id = gpu.create_sampler(SamplerDesc::shadow_compare())?;
+        let sampler_id = gpu.samplers.create(SamplerDesc::nearest_clamp())?;
+        let shadow_sampler_id = gpu.samplers.create(SamplerDesc::shadow_compare())?;
 
         let set_id = gpu.descriptors.create_set(
             DescriptorSetDesc::new()

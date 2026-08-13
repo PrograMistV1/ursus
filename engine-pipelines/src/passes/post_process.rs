@@ -23,7 +23,7 @@ pub struct PostProcessPass {
 
 impl PostProcessPass {
     pub fn new(gpu: &mut GpuAssetServer, swapchain_format: Format) -> anyhow::Result<Self> {
-        let sampler_id = gpu.create_sampler(SamplerDesc::linear_clamp())?;
+        let sampler_id = gpu.samplers.create(SamplerDesc::linear_clamp())?;
         let set_id =
             gpu.descriptors.create_set(DescriptorSetDesc::new().with_sampled_image(0, ShaderStage::Fragment))?;
 
