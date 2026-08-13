@@ -1,6 +1,7 @@
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::components::mesh::MaterialHandle;
-use engine_core::render::gfx::{BufferUsage, DescriptorSetDesc, DescriptorSetId, ShaderStage};
+use engine_core::render::gfx::descriptor::DescriptorSetDesc;
+use engine_core::render::gfx::{BufferUsage, DescriptorSetId, ShaderStage};
 use engine_core::vulkan::MappedGpuBuffer;
 
 #[repr(C)]

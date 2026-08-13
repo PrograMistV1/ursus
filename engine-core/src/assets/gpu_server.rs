@@ -1,7 +1,7 @@
 use crate::assets::{GpuTextureStore, MaterialStore, MeshStore, ShaderRegistry};
+use crate::render::gfx::descriptor::DescriptorAllocator;
 use crate::render::gfx::{
-    BlendState, DescriptorAllocator, DescriptorSetId, Format, PushConstantRange, SamplerId, SamplerStore,
-    TechniqueRegistry, VertexLayout,
+    BlendState, DescriptorSetId, Format, PushConstantRange, SamplerId, SamplerStore, TechniqueRegistry, VertexLayout,
 };
 use crate::render::gfx::{PipelineCache, PipelineId};
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;

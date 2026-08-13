@@ -1,4 +1,5 @@
-use crate::render::gfx::{BindingKind, DescriptorBindingDesc, DescriptorSetDesc, DescriptorSetId};
+use crate::render::gfx::descriptor::{BindingKind, DescriptorBindingDesc, DescriptorSetDesc};
+use crate::render::gfx::DescriptorSetId;
 use ash::vk;
 
 pub(crate) struct StoredDescriptorSet {
