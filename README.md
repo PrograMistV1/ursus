@@ -145,26 +145,6 @@ relevant ECS state into a `RenderWorld` snapshot, which is published to the rend
 - No parallelism exploited in the render graph yet - passes execute sequentially even when independent.
 - Some internal log/error strings are in Russian; not yet standardized to one language throughout.
 
-## 🗺️ Roadmap
-
-Engine architecture (`engine-core`):
-
-- [ ] **Multithreaded command recording** - record passes in parallel into secondary command buffers via a job system
-- [ ] **Draw call batching / instancing** - GPU instancing for identical meshes instead of one draw call per instance
-- [ ] **Resource aliasing in the render graph** - reuse memory across transient resources with non-overlapping lifetimes
-- [ ] **Runtime debug UI** - GPU timings, G-buffer view, live-tweaking of render parameters
-- [ ] **`vertex_format!` proc-macro** - derive `VertexFormat` (layout/offsets/stride) for custom vertex structs instead
-  of a hand-written `impl`
-
-Rendering backlog (`engine-pipelines`):
-
-- [ ] PBR lighting (specular/GGX, metallic)
-- [ ] Point light shadows
-- [ ] Cascaded shadow maps
-- [ ] IBL / ambient
-- [ ] Wire up frustum culling (already implemented in `math/frustum.rs`, currently unused)
-- [ ] Alpha blending pass
-
 ## 📄 License
 
 This project is licensed under the Mozilla Public License 2.0 (MPL-2.0). See the [LICENSE](LICENSE) file for details.
