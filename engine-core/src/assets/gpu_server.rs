@@ -21,7 +21,6 @@ pub struct GpuAssetServer {
     pub descriptors: DescriptorAllocator,
     pub samplers: SamplerStore,
     pipeline_cache: PipelineCache,
-    bindless_set_id: DescriptorSetId,
 
     device: ash::Device,
     physical_device: vk::PhysicalDevice,
@@ -37,8 +36,6 @@ impl GpuAssetServer {
         command_pool: vk::CommandPool,
         queue: vk::Queue,
     ) -> anyhow::Result<Self> {
-        let textures = GpuTextureStore::new(device.clone(), physical_device, instance.clone(), command_pool, queue)?;
-
         let shaders = ShaderRegistry::empty();
         let techniques = TechniqueRegistry::default();
         let pipeline_cache = PipelineCache::new(device.clone());
@@ -46,10 +43,14 @@ impl GpuAssetServer {
         let meshes = MeshStore::new(device.clone(), physical_device, instance.clone(), command_pool, queue);
         let samplers = SamplerStore::new(device.clone());
 
-        let bindless = textures.bindless();
-        let bindless_set_id = descriptors.register_external(bindless.layout, bindless.set, bindless.pool);
-
-        log::info!("GpuAssetServer: white=slot0, next_slot={}", bindless.next_slot());
+        let textures = GpuTextureStore::new(
+            device.clone(),
+            physical_device,
+            instance.clone(),
+            command_pool,
+            &mut descriptors,
+            queue,
+        )?;
 
         Ok(Self {
             meshes,
@@ -62,14 +63,13 @@ impl GpuAssetServer {
             instance,
             command_pool,
             descriptors,
-            bindless_set_id,
             samplers,
             materials: MaterialStore::new(),
         })
     }
 
     pub fn bindless_set(&self) -> DescriptorSetId {
-        self.bindless_set_id
+        self.textures.bindless().set_id
     }
 
     pub fn bind_uniform_buffer(&self, set: DescriptorSetId, binding: u32, buffer: vk::Buffer, size: vk::DeviceSize) {

@@ -7,10 +7,6 @@ pub(crate) struct StoredDescriptorSet {
     set: vk::DescriptorSet,
     pool: vk::DescriptorPool,
     bindings: Vec<DescriptorBindingDesc>,
-    /// The layout/pool are owned by someone else (e.g. BindlessSet)
-    /// and must not be destroyed by this storage's Drop.
-    // TODO: This is a workaround.
-    owns_resources: bool,
 }
 
 /// A single entry point for creating and populating regular (non-bindless) descriptor sets.
@@ -25,52 +21,98 @@ impl DescriptorAllocator {
     }
 
     pub fn create_set(&mut self, desc: DescriptorSetDesc) -> anyhow::Result<DescriptorSetId> {
+        let has_bindless = desc.bindings.iter().any(|b| b.bindless);
+
         let vk_bindings: Vec<vk::DescriptorSetLayoutBinding> = desc
             .bindings
             .iter()
             .map(|b| {
-                vk::DescriptorSetLayoutBinding::default()
+                let mut vb = vk::DescriptorSetLayoutBinding::default()
                     .binding(b.binding)
                     .descriptor_type(to_vk_type(b.kind))
-                    .descriptor_count(1)
-                    .stage_flags(b.stage.to_vk())
+                    .descriptor_count(b.count)
+                    .stage_flags(b.stage.to_vk());
+                if let Some(sampler) = &b.immutable_sampler {
+                    vb = vb.immutable_samplers(std::slice::from_ref(sampler));
+                }
+                vb
             })
             .collect();
 
-        let layout = unsafe {
-            self.device.create_descriptor_set_layout(
-                &vk::DescriptorSetLayoutCreateInfo::default().bindings(&vk_bindings),
-                None,
-            )?
-        };
+        let binding_flags: Vec<vk::DescriptorBindingFlags> = desc
+            .bindings
+            .iter()
+            .map(|b| {
+                if b.bindless {
+                    vk::DescriptorBindingFlags::PARTIALLY_BOUND
+                        | vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT
+                        | vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
+                } else {
+                    vk::DescriptorBindingFlags::empty()
+                }
+            })
+            .collect();
+
+        let mut flags_info = vk::DescriptorSetLayoutBindingFlagsCreateInfo::default().binding_flags(&binding_flags);
+
+        let mut layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&vk_bindings);
+        if has_bindless {
+            layout_info = layout_info
+                .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
+                .push_next(&mut flags_info);
+        }
+
+        let layout = unsafe { self.device.create_descriptor_set_layout(&layout_info, None)? };
 
         let pool_sizes: Vec<vk::DescriptorPoolSize> = desc
             .bindings
             .iter()
-            .map(|b| vk::DescriptorPoolSize { ty: to_vk_type(b.kind), descriptor_count: 1 })
+            .map(|b| vk::DescriptorPoolSize { ty: to_vk_type(b.kind), descriptor_count: b.count })
             .collect();
 
-        let (pool, set) =
-            crate::vulkan::gfx_pipeline::builder::descriptor::alloc_single_set(&self.device, layout, &pool_sizes)?;
+        let mut pool_info = vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(1);
+        if has_bindless {
+            pool_info = pool_info.flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND);
+        }
+        let pool = unsafe { self.device.create_descriptor_pool(&pool_info, None)? };
+
+        let variable_count: Option<u32> = desc.bindings.iter().find(|b| b.bindless).map(|b| b.count);
+        let variable_count_value: u32 = variable_count.unwrap_or(0);
+        let mut var_count_info = variable_count.map(|_| {
+            vk::DescriptorSetVariableDescriptorCountAllocateInfo::default()
+                .descriptor_counts(std::slice::from_ref(&variable_count_value))
+        });
+
+        let mut alloc_info =
+            vk::DescriptorSetAllocateInfo::default().descriptor_pool(pool).set_layouts(std::slice::from_ref(&layout));
+        if let Some(vci) = var_count_info.as_mut() {
+            alloc_info = alloc_info.push_next(vci);
+        }
+
+        let set = unsafe { self.device.allocate_descriptor_sets(&alloc_info)?[0] };
 
         let id = DescriptorSetId(self.sets.len() as u32);
-        self.sets.push(StoredDescriptorSet { layout, set, pool, bindings: desc.bindings, owns_resources: true });
+        self.sets.push(StoredDescriptorSet { layout, set, pool, bindings: desc.bindings });
         Ok(id)
     }
 
-    /// Registers an already existing descriptor set (e.g. bindless) so that it can
-    /// be addressed using the same DescriptorSetId as regular sets, without
-    /// transferring ownership of the resources — the caller remains responsible
-    /// for destroying them.
-    pub fn register_external(
-        &mut self,
-        layout: vk::DescriptorSetLayout,
-        set: vk::DescriptorSet,
-        pool: vk::DescriptorPool,
-    ) -> DescriptorSetId {
-        let id = DescriptorSetId(self.sets.len() as u32);
-        self.sets.push(StoredDescriptorSet { layout, set, pool, bindings: Vec::new(), owns_resources: false });
-        id
+    pub fn write_sampled_image_array(
+        &self,
+        set: DescriptorSetId,
+        binding: u32,
+        array_element: u32,
+        view: vk::ImageView,
+    ) {
+        let stored = &self.sets[set.0 as usize];
+        let image_info =
+            vk::DescriptorImageInfo::default().image_view(view).image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+        let write = vk::WriteDescriptorSet::default()
+            .dst_set(stored.set)
+            .dst_binding(binding)
+            .dst_array_element(array_element)
+            .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+            .image_info(std::slice::from_ref(&image_info));
+        unsafe { self.device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
     }
 
     pub(crate) fn layout(&self, id: DescriptorSetId) -> vk::DescriptorSetLayout {
@@ -194,6 +236,8 @@ fn to_vk_type(kind: BindingKind) -> vk::DescriptorType {
         BindingKind::CombinedImageSampler => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
         BindingKind::UniformBuffer { .. } => vk::DescriptorType::UNIFORM_BUFFER,
         BindingKind::StorageBuffer { .. } => vk::DescriptorType::STORAGE_BUFFER,
+        BindingKind::Sampler => vk::DescriptorType::SAMPLER,
+        BindingKind::SampledImageArray => vk::DescriptorType::SAMPLED_IMAGE,
     }
 }
 
@@ -201,10 +245,8 @@ impl Drop for DescriptorAllocator {
     fn drop(&mut self) {
         unsafe {
             for ds in &self.sets {
-                if ds.owns_resources {
-                    self.device.destroy_descriptor_pool(ds.pool, None);
-                    self.device.destroy_descriptor_set_layout(ds.layout, None);
-                }
+                self.device.destroy_descriptor_pool(ds.pool, None);
+                self.device.destroy_descriptor_set_layout(ds.layout, None);
             }
         }
     }

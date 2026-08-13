@@ -14,25 +14,27 @@ pub struct GpuTexture {
     device: ash::Device,
 }
 
+pub struct TextureUpload<'a> {
+    pub pixels: &'a [u8],
+    pub width: u32,
+    pub height: u32,
+    pub format: Format,
+    pub name: &'a str,
+}
+
 impl GpuTexture {
-    //todo: this function has too many arguments (10/7)
-    #[allow(clippy::too_many_arguments)]
     pub fn upload(
         device: &ash::Device,
         physical_device: vk::PhysicalDevice,
         instance: &ash::Instance,
         command_pool: vk::CommandPool,
         queue: vk::Queue,
-        pixels: &[u8],
-        width: u32,
-        height: u32,
-        format: Format,
-        name: impl Into<String>,
+        upload: TextureUpload,
     ) -> anyhow::Result<Self> {
-        let name = name.into();
-        let size = pixels.len() as vk::DeviceSize;
+        let name = upload.name.into();
+        let size = upload.pixels.len() as vk::DeviceSize;
 
-        let mip_levels = (width.max(height) as f32).log2().floor() as u32 + 1;
+        let mip_levels = (upload.width.max(upload.height) as f32).log2().floor() as u32 + 1;
 
         let (staging, staging_mem) = alloc_buffer(
             device,
@@ -44,14 +46,14 @@ impl GpuTexture {
         )?;
         unsafe {
             let ptr = device.map_memory(staging_mem, 0, size, vk::MemoryMapFlags::empty())? as *mut u8;
-            std::ptr::copy_nonoverlapping(pixels.as_ptr(), ptr, pixels.len());
+            std::ptr::copy_nonoverlapping(upload.pixels.as_ptr(), ptr, upload.pixels.len());
             device.unmap_memory(staging_mem);
         }
 
         let image_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
-            .format(format.to_vk())
-            .extent(vk::Extent3D { width, height, depth: 1 })
+            .format(upload.format.to_vk())
+            .extent(vk::Extent3D { width: upload.width, height: upload.height, depth: 1 })
             .mip_levels(mip_levels)
             .array_layers(1)
             .samples(vk::SampleCountFlags::TYPE_1)
@@ -91,7 +93,7 @@ impl GpuTexture {
                     layer_count: 1,
                 })
                 .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
-                .image_extent(vk::Extent3D { width, height, depth: 1 });
+                .image_extent(vk::Extent3D { width: upload.width, height: upload.height, depth: 1 });
 
             device.cmd_copy_buffer_to_image(
                 cmd,
@@ -101,8 +103,8 @@ impl GpuTexture {
                 std::slice::from_ref(&region),
             );
 
-            let mut mip_w = width as i32;
-            let mut mip_h = height as i32;
+            let mut mip_w = upload.width as i32;
+            let mut mip_h = upload.height as i32;
 
             for level in 1..mip_levels {
                 transition_image_layout(
@@ -188,7 +190,7 @@ impl GpuTexture {
         let view_info = vk::ImageViewCreateInfo::default()
             .image(image)
             .view_type(vk::ImageViewType::TYPE_2D)
-            .format(format.to_vk())
+            .format(upload.format.to_vk())
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: vk::ImageAspectFlags::COLOR,
                 base_mip_level: 0,
@@ -198,9 +200,18 @@ impl GpuTexture {
             });
         let view = unsafe { device.create_image_view(&view_info, None)? };
 
-        log::debug!("GpuTexture '{}': {}x{} {:?}", name, width, height, format);
+        log::debug!("GpuTexture '{}': {}x{} {:?}", name, upload.width, upload.height, upload.format);
 
-        Ok(Self { image, view, memory, format: format.to_vk(), width, height, name, device: device.clone() })
+        Ok(Self {
+            image,
+            view,
+            memory,
+            format: upload.format.to_vk(),
+            width: upload.width,
+            height: upload.height,
+            name,
+            device: device.clone(),
+        })
     }
 
     //todo: this function has too many arguments (10/7)

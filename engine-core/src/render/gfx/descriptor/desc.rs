@@ -7,6 +7,8 @@ pub enum BindingKind {
     CombinedImageSampler,
     UniformBuffer { size: u64 },
     StorageBuffer { size: u64 },
+    Sampler,
+    SampledImageArray,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -14,6 +16,9 @@ pub struct DescriptorBindingDesc {
     pub binding: u32,
     pub kind: BindingKind,
     pub stage: ShaderStage,
+    pub count: u32,
+    pub bindless: bool,
+    pub immutable_sampler: Option<vk::Sampler>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -27,7 +32,14 @@ impl DescriptorSetDesc {
     }
 
     pub fn with_sampled_image(mut self, binding: u32, stage: ShaderStage) -> Self {
-        self.bindings.push(DescriptorBindingDesc { binding, kind: BindingKind::CombinedImageSampler, stage });
+        self.bindings.push(DescriptorBindingDesc {
+            binding,
+            kind: BindingKind::CombinedImageSampler,
+            stage,
+            count: 1,
+            bindless: false,
+            immutable_sampler: None,
+        });
         self
     }
 
@@ -36,6 +48,9 @@ impl DescriptorSetDesc {
             binding,
             kind: BindingKind::UniformBuffer { size: size_of::<T>() as u64 },
             stage,
+            count: 1,
+            bindless: false,
+            immutable_sampler: None,
         });
         self
     }
@@ -45,6 +60,33 @@ impl DescriptorSetDesc {
             binding,
             kind: BindingKind::StorageBuffer { size: size_of::<T>() as u64 },
             stage,
+            count: 1,
+            bindless: false,
+            immutable_sampler: None,
+        });
+        self
+    }
+
+    pub fn with_immutable_sampler(mut self, binding: u32, stage: ShaderStage, sampler: vk::Sampler) -> Self {
+        self.bindings.push(DescriptorBindingDesc {
+            binding,
+            kind: BindingKind::Sampler,
+            stage,
+            count: 1,
+            bindless: false,
+            immutable_sampler: Some(sampler),
+        });
+        self
+    }
+
+    pub fn with_bindless_sampled_images(mut self, binding: u32, stage: ShaderStage, max_count: u32) -> Self {
+        self.bindings.push(DescriptorBindingDesc {
+            binding,
+            kind: BindingKind::SampledImageArray,
+            stage,
+            count: max_count,
+            bindless: true,
+            immutable_sampler: None,
         });
         self
     }

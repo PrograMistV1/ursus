@@ -1,5 +1,6 @@
 use crate::assets::asset_registry::TextureHandle;
-use crate::render::gfx::types::Format;
+use crate::render::gfx::descriptor::DescriptorAllocator;
+use crate::vulkan::resources::texture::TextureUpload;
 use crate::vulkan::{BindlessSet, GpuTexture};
 use ash::vk;
 use std::collections::HashMap;
@@ -25,9 +26,10 @@ impl GpuTextureStore {
         physical_device: vk::PhysicalDevice,
         instance: ash::Instance,
         command_pool: vk::CommandPool,
+        descriptors: &mut DescriptorAllocator,
         queue: vk::Queue,
     ) -> anyhow::Result<Self> {
-        let bindless = BindlessSet::new(&device, physical_device, &instance, command_pool, queue)?;
+        let bindless = BindlessSet::new(&device, physical_device, &instance, descriptors, command_pool, queue)?;
         assert_eq!(bindless.next_slot(), 1, "slot 0 must be white fallback");
 
         Ok(Self {
@@ -44,12 +46,9 @@ impl GpuTextureStore {
 
     pub fn upload(
         &mut self,
+        descriptors: &DescriptorAllocator,
         handle: TextureHandle,
-        pixels: &[u8],
-        width: u32,
-        height: u32,
-        format: Format,
-        name: &str,
+        upload: TextureUpload,
     ) -> anyhow::Result<()> {
         let tex = GpuTexture::upload(
             &self.device,
@@ -57,16 +56,11 @@ impl GpuTextureStore {
             &self.instance,
             self.command_pool,
             self.queue,
-            pixels,
-            width,
-            height,
-            format,
-            name,
+            upload,
         )?;
-        let slot = self.bindless.alloc_slot(tex.view);
+        let slot = self.bindless.alloc_slot(descriptors, tex.view);
         self.slots.insert(handle, slot);
         self.textures.insert(slot, tex);
-        log::debug!("Texture '{}': handle={} -> slot={}", name, handle.0, slot);
         Ok(())
     }
 

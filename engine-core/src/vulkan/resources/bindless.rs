@@ -1,14 +1,15 @@
+use crate::render::gfx::descriptor::{DescriptorAllocator, DescriptorSetDesc};
 use crate::render::gfx::types::Format;
+use crate::render::gfx::types::{DescriptorSetId, ShaderStage};
 use crate::vulkan::core::sampler;
+use crate::vulkan::resources::texture::TextureUpload;
 use crate::vulkan::GpuTexture;
 use ash::vk;
 
 pub const MAX_TEXTURES: u32 = 4096;
 
 pub struct BindlessSet {
-    pub layout: vk::DescriptorSetLayout,
-    pub set: vk::DescriptorSet,
-    pub pool: vk::DescriptorPool,
+    pub set_id: DescriptorSetId,
     pub sampler: vk::Sampler,
     next_slot: u32,
     owned_textures: Vec<GpuTexture>,
@@ -20,6 +21,7 @@ impl BindlessSet {
         device: &ash::Device,
         physical_device: vk::PhysicalDevice,
         instance: &ash::Instance,
+        descriptors: &mut DescriptorAllocator,
         command_pool: vk::CommandPool,
         queue: vk::Queue,
     ) -> anyhow::Result<Self> {
@@ -27,67 +29,13 @@ impl BindlessSet {
             unsafe { instance.get_physical_device_properties(physical_device).limits.max_sampler_anisotropy.min(16.0) };
         let sampler = sampler::create_linear_repeat_aniso_sampler(device, max_aniso)?;
 
-        let binding_flags = [
-            vk::DescriptorBindingFlags::empty(),
-            vk::DescriptorBindingFlags::PARTIALLY_BOUND
-                | vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT
-                | vk::DescriptorBindingFlags::UPDATE_AFTER_BIND,
-        ];
-        let mut binding_flags_info =
-            vk::DescriptorSetLayoutBindingFlagsCreateInfo::default().binding_flags(&binding_flags);
+        let desc = DescriptorSetDesc::new()
+            .with_immutable_sampler(0, ShaderStage::Fragment, sampler)
+            .with_bindless_sampled_images(1, ShaderStage::Fragment, MAX_TEXTURES);
 
-        let bindings = [
-            vk::DescriptorSetLayoutBinding::default()
-                .binding(0)
-                .descriptor_type(vk::DescriptorType::SAMPLER)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-                .immutable_samplers(std::slice::from_ref(&sampler)),
-            vk::DescriptorSetLayoutBinding::default()
-                .binding(1)
-                .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                .descriptor_count(MAX_TEXTURES)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT),
-        ];
+        let set_id = descriptors.create_set(desc)?;
 
-        let layout = unsafe {
-            device.create_descriptor_set_layout(
-                &vk::DescriptorSetLayoutCreateInfo::default()
-                    .bindings(&bindings)
-                    .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
-                    .push_next(&mut binding_flags_info),
-                None,
-            )?
-        };
-
-        let pool_sizes = [
-            vk::DescriptorPoolSize { ty: vk::DescriptorType::SAMPLER, descriptor_count: 1 },
-            vk::DescriptorPoolSize { ty: vk::DescriptorType::SAMPLED_IMAGE, descriptor_count: MAX_TEXTURES },
-        ];
-        let pool = unsafe {
-            device.create_descriptor_pool(
-                &vk::DescriptorPoolCreateInfo::default()
-                    .pool_sizes(&pool_sizes)
-                    .max_sets(1)
-                    .flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND),
-                None,
-            )?
-        };
-
-        let mut variable_count_info = vk::DescriptorSetVariableDescriptorCountAllocateInfo::default()
-            .descriptor_counts(std::slice::from_ref(&MAX_TEXTURES));
-
-        let set = unsafe {
-            device.allocate_descriptor_sets(
-                &vk::DescriptorSetAllocateInfo::default()
-                    .descriptor_pool(pool)
-                    .set_layouts(std::slice::from_ref(&layout))
-                    .push_next(&mut variable_count_info),
-            )?[0]
-        };
-
-        let mut this =
-            Self { layout, set, pool, sampler, next_slot: 0, owned_textures: Vec::new(), device: device.clone() };
+        let mut this = Self { set_id, sampler, next_slot: 0, owned_textures: Vec::new(), device: device.clone() };
 
         let white = GpuTexture::upload(
             device,
@@ -95,45 +43,32 @@ impl BindlessSet {
             instance,
             command_pool,
             queue,
-            &[255u8, 255, 255, 255],
-            1,
-            1,
-            Format::Rgba8Srgb,
-            "white_fallback",
+            TextureUpload {
+                pixels: &[255u8, 255, 255, 255],
+                width: 1,
+                height: 1,
+                format: Format::Rgba8Srgb,
+                name: "white_fallback",
+            },
         )?;
-        let slot = this.alloc_slot(white.view);
+        let slot = this.alloc_slot(descriptors, white.view);
         assert_eq!(slot, 0, "white fallback должен быть слотом 0");
         this.owned_textures.push(white);
 
-        log::info!("BindlessSet создан (MAX_TEXTURES={})", MAX_TEXTURES);
         Ok(this)
     }
 
-    pub fn alloc_slot(&mut self, view: vk::ImageView) -> u32 {
+    pub fn alloc_slot(&mut self, descriptors: &DescriptorAllocator, view: vk::ImageView) -> u32 {
         let slot = self.next_slot;
-        assert!(slot < MAX_TEXTURES, "bindless texture array переполнен");
-        self.write_slot(slot, view);
+        assert!(slot < MAX_TEXTURES, "bindless texture array is full");
+        descriptors.write_sampled_image_array(self.set_id, 1, slot, view);
         self.next_slot += 1;
         slot
     }
 
-    pub fn update_slot(&self, slot: u32, view: vk::ImageView) {
-        assert!(slot < self.next_slot, "update_slot: слот {} не выделен", slot);
-        self.write_slot(slot, view);
-    }
-
-    fn write_slot(&self, slot: u32, view: vk::ImageView) {
-        let image_info =
-            vk::DescriptorImageInfo::default().image_view(view).image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-
-        let write = vk::WriteDescriptorSet::default()
-            .dst_set(self.set)
-            .dst_binding(1)
-            .dst_array_element(slot)
-            .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-            .image_info(std::slice::from_ref(&image_info));
-
-        unsafe { self.device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
+    pub fn update_slot(&self, descriptors: &DescriptorAllocator, slot: u32, view: vk::ImageView) {
+        assert!(slot < self.next_slot);
+        descriptors.write_sampled_image_array(self.set_id, 1, slot, view);
     }
 
     pub fn next_slot(&self) -> u32 {
@@ -143,13 +78,6 @@ impl BindlessSet {
 
 impl Drop for BindlessSet {
     fn drop(&mut self) {
-        // TODO: BindlessSet creates the layout/pool bypassing DescriptorAllocator
-        // (UPDATE_AFTER_BIND/PARTIALLY_BOUND/VARIABLE_DESCRIPTOR_COUNT flags are required) -
-        // add DescriptorAllocator::create_set_with_flags() and remove the owns_resources workaround.
-        unsafe {
-            self.device.destroy_sampler(self.sampler, None);
-            self.device.destroy_descriptor_pool(self.pool, None);
-            self.device.destroy_descriptor_set_layout(self.layout, None);
-        }
+        unsafe { self.device.destroy_sampler(self.sampler, None) };
     }
 }
