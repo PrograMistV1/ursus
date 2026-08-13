@@ -1,4 +1,4 @@
-use crate::render::gfx::ShaderStage;
+use crate::render::gfx::types::ShaderStage;
 use ash::vk;
 use std::ops::{BitOr, BitOrAssign};
 

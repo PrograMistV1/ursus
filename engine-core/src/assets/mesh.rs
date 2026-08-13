@@ -1,4 +1,4 @@
-use crate::render::gfx::{Format, VertexAttribute, VertexFormat, VertexLayout};
+use crate::render::gfx::types::{Format, VertexAttribute, VertexFormat, VertexLayout};
 use crate::vulkan::core::memory::alloc_buffer;
 use ash::vk;
 use glam::{Vec2, Vec3};

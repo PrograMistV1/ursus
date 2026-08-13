@@ -1,10 +1,11 @@
 use crate::assets::{GpuTextureStore, MaterialStore, MeshStore, ShaderRegistry};
 use crate::render::gfx::descriptor::DescriptorAllocator;
 use crate::render::gfx::sampler::SamplerStore;
-use crate::render::gfx::{
-    BlendState, DescriptorSetId, Format, PushConstantRange, SamplerId, TechniqueRegistry, VertexLayout,
+use crate::render::gfx::types::{
+    BlendState, BufferUsage, DescriptorSetId, Format, PipelineId, PushConstantRange, SamplerId, VertexLayout,
 };
-use crate::render::gfx::{PipelineCache, PipelineId};
+use crate::render::gfx::PipelineCache;
+use crate::render::gfx::TechniqueRegistry;
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use crate::vulkan::MappedGpuBuffer;
 use ash::vk;
@@ -156,7 +157,7 @@ impl GpuAssetServer {
 
     pub fn create_mapped_buffer<T: Copy>(
         &self,
-        usage: crate::render::gfx::BufferUsage,
+        usage: BufferUsage,
         capacity: usize,
     ) -> anyhow::Result<MappedGpuBuffer<T>> {
         MappedGpuBuffer::new(&self.device, self.physical_device, &self.instance, usage.to_vk(), capacity)

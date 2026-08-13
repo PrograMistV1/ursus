@@ -1,8 +1,8 @@
-use super::handles::{PipelineId, ShaderStage};
 use super::pipeline_cache::PipelineCache;
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::mesh::GpuMesh;
-use crate::render::gfx::DescriptorSetId;
+use crate::render::gfx::types::handles::{PipelineId, ShaderStage};
+use crate::render::gfx::types::DescriptorSetId;
 use crate::render::resource::{ResourceHandle, ResourcePool};
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
 use crate::vulkan::gfx_pipeline::builder::cmd::{

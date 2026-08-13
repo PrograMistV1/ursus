@@ -1,5 +1,5 @@
-use crate::render::gfx::handles::PipelineId;
-use crate::render::gfx::{Format, PushConstantRange, VertexLayout};
+use crate::render::gfx::types::handles::PipelineId;
+use crate::render::gfx::types::{Format, PushConstantRange, VertexLayout};
 use crate::vulkan::gfx_pipeline::builder::PipelineBuilder;
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use ash::vk;

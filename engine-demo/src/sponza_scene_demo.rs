@@ -4,7 +4,7 @@ use engine_core::components::camera::{ActiveCamera, CameraComponent};
 use engine_core::components::light::DirectionalLightComponent;
 use engine_core::components::mesh::MaterialHandle;
 use engine_core::components::ui::{UiLayout, UiText};
-use engine_core::render::gfx::Format;
+use engine_core::render::gfx::types::Format;
 use engine_core::render::thread::command::PipelineFactory;
 use engine_pipelines::DefaultPipeline;
 use glam::{Quat, Vec2, Vec3};

@@ -1,5 +1,5 @@
 use crate::assets::asset_registry::TextureHandle;
-use crate::render::gfx::Format;
+use crate::render::gfx::types::Format;
 use crate::vulkan::{BindlessSet, GpuTexture};
 use ash::vk;
 use std::collections::HashMap;

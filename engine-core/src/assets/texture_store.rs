@@ -1,6 +1,6 @@
 use crate::assets::asset_registry::TextureHandle;
 use crate::assets::texture_handle_allocator::TextureHandleAllocator;
-use crate::render::gfx::Format;
+use crate::render::gfx::types::Format;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 

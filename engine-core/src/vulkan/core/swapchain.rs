@@ -1,4 +1,4 @@
-use crate::render::gfx::Format;
+use crate::render::gfx::types::Format;
 use crate::vulkan::{Device, Instance};
 use ash::vk;
 

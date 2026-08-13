@@ -2,7 +2,7 @@ use crate::assets::text::atlas::TextAtlas;
 use crate::assets::text::atlas::ATLAS_SIZE;
 use crate::assets::texture_handle_allocator::TextureHandleAllocator;
 use crate::assets::upload::GpuUploadRequest;
-use crate::render::gfx::Format;
+use crate::render::gfx::types::Format;
 use crate::render::world::PreparedUiDrawList;
 use cosmic_text::fontdb::Query;
 use cosmic_text::{fontdb, Attrs, Buffer, Family, FontSystem, LayoutGlyph, Metrics, Shaping, SwashCache, SwashContent};

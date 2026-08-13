@@ -1,5 +1,5 @@
 use crate::assets::ShaderHandle;
-use crate::render::gfx::BlendState;
+use crate::render::gfx::types::BlendState;
 use ash::vk;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

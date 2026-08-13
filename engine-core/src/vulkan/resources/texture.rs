@@ -1,4 +1,4 @@
-use crate::render::gfx::Format;
+use crate::render::gfx::types::Format;
 use crate::render::resource::make_barrier_range;
 use crate::vulkan::core::memory::{alloc_buffer, destroy_image_resources, find_memory_type};
 use ash::vk;

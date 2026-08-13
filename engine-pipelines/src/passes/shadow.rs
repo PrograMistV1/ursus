@@ -1,7 +1,8 @@
 use crate::passes::material_buffer::MaterialBuffer;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::Vertex;
-use engine_core::render::gfx::{CommandEncoder, PipelineId, PushConstantRange, ShaderStage, VertexFormat};
+use engine_core::render::gfx::types::{PipelineId, PushConstantRange, ShaderStage, VertexFormat};
+use engine_core::render::gfx::CommandEncoder;
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedLights, ExtractedShadowMeshes, RenderWorld};
 

@@ -1,8 +1,9 @@
 use crate::passes::ui::UiPass;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
-use engine_core::render::gfx::format::{Format, ImageLayout};
-use engine_core::render::gfx::{CommandEncoder, PushConstantRange, ShaderStage};
+use engine_core::render::gfx::types::format::{Format, ImageLayout};
+use engine_core::render::gfx::types::{PushConstantRange, ShaderStage};
+use engine_core::render::gfx::CommandEncoder;
 use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::render::world::{PreparedUiDrawList, UiPrimitive};
 use engine_core::vulkan::{GpuTexture, VulkanContext};

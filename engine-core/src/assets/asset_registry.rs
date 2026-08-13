@@ -10,7 +10,7 @@ use crate::assets::upload::GpuUploadRequest;
 use crate::assets::upload_queue::UploadQueue;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::components::transform::Transform;
-use crate::render::gfx::Format;
+use crate::render::gfx::types::Format;
 use crate::render::world::PreparedUiDrawList;
 use glam::Vec2;
 use std::hash::Hash;

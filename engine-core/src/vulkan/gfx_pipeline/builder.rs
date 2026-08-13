@@ -1,5 +1,5 @@
 use super::shader::ShaderModule;
-use crate::render::gfx::{Format, PushConstantRange};
+use crate::render::gfx::types::{Format, PushConstantRange};
 use ash::vk;
 
 pub struct PipelineBuilder<'a> {

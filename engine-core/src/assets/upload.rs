@@ -2,7 +2,7 @@ use crate::assets::material::MaterialPayload;
 use crate::assets::mesh::Vertex;
 use crate::assets::TextureHandle;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
-use crate::render::gfx::Format;
+use crate::render::gfx::types::Format;
 
 pub enum GpuUploadRequest {
     Mesh {

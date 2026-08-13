@@ -1,6 +1,6 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::render::gfx::descriptor::ImageUsage;
-use crate::render::gfx::{DescriptorSetId, Format, SamplerId};
+use crate::render::gfx::types::{DescriptorSetId, Format, SamplerId};
 use crate::vulkan::core::debug::set_object_name;
 use crate::vulkan::core::memory;
 use crate::vulkan::core::memory::destroy_image_resources;

@@ -1,7 +1,8 @@
 use crate::assets::gpu_server::GpuAssetServer;
 use crate::render::gfx::descriptor::ImageUsage;
-use crate::render::gfx::format::ImageLayout;
-use crate::render::gfx::{CommandEncoder, DescriptorSetId, SamplerId};
+use crate::render::gfx::types::format::ImageLayout;
+use crate::render::gfx::types::{DescriptorSetId, SamplerId};
+use crate::render::gfx::CommandEncoder;
 use crate::render::resource::{
     make_barrier, DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, LayoutTracker, ResourceHandle,
     ResourcePool,

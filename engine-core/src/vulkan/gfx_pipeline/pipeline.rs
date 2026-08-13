@@ -1,4 +1,4 @@
-use crate::render::gfx::{Format, PushConstantRange, VertexLayout};
+use crate::render::gfx::types::{Format, PushConstantRange, VertexLayout};
 use ash::vk;
 
 pub struct PipelineDesc<'a> {

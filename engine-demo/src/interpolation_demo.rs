@@ -6,7 +6,7 @@ use engine_core::components::mesh::TechniqueHandle;
 use engine_core::components::transform::Transform;
 use engine_core::components::transform_interpolation::TransformInterpolation;
 use engine_core::ecs::world::Entity;
-use engine_core::render::gfx::Format;
+use engine_core::render::gfx::types::Format;
 use engine_core::render::thread::command::PipelineFactory;
 use engine_gltf_loader::PbrMetallicRoughness;
 use engine_pipelines::DefaultPipeline;

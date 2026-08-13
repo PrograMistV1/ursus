@@ -1,6 +1,6 @@
 use crate::render::gfx::sampler::desc;
 use crate::render::gfx::sampler::desc::SamplerDesc;
-use crate::render::gfx::SamplerId;
+use crate::render::gfx::types::SamplerId;
 use ash::vk;
 
 struct StoredSampler {

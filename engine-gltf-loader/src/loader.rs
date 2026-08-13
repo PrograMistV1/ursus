@@ -5,7 +5,7 @@ use engine_core::assets::loader_registry::{
 };
 use engine_core::assets::material::MaterialPayload;
 use engine_core::assets::mesh::{CpuMesh, Vertex};
-use engine_core::render::gfx::Format;
+use engine_core::render::gfx::types::Format;
 use glam::{Vec2, Vec3};
 use image::DynamicImage;
 use std::path::Path;

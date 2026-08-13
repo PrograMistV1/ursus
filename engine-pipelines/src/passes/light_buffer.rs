@@ -1,5 +1,6 @@
 use engine_core::assets::gpu_server::GpuAssetServer;
-use engine_core::render::gfx::{BufferUsage, DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
+use engine_core::render::gfx::types::BufferUsage;
+use engine_core::render::gfx::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
 use engine_core::vulkan::MappedGpuBuffer;
 
 #[repr(C)]

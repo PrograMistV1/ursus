@@ -1,6 +1,6 @@
 use crate::assets::material::MaterialPayload;
 use crate::assets::mesh::CpuMesh;
-use crate::render::gfx::Format;
+use crate::render::gfx::types::Format;
 use std::path::Path;
 use std::sync::Arc;
 
