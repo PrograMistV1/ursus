@@ -7,7 +7,6 @@ pub mod handles;
 pub mod light_buffer;
 pub mod pipeline_cache;
 pub mod sampler;
-pub mod sampler_store;
 pub mod technique;
 pub mod vertex;
 
@@ -18,7 +17,5 @@ pub use format::{Format, ImageLayout};
 pub use handles::{DescriptorSetId, PipelineId, PushConstantRange, SamplerId, ShaderStage};
 pub use light_buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
 pub use pipeline_cache::PipelineCache;
-pub use sampler::{AddressMode, Filter, SamplerDesc};
-pub use sampler_store::SamplerStore;
 pub use technique::{TechniqueDesc, TechniqueId, TechniqueRegistry};
 pub use vertex::{VertexAttribute, VertexFormat, VertexLayout};

@@ -1,5 +1,6 @@
-use crate::render::gfx::sampler::SamplerDesc;
-use crate::render::gfx::{sampler, SamplerId};
+use crate::render::gfx::sampler::desc;
+use crate::render::gfx::sampler::desc::SamplerDesc;
+use crate::render::gfx::SamplerId;
 use ash::vk;
 
 struct StoredSampler {
@@ -17,7 +18,7 @@ impl SamplerStore {
     }
 
     pub fn create(&mut self, desc: SamplerDesc) -> anyhow::Result<SamplerId> {
-        let handle = sampler::create_from_desc(&self.device, desc)?;
+        let handle = desc::create_from_desc(&self.device, desc)?;
         let id = SamplerId(self.samplers.len() as u32);
         self.samplers.push(StoredSampler { handle });
         Ok(id)
