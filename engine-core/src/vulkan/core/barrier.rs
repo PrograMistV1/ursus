@@ -31,7 +31,7 @@ pub fn make_barrier_range(
 
 /// Returns (stage, access) for transitioning from/to the given layout.
 /// `is_src` determines whether the layout is interpreted as "from" (true)
-/// or "to" (false) — the only asymmetry in Vulkan semantics here
+/// or "to" (false) - the only asymmetry in Vulkan semantics here
 /// is UNDEFINED (valid only as src) and the difference between EARLY/LATE fragment
 /// tests for depth attachments (see the comment in the branch).
 fn stage_access(layout: vk::ImageLayout, is_src: bool) -> (vk::PipelineStageFlags2, vk::AccessFlags2) {

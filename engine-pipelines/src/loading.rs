@@ -108,7 +108,7 @@ impl RenderPipeline for LoadingPipeline {
         )?;
 
         let (logo_pixels, logo_w, logo_h) = load_svg_as_rgba(LOGO_SVG).unwrap_or_else(|e| {
-            log::warn!("Лого не загружено: {} — fallback 1x1", e);
+            log::warn!("Лого не загружено: {} - fallback 1x1", e);
             (vec![255u8, 255, 255, 255], 1, 1)
         });
         let logo_aspect = logo_w as f32 / logo_h as f32;
