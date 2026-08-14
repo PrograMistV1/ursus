@@ -11,9 +11,7 @@ pub use core::swapchain::Swapchain;
 pub use gfx_pipeline::Pipeline;
 pub use renderer::{build_dyn_renderer, DynRenderer, Renderer};
 pub use resources::bindless::BindlessSet;
-pub use resources::depth::DepthBuffer;
 pub use resources::mapped_buffer::MappedGpuBuffer;
-pub use resources::render_target::RenderTarget;
 pub use resources::texture::GpuTexture;
 
 use crate::EngineFlags;

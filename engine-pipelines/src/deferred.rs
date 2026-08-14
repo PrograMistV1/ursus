@@ -13,8 +13,6 @@ use engine_core::render::gfx::types::{Format, ImageLayout};
 use engine_core::render::gfx::TechniqueDesc;
 use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::render::resource::{ResourceDesc, ResourceExtent};
-use engine_core::vulkan::resources::gbuffer::GBuffer;
-use engine_core::vulkan::resources::shadow_map::SHADOW_MAP_SIZE;
 use engine_core::vulkan::VulkanContext;
 use std::sync::Arc;
 
@@ -47,16 +45,16 @@ impl RenderPipeline for DefaultPipeline {
         let h_shadow_map = graph.pool.register(ResourceDesc::depth(
             "shadow_map",
             Format::Depth32Float,
-            ResourceExtent::Absolute(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE),
+            ResourceExtent::Absolute(2048, 2048),
         ));
         let h_gbuffer_albedo = graph.pool.register(ResourceDesc::color(
             "gbuffer_albedo",
-            GBuffer::ALBEDO_FORMAT,
+            Format::Rgba8Unorm,
             ResourceExtent::ScaleInternal(1.0),
         ));
         let h_gbuffer_normal = graph.pool.register(ResourceDesc::color(
             "gbuffer_normal",
-            GBuffer::NORMAL_FORMAT,
+            Format::Rgba16Float,
             ResourceExtent::ScaleInternal(1.0),
         ));
         let h_depth =
@@ -77,8 +75,12 @@ impl RenderPipeline for DefaultPipeline {
         let shadow_pass = ShadowPass::new(gpu_assets, &material_buffer)?;
         let depth_prepass = DepthPrepass::new(gpu_assets, &material_buffer)?;
 
-        let mut geometry_pass =
-            GeometryPass::new(gpu_assets, GBuffer::color_formats(), &material_buffer, diffuse_technique)?;
+        let mut geometry_pass = GeometryPass::new(
+            gpu_assets,
+            [Format::Rgba8Unorm, Format::Rgba16Float],
+            &material_buffer,
+            diffuse_technique,
+        )?;
         geometry_pass.get_or_create_pipeline(gpu_assets, unlit_technique, &material_buffer)?;
 
         let lighting_pass = LightingPass::new(gpu_assets, Format::Rgba16Float)?;
