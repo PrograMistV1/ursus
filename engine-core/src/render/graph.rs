@@ -4,7 +4,8 @@ use crate::render::gfx::types::format::ImageLayout;
 use crate::render::gfx::types::{DescriptorSetId, SamplerId};
 use crate::render::gfx::CommandEncoder;
 use crate::render::resource::{
-    DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, LayoutTracker, ResourceHandle, ResourcePool,
+    DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, FlushReason, LayoutTracker, ResourceHandle,
+    ResourcePool,
 };
 use crate::render::world::RenderWorld;
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
@@ -250,7 +251,7 @@ impl RenderGraph {
 
     pub fn allocate(&mut self, gpu: &GpuAssetServer) -> anyhow::Result<()> {
         self.pool.allocate(self.internal_resolution, self.output_resolution)?;
-        self.bindings.flush_all(&self.pool, gpu);
+        self.bindings.flush_all(&self.pool, gpu, FlushReason::InitialAllocation);
         self.allocated = true;
         Ok(())
     }
@@ -286,7 +287,13 @@ impl RenderGraph {
                 cmd_begin_label(du, cmd, &node.name);
             }
 
-            self.tracker.transition(device, cmd, &self.pool, cp.barriers.iter().map(|cb| (cb.handle, cb.new_layout)));
+            let barriers =
+                self.tracker.plan_transition(&self.pool, cp.barriers.iter().map(|cb| (cb.handle, cb.new_layout)));
+            if !barriers.is_empty() {
+                unsafe {
+                    device.cmd_pipeline_barrier2(cmd, &vk::DependencyInfo::default().image_memory_barriers(barriers));
+                }
+            }
 
             if let Some(ts) = &self.timestamps {
                 ts.begin_pass(cmd, self.current_frame, order_idx);
@@ -306,12 +313,13 @@ impl RenderGraph {
             }
         }
 
-        self.tracker.transition(
-            device,
-            cmd,
-            &self.pool,
-            self.compiled_finals.iter().map(|cb| (cb.handle, cb.new_layout)),
-        );
+        let barriers =
+            self.tracker.plan_transition(&self.pool, self.compiled_finals.iter().map(|cb| (cb.handle, cb.new_layout)));
+        if !barriers.is_empty() {
+            unsafe {
+                device.cmd_pipeline_barrier2(cmd, &vk::DependencyInfo::default().image_memory_barriers(barriers));
+            }
+        }
 
         if let Some(ts) = &self.timestamps {
             self.last_frame_times = Some(ts.last_frame.clone());
@@ -331,7 +339,7 @@ impl RenderGraph {
         self.output_resolution = new_output;
         self.pool.resize_output(self.internal_resolution, new_output)?;
         let affected: Vec<ResourceHandle> = self.pool.output_handles().collect();
-        self.bindings.flush(&self.pool, &affected, gpu);
+        self.bindings.flush(&self.pool, &affected, gpu, FlushReason::Resize);
         self.tracker.invalidate(&affected);
         self.build_compiled_passes();
         Ok(())
@@ -341,7 +349,7 @@ impl RenderGraph {
         self.internal_resolution = new_internal;
         self.pool.resize_internal(new_internal, self.output_resolution)?;
         let affected: Vec<ResourceHandle> = self.pool.internal_handles().collect();
-        self.bindings.flush(&self.pool, &affected, gpu);
+        self.bindings.flush(&self.pool, &affected, gpu, FlushReason::Resize);
         self.tracker.invalidate(&affected);
         Ok(())
     }
@@ -528,7 +536,7 @@ impl PassNodeReady {
             let resource = b.resource;
             graph.bindings.register(b);
             if graph.allocated {
-                graph.bindings.flush(&graph.pool, &[resource], gpu);
+                graph.bindings.flush(&graph.pool, &[resource], gpu, FlushReason::LateBinding);
             }
         }
         graph.add_pass(self.node)

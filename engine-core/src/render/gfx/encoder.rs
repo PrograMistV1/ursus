@@ -3,7 +3,7 @@ use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::mesh::GpuMesh;
 use crate::render::gfx::types::handles::{PipelineId, ShaderStage};
 use crate::render::gfx::types::DescriptorSetId;
-use crate::render::resource::{ResourceHandle, ResourcePool};
+use crate::render::resource::{ImageRef, ResourceHandle, ResourcePool};
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
 use crate::vulkan::gfx_pipeline::builder::cmd::{
     begin_rendering_clear, begin_rendering_depth_only, begin_rendering_discard, begin_rendering_load,
@@ -34,7 +34,7 @@ impl<'a> CommandEncoder<'a> {
         self.cmd
     }
 
-    fn image(&self, handle: ResourceHandle) -> crate::render::resource::ImageRef<'_> {
+    fn image(&self, handle: ResourceHandle) -> ImageRef<'_> {
         self.pool.image(handle)
     }
 
