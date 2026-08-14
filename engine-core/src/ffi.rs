@@ -1,3 +1,10 @@
+// TODO(ffi): temporarily disabled - the core's public API is not stable yet
+// and is still being actively refactored (see commit history). Uncomment
+// and update to the current API once:
+//   - the public API (App/EngineContext/components, etc.) stabilizes
+//     across releases
+//   - there is an actual consumer (C/C#/etc. wrapper)
+
 /*use crate::app::EngineContext;
 use crate::components::mesh::MeshHandle;
 use crate::components::transform::Transform;
