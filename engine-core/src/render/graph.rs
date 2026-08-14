@@ -4,8 +4,7 @@ use crate::render::gfx::types::format::ImageLayout;
 use crate::render::gfx::types::{DescriptorSetId, SamplerId};
 use crate::render::gfx::CommandEncoder;
 use crate::render::resource::{
-    make_barrier, DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, LayoutTracker, ResourceHandle,
-    ResourcePool,
+    DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, LayoutTracker, ResourceHandle, ResourcePool,
 };
 use crate::render::world::RenderWorld;
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
@@ -99,8 +98,6 @@ pub struct RenderGraph {
     compiled_passes: Vec<CompiledPass>,
     compiled_finals: Vec<CompiledBarrier>,
 
-    barrier_scratch: Vec<vk::ImageMemoryBarrier2<'static>>,
-
     timestamps: Option<GpuTimestampPool>,
     pub last_frame_times: Option<GpuFrameTimes>,
     current_frame: usize,
@@ -128,7 +125,6 @@ impl RenderGraph {
             compiled_passes: Vec::new(),
             compiled_finals: Vec::new(),
             debug_utils,
-            barrier_scratch: Vec::new(),
             timestamps: None,
             last_frame_times: None,
             current_frame: 0,
@@ -290,26 +286,7 @@ impl RenderGraph {
                 cmd_begin_label(du, cmd, &node.name);
             }
 
-            if !cp.barriers.is_empty() {
-                self.barrier_scratch.clear();
-                for cb in &cp.barriers {
-                    let old = self.tracker.current(cb.handle);
-                    if old == cb.new_layout {
-                        continue;
-                    }
-                    let img = self.pool.image(cb.handle);
-                    self.barrier_scratch.push(make_barrier(img.image, img.kind, old, cb.new_layout));
-                    self.tracker.set(cb.handle, cb.new_layout);
-                }
-                if !self.barrier_scratch.is_empty() {
-                    unsafe {
-                        device.cmd_pipeline_barrier2(
-                            cmd,
-                            &vk::DependencyInfo::default().image_memory_barriers(&self.barrier_scratch),
-                        );
-                    }
-                }
-            }
+            self.tracker.transition(device, cmd, &self.pool, cp.barriers.iter().map(|cb| (cb.handle, cb.new_layout)));
 
             if let Some(ts) = &self.timestamps {
                 ts.begin_pass(cmd, self.current_frame, order_idx);
@@ -329,26 +306,12 @@ impl RenderGraph {
             }
         }
 
-        if !self.compiled_finals.is_empty() {
-            self.barrier_scratch.clear();
-            for cb in &self.compiled_finals {
-                let old = self.tracker.current(cb.handle);
-                if old == cb.new_layout {
-                    continue;
-                }
-                let img = self.pool.image(cb.handle);
-                self.barrier_scratch.push(make_barrier(img.image, img.kind, old, cb.new_layout));
-                self.tracker.set(cb.handle, cb.new_layout);
-            }
-            if !self.barrier_scratch.is_empty() {
-                unsafe {
-                    device.cmd_pipeline_barrier2(
-                        cmd,
-                        &vk::DependencyInfo::default().image_memory_barriers(&self.barrier_scratch),
-                    );
-                }
-            }
-        }
+        self.tracker.transition(
+            device,
+            cmd,
+            &self.pool,
+            self.compiled_finals.iter().map(|cb| (cb.handle, cb.new_layout)),
+        );
 
         if let Some(ts) = &self.timestamps {
             self.last_frame_times = Some(ts.last_frame.clone());

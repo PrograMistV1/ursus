@@ -460,11 +460,12 @@ impl DescriptorBindingRegistry {
 
 pub struct LayoutTracker {
     layouts: HashMap<ResourceHandle, vk::ImageLayout>,
+    scratch: Vec<vk::ImageMemoryBarrier2<'static>>,
 }
 
 impl LayoutTracker {
     pub fn new() -> Self {
-        Self { layouts: HashMap::new() }
+        Self { layouts: HashMap::new(), scratch: Vec::new() }
     }
 
     pub fn current(&self, handle: ResourceHandle) -> vk::ImageLayout {
@@ -480,30 +481,25 @@ impl LayoutTracker {
         device: &ash::Device,
         cmd: vk::CommandBuffer,
         pool: &ResourcePool,
-        transitions: &[(ResourceHandle, vk::ImageLayout)],
+        transitions: impl IntoIterator<Item = (ResourceHandle, vk::ImageLayout)>,
     ) -> bool {
-        let barriers: Vec<vk::ImageMemoryBarrier2> = transitions
-            .iter()
-            .filter_map(|&(handle, new_layout)| {
-                let old_layout = self.current(handle);
-                if old_layout == new_layout {
-                    return None;
-                }
-                let img = pool.image(handle);
-                Some(make_barrier(img.image, img.kind, old_layout, new_layout))
-            })
-            .collect();
+        self.scratch.clear();
+        for (handle, new_layout) in transitions {
+            let old_layout = self.current(handle);
+            if old_layout == new_layout {
+                continue;
+            }
+            let img = pool.image(handle);
+            self.scratch.push(make_barrier(img.image, img.kind, old_layout, new_layout));
+            self.layouts.insert(handle, new_layout);
+        }
 
-        if barriers.is_empty() {
+        if self.scratch.is_empty() {
             return false;
         }
 
         unsafe {
-            device.cmd_pipeline_barrier2(cmd, &vk::DependencyInfo::default().image_memory_barriers(&barriers));
-        }
-
-        for &(handle, new_layout) in transitions {
-            self.set(handle, new_layout);
+            device.cmd_pipeline_barrier2(cmd, &vk::DependencyInfo::default().image_memory_barriers(&self.scratch));
         }
         true
     }
