@@ -1,6 +1,6 @@
 use crate::render::resource::desc::{ExternalImageDesc, ResourceDesc, ResourceKind};
-use crate::vulkan::core::memory;
 use crate::vulkan::core::memory::destroy_image_resources;
+use crate::vulkan::core::{memory, DeviceContext};
 use ash::vk;
 use memory::ImageDesc;
 
@@ -16,14 +16,7 @@ pub struct TransientImage {
 }
 
 impl TransientImage {
-    pub(crate) fn new(
-        device: &ash::Device,
-        physical_device: vk::PhysicalDevice,
-        instance: &ash::Instance,
-        desc: &ResourceDesc,
-        width: u32,
-        height: u32,
-    ) -> anyhow::Result<Self> {
+    pub(crate) fn new(ctx: DeviceContext, desc: &ResourceDesc, width: u32, height: u32) -> anyhow::Result<Self> {
         let img_desc = ImageDesc {
             format: desc.format.to_vk(),
             width,
@@ -32,7 +25,7 @@ impl TransientImage {
             aspect_mask: desc.kind.aspect_mask(),
             mip_levels: 1,
         };
-        let img = memory::alloc_image(device, physical_device, instance, &img_desc)?;
+        let img = memory::alloc_image(ctx, &img_desc)?;
 
         log::debug!("TransientImage '{}': {}x{} {:?}", desc.name, width, height, desc.format);
 
@@ -44,7 +37,7 @@ impl TransientImage {
             extent: vk::Extent2D { width, height },
             kind: desc.kind,
             name: desc.name.clone(),
-            device: device.clone(),
+            device: ctx.device.clone(),
         })
     }
 }

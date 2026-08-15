@@ -1,3 +1,4 @@
+use crate::vulkan::core::DeviceContext;
 use ash::vk;
 
 pub struct AllocatedImage {
@@ -25,12 +26,7 @@ impl ImageDesc {
     }
 }
 
-pub fn alloc_image(
-    device: &ash::Device,
-    physical_device: vk::PhysicalDevice,
-    instance: &ash::Instance,
-    desc: &ImageDesc,
-) -> anyhow::Result<AllocatedImage> {
+pub fn alloc_image(ctx: DeviceContext, desc: &ImageDesc) -> anyhow::Result<AllocatedImage> {
     let image_info = vk::ImageCreateInfo::default()
         .image_type(vk::ImageType::TYPE_2D)
         .format(desc.format)
@@ -43,22 +39,26 @@ pub fn alloc_image(
         .sharing_mode(vk::SharingMode::EXCLUSIVE)
         .initial_layout(vk::ImageLayout::UNDEFINED);
 
-    let image = unsafe { device.create_image(&image_info, None)? };
-    let req = unsafe { device.get_image_memory_requirements(image) };
+    let image = unsafe { ctx.device.create_image(&image_info, None)? };
+    let req = unsafe { ctx.device.get_image_memory_requirements(image) };
 
-    let mem_type =
-        find_memory_type(instance, physical_device, req.memory_type_bits, vk::MemoryPropertyFlags::DEVICE_LOCAL)?;
+    let mem_type = find_memory_type(
+        ctx.instance,
+        ctx.physical_device,
+        req.memory_type_bits,
+        vk::MemoryPropertyFlags::DEVICE_LOCAL,
+    )?;
 
     let memory = unsafe {
-        device.allocate_memory(
+        ctx.device.allocate_memory(
             &vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(mem_type),
             None,
         )?
     };
-    unsafe { device.bind_image_memory(image, memory, 0)? };
+    unsafe { ctx.device.bind_image_memory(image, memory, 0)? };
 
     let view = unsafe {
-        device.create_image_view(
+        ctx.device.create_image_view(
             &vk::ImageViewCreateInfo::default()
                 .image(image)
                 .view_type(vk::ImageViewType::TYPE_2D)
@@ -94,24 +94,22 @@ pub fn find_memory_type(
 }
 
 pub fn alloc_buffer(
-    device: &ash::Device,
-    instance: &ash::Instance,
-    physical_device: vk::PhysicalDevice,
+    ctx: DeviceContext,
     size: vk::DeviceSize,
     usage: vk::BufferUsageFlags,
     props: vk::MemoryPropertyFlags,
 ) -> anyhow::Result<(vk::Buffer, vk::DeviceMemory)> {
     let buf_info = vk::BufferCreateInfo::default().size(size).usage(usage).sharing_mode(vk::SharingMode::EXCLUSIVE);
-    let buf = unsafe { device.create_buffer(&buf_info, None)? };
-    let req = unsafe { device.get_buffer_memory_requirements(buf) };
+    let buf = unsafe { ctx.device.create_buffer(&buf_info, None)? };
+    let req = unsafe { ctx.device.get_buffer_memory_requirements(buf) };
     let alloc = vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(find_memory_type(
-        instance,
-        physical_device,
+        ctx.instance,
+        ctx.physical_device,
         req.memory_type_bits,
         props,
     )?);
-    let mem = unsafe { device.allocate_memory(&alloc, None)? };
-    unsafe { device.bind_buffer_memory(buf, mem, 0)? };
+    let mem = unsafe { ctx.device.allocate_memory(&alloc, None)? };
+    unsafe { ctx.device.bind_buffer_memory(buf, mem, 0)? };
     Ok((buf, mem))
 }
 

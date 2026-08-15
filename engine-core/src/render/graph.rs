@@ -9,6 +9,7 @@ use crate::render::resource::{
 };
 use crate::render::world::RenderWorld;
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
+use crate::vulkan::core::DeviceContext;
 use crate::vulkan::timestamps::{GpuFrameTimes, GpuTimestampPool};
 use ash::ext::debug_utils;
 use ash::vk;
@@ -135,9 +136,7 @@ impl RenderGraph {
 
     pub fn enable_timestamps(
         &mut self,
-        device: &ash::Device,
-        physical_device: vk::PhysicalDevice,
-        instance: &ash::Instance,
+        ctx: DeviceContext,
         frames_in_flight: u32,
         command_pool: vk::CommandPool,
         queue: vk::Queue,
@@ -147,9 +146,9 @@ impl RenderGraph {
         let pass_names = self.nodes.iter().map(|n| n.name.clone()).collect();
 
         self.timestamps = Some(GpuTimestampPool::new(
-            device,
-            physical_device,
-            instance,
+            ctx.device,
+            ctx.physical_device,
+            ctx.instance,
             frames_in_flight,
             pass_names,
             command_pool,

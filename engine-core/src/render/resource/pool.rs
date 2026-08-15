@@ -3,6 +3,7 @@ use crate::render::gfx::types::Format;
 use crate::render::resource::desc::{ExternalImageDesc, ResourceDesc, ResourceExtent, ResourceHandle, ResourceKind};
 use crate::render::resource::image::{ExternalSlot, ImageRef, ResourceEntry, TransientImage};
 use crate::vulkan::core::debug::set_object_name;
+use crate::vulkan::core::DeviceContext;
 use ash::ext::debug_utils;
 use ash::vk;
 use std::sync::Arc;
@@ -87,7 +88,7 @@ impl ResourcePool {
             if let ResourceEntry::Transient { desc, image } = entry {
                 if image.is_none() {
                     let (w, h) = desc.extent.resolve(internal, output);
-                    let ti = TransientImage::new(device, physical_device, instance, desc, w, h)?;
+                    let ti = TransientImage::new(DeviceContext { device, physical_device, instance }, desc, w, h)?;
                     debug_name(debug_utils.as_deref(), &ti, desc);
                     **image = Some(ti);
                 }
@@ -102,8 +103,16 @@ impl ResourcePool {
                 if matches!(desc.extent, ResourceExtent::ScaleOutput(_)) {
                     **image = None;
                     let (w, h) = desc.extent.resolve(internal, new_output);
-                    **image =
-                        Some(TransientImage::new(&self.device, self.physical_device, &self.instance, desc, w, h)?);
+                    **image = Some(TransientImage::new(
+                        DeviceContext {
+                            device: &self.device,
+                            physical_device: self.physical_device,
+                            instance: &self.instance,
+                        },
+                        desc,
+                        w,
+                        h,
+                    )?);
                 }
             }
         }
@@ -116,8 +125,16 @@ impl ResourcePool {
                 if matches!(desc.extent, ResourceExtent::ScaleInternal(_)) {
                     **image = None;
                     let (w, h) = desc.extent.resolve(new_internal, output);
-                    **image =
-                        Some(TransientImage::new(&self.device, self.physical_device, &self.instance, desc, w, h)?);
+                    **image = Some(TransientImage::new(
+                        DeviceContext {
+                            device: &self.device,
+                            physical_device: self.physical_device,
+                            instance: &self.instance,
+                        },
+                        desc,
+                        w,
+                        h,
+                    )?);
                 }
             }
         }

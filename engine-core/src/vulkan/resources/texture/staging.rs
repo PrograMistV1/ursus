@@ -16,9 +16,7 @@ impl StagingBuffer {
         let size = data.len() as vk::DeviceSize;
 
         let (buffer, memory) = alloc_buffer(
-            ctx.device,
-            ctx.instance,
-            ctx.physical_device,
+            DeviceContext { device: ctx.device, physical_device: ctx.physical_device, instance: ctx.instance },
             size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,

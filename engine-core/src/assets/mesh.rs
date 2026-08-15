@@ -1,5 +1,6 @@
 use crate::render::gfx::types::{Format, VertexAttribute, VertexFormat, VertexLayout};
 use crate::vulkan::core::memory::alloc_buffer;
+use crate::vulkan::core::DeviceContext;
 use ash::vk;
 use glam::{Vec2, Vec3};
 
@@ -275,9 +276,7 @@ fn create_buffer_with_data(
 ) -> anyhow::Result<(vk::Buffer, vk::DeviceMemory)> {
     let size = data.len() as vk::DeviceSize;
     let (staging, staging_mem) = alloc_buffer(
-        device,
-        instance,
-        physical_device,
+        DeviceContext { device, instance, physical_device },
         size,
         vk::BufferUsageFlags::TRANSFER_SRC,
         vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
@@ -288,9 +287,7 @@ fn create_buffer_with_data(
         device.unmap_memory(staging_mem);
     }
     let (buf, mem) = alloc_buffer(
-        device,
-        instance,
-        physical_device,
+        DeviceContext { device, instance, physical_device },
         size,
         usage | vk::BufferUsageFlags::TRANSFER_DST,
         vk::MemoryPropertyFlags::DEVICE_LOCAL,

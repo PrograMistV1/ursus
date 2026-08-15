@@ -5,6 +5,7 @@ use crate::render::resource::ResourcePool;
 use crate::render::world::RenderWorld;
 use crate::vulkan::core::commands::Commands;
 use crate::vulkan::core::sync::FrameSync;
+use crate::vulkan::core::DeviceContext;
 use crate::vulkan::timestamps::GpuFrameTimes;
 use crate::vulkan::{Device, VulkanContext};
 use ash::vk;
@@ -242,9 +243,11 @@ pub fn build_dyn_renderer<P: RenderPipeline + Default + 'static>(
     let commands = Commands::new(&ctx.device.handle, ctx.device.graphics_family, FRAMES_IN_FLIGHT)?;
 
     graph.enable_timestamps(
-        &ctx.device.handle,
-        ctx.device.physical,
-        &ctx.instance.handle,
+        DeviceContext {
+            device: &ctx.device.handle,
+            physical_device: ctx.device.physical,
+            instance: &ctx.instance.handle,
+        },
         FRAMES_IN_FLIGHT,
         commands.pool,
         ctx.device.graphics_queue,
