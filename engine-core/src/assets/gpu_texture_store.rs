@@ -1,8 +1,10 @@
 use crate::assets::asset_registry::TextureHandle;
 use crate::render::gfx::descriptor::DescriptorAllocator;
+use crate::vulkan::core::SubmitContext;
 use crate::vulkan::resources::texture::TextureSource;
 use crate::vulkan::{BindlessSet, GpuTexture};
 use ash::vk;
+use engine_core::vulkan::core::DeviceContext;
 use std::collections::HashMap;
 
 pub const BINDLESS_SLOT_WHITE: u32 = 0;
@@ -51,11 +53,8 @@ impl GpuTextureStore {
         upload: TextureSource,
     ) -> anyhow::Result<()> {
         let tex = GpuTexture::upload(
-            &self.device,
-            self.physical_device,
-            &self.instance,
-            self.command_pool,
-            self.queue,
+            DeviceContext { device: &self.device, physical_device: self.physical_device, instance: &self.instance },
+            SubmitContext { command_pool: self.command_pool, queue: self.queue },
             upload,
         )?;
         let slot = self.bindless.alloc_slot(descriptors, tex.view);

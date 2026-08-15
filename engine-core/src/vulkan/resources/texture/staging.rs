@@ -1,4 +1,5 @@
 use crate::vulkan::core::memory::alloc_buffer;
+use crate::vulkan::core::DeviceContext;
 use ash::vk;
 
 /// Temporary host-visible buffer for uploading pixels before copying them to the GPU image.
@@ -11,38 +12,33 @@ pub(super) struct StagingBuffer {
 }
 
 impl StagingBuffer {
-    pub(super) fn upload(
-        device: &ash::Device,
-        instance: &ash::Instance,
-        physical_device: vk::PhysicalDevice,
-        data: &[u8],
-    ) -> anyhow::Result<Self> {
+    pub(super) fn upload(ctx: DeviceContext, data: &[u8]) -> anyhow::Result<Self> {
         let size = data.len() as vk::DeviceSize;
 
         let (buffer, memory) = alloc_buffer(
-            device,
-            instance,
-            physical_device,
+            ctx.device,
+            ctx.instance,
+            ctx.physical_device,
             size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
 
         unsafe {
-            let ptr = device.map_memory(memory, 0, size, vk::MemoryMapFlags::empty());
+            let ptr = ctx.device.map_memory(memory, 0, size, vk::MemoryMapFlags::empty());
             let ptr = match ptr {
                 Ok(p) => p as *mut u8,
                 Err(e) => {
-                    device.destroy_buffer(buffer, None);
-                    device.free_memory(memory, None);
+                    ctx.device.destroy_buffer(buffer, None);
+                    ctx.device.free_memory(memory, None);
                     return Err(e.into());
                 }
             };
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
-            device.unmap_memory(memory);
+            ctx.device.unmap_memory(memory);
         }
 
-        Ok(Self { buffer, memory, device: device.clone() })
+        Ok(Self { buffer, memory, device: ctx.device.clone() })
     }
 }
 

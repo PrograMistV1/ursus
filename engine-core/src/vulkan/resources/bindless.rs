@@ -1,10 +1,11 @@
 use crate::render::gfx::descriptor::{DescriptorAllocator, DescriptorSetDesc};
 use crate::render::gfx::types::Format;
 use crate::render::gfx::types::{DescriptorSetId, ShaderStage};
-use crate::vulkan::core::sampler;
+use crate::vulkan::core::{sampler, DeviceContext};
 use crate::vulkan::resources::texture::TextureSource;
 use crate::vulkan::GpuTexture;
 use ash::vk;
+use engine_core::vulkan::core::SubmitContext;
 
 pub const MAX_TEXTURES: u32 = 4096;
 
@@ -38,11 +39,8 @@ impl BindlessSet {
         let mut this = Self { set_id, sampler, next_slot: 0, owned_textures: Vec::new(), device: device.clone() };
 
         let white = GpuTexture::upload(
-            device,
-            physical_device,
-            instance,
-            command_pool,
-            queue,
+            DeviceContext { device, physical_device, instance },
+            SubmitContext { command_pool, queue },
             TextureSource {
                 pixels: &[255u8, 255, 255, 255],
                 width: 1,

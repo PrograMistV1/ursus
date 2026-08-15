@@ -6,6 +6,8 @@ use engine_core::render::gfx::types::{PushConstantRange, ShaderStage};
 use engine_core::render::gfx::CommandEncoder;
 use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::render::world::{PreparedUiDrawList, UiPrimitive};
+use engine_core::vulkan::core::{DeviceContext, SubmitContext};
+use engine_core::vulkan::resources::texture::TextureSource;
 use engine_core::vulkan::{GpuTexture, VulkanContext};
 use glam::Vec2;
 use std::cell::RefCell;
@@ -114,16 +116,19 @@ impl RenderPipeline for LoadingPipeline {
         let logo_aspect = logo_w as f32 / logo_h as f32;
 
         let logo_texture = GpuTexture::upload_no_mip(
-            &ctx.device.handle,
-            ctx.device.physical,
-            &ctx.instance.handle,
-            gpu_assets.command_pool(),
-            ctx.device.graphics_queue,
-            &logo_pixels,
-            logo_w,
-            logo_h,
-            Format::Rgba8Unorm,
-            "ursus_logo",
+            DeviceContext {
+                device: &ctx.device.handle,
+                physical_device: ctx.device.physical,
+                instance: &ctx.instance.handle,
+            },
+            SubmitContext { command_pool: gpu_assets.command_pool(), queue: ctx.device.graphics_queue },
+            TextureSource {
+                pixels: &logo_pixels,
+                width: logo_w,
+                height: logo_h,
+                format: Format::Rgba8Unorm,
+                name: "ursus_logo",
+            },
         )?;
         let logo_slot = gpu_assets.textures.bindless_mut().alloc_slot(&gpu_assets.descriptors, logo_texture.view);
 

@@ -1,5 +1,6 @@
 pub mod barrier;
 pub mod commands;
+pub mod context;
 pub mod debug;
 pub mod device;
 pub mod instance;
@@ -9,3 +10,4 @@ pub mod swapchain;
 pub mod sync;
 
 pub use barrier::make_barrier_range;
+pub use context::{DeviceContext, SubmitContext};

@@ -1,5 +1,6 @@
 use crate::render::gfx::types::Format;
 use crate::vulkan::core::memory::find_memory_type;
+use crate::vulkan::core::DeviceContext;
 use ash::vk;
 
 /// GPU-side image + its memory, with an image view created for it.
@@ -12,11 +13,8 @@ pub(super) struct AllocatedTextureImage {
 }
 
 impl AllocatedTextureImage {
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn create(
-        device: &ash::Device,
-        instance: &ash::Instance,
-        physical_device: vk::PhysicalDevice,
+        ctx: DeviceContext,
         format: Format,
         width: u32,
         height: u32,
@@ -35,24 +33,24 @@ impl AllocatedTextureImage {
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .initial_layout(vk::ImageLayout::UNDEFINED);
 
-        let image = unsafe { device.create_image(&image_info, None)? };
+        let image = unsafe { ctx.device.create_image(&image_info, None)? };
 
-        let req = unsafe { device.get_image_memory_requirements(image) };
+        let req = unsafe { ctx.device.get_image_memory_requirements(image) };
         let mem_type = match find_memory_type(
-            instance,
-            physical_device,
+            ctx.instance,
+            ctx.physical_device,
             req.memory_type_bits,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         ) {
             Ok(t) => t,
             Err(e) => {
-                unsafe { device.destroy_image(image, None) };
+                unsafe { ctx.device.destroy_image(image, None) };
                 return Err(e);
             }
         };
 
         let memory = unsafe {
-            device.allocate_memory(
+            ctx.device.allocate_memory(
                 &vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(mem_type),
                 None,
             )
@@ -60,20 +58,20 @@ impl AllocatedTextureImage {
         let memory = match memory {
             Ok(m) => m,
             Err(e) => {
-                unsafe { device.destroy_image(image, None) };
+                unsafe { ctx.device.destroy_image(image, None) };
                 return Err(e.into());
             }
         };
 
-        if let Err(e) = unsafe { device.bind_image_memory(image, memory, 0) } {
+        if let Err(e) = unsafe { ctx.device.bind_image_memory(image, memory, 0) } {
             unsafe {
-                device.destroy_image(image, None);
-                device.free_memory(memory, None);
+                ctx.device.destroy_image(image, None);
+                ctx.device.free_memory(memory, None);
             }
             return Err(e.into());
         }
 
-        Ok(Self { image, memory, device: device.clone() })
+        Ok(Self { image, memory, device: ctx.device.clone() })
     }
 
     pub(super) fn create_view(&self, format: Format, mip_levels: u32) -> anyhow::Result<vk::ImageView> {
