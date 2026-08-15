@@ -1,6 +1,6 @@
 use crate::assets::asset_registry::TextureHandle;
 use crate::render::gfx::descriptor::DescriptorAllocator;
-use crate::vulkan::resources::texture::TextureUpload;
+use crate::vulkan::resources::texture::TextureSource;
 use crate::vulkan::{BindlessSet, GpuTexture};
 use ash::vk;
 use std::collections::HashMap;
@@ -48,7 +48,7 @@ impl GpuTextureStore {
         &mut self,
         descriptors: &DescriptorAllocator,
         handle: TextureHandle,
-        upload: TextureUpload,
+        upload: TextureSource,
     ) -> anyhow::Result<()> {
         let tex = GpuTexture::upload(
             &self.device,

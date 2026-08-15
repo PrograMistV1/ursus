@@ -12,7 +12,7 @@ use crate::assets::upload::GpuUploadRequest;
 use crate::render::frame_stats::FrameStats;
 use crate::render::triple_buffer::TripleBuffer;
 use crate::render::world::RenderWorld;
-use crate::vulkan::resources::texture::TextureUpload;
+use crate::vulkan::resources::texture::TextureSource;
 use crate::vulkan::{DynRenderer, VulkanContext};
 use crate::EngineFlags;
 
@@ -206,7 +206,7 @@ fn flush_uploads_gpu(rx: &Receiver<GpuUploadRequest>, gpu: &mut GpuAssetServer) 
                     if let Err(e) = gpu.textures.upload(
                         &gpu.descriptors,
                         handle,
-                        TextureUpload { pixels: &pixels, width, height, format, name: &name },
+                        TextureSource { pixels: &pixels, width, height, format, name: &name },
                     ) {
                         log::error!("GPU upload texture failed: {e}");
                     }

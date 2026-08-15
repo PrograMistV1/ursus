@@ -2,7 +2,7 @@ use crate::render::gfx::descriptor::{DescriptorAllocator, DescriptorSetDesc};
 use crate::render::gfx::types::Format;
 use crate::render::gfx::types::{DescriptorSetId, ShaderStage};
 use crate::vulkan::core::sampler;
-use crate::vulkan::resources::texture::TextureUpload;
+use crate::vulkan::resources::texture::TextureSource;
 use crate::vulkan::GpuTexture;
 use ash::vk;
 
@@ -43,7 +43,7 @@ impl BindlessSet {
             instance,
             command_pool,
             queue,
-            TextureUpload {
+            TextureSource {
                 pixels: &[255u8, 255, 255, 255],
                 width: 1,
                 height: 1,

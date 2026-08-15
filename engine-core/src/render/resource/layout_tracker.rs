@@ -23,7 +23,7 @@ impl LayoutTracker {
     }
 
     /// Computes the list of required barriers for transitioning to the new layouts
-    /// and records the new state in the tracker. Does not record GPU commands itself —
+    /// and records the new state in the tracker. Does not record GPU commands itself -
     /// the caller must pass the returned slice to `cmd_pipeline_barrier2`
     /// (see `RenderGraph::execute`), or ignore it if it decides to skip the transition.
     pub fn plan_transition(
