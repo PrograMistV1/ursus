@@ -1,6 +1,5 @@
 use crate::assets::ShaderHandle;
-use crate::render::gfx::types::BlendState;
-use ash::vk;
+use crate::render::gfx::types::{BlendState, CullMode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct TechniqueId(pub u32);
@@ -10,16 +9,16 @@ pub struct TechniqueId(pub u32);
 pub struct TechniqueDesc {
     pub name: String,
     pub shader: ShaderHandle,
-    pub cull_mode: vk::CullModeFlags,
+    pub cull_mode: CullMode,
     pub blend: Option<BlendState>,
 }
 
 impl TechniqueDesc {
     pub fn new(name: impl Into<String>, shader: ShaderHandle) -> Self {
-        Self { name: name.into(), shader, cull_mode: vk::CullModeFlags::BACK, blend: None }
+        Self { name: name.into(), shader, cull_mode: CullMode::Back, blend: None }
     }
 
-    pub fn with_cull_mode(mut self, mode: vk::CullModeFlags) -> Self {
+    pub fn with_cull_mode(mut self, mode: CullMode) -> Self {
         self.cull_mode = mode;
         self
     }

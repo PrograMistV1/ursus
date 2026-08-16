@@ -1,17 +1,18 @@
-use crate::render::gfx::types::{Format, PushConstantRange, VertexLayout};
+use crate::render::gfx::types::{BlendState, CompareOp, CullMode, Format, PushConstantRange, VertexLayout};
 use ash::vk;
 
 pub struct PipelineDesc<'a> {
     pub vert_spv: &'a [u8],
     pub frag_spv: &'a [u8],
     pub color_formats: &'a [Format],
-    pub depth_format: vk::Format,
-    pub cull_mode: vk::CullModeFlags,
+    pub depth_format: Option<Format>,
+    pub cull_mode: CullMode,
     pub depth_test: bool,
     pub depth_write: bool,
-    pub depth_compare: vk::CompareOp,
+    pub depth_compare: CompareOp,
     pub vertex_layout: &'a VertexLayout,
     pub push_constant_ranges: &'a [PushConstantRange],
+    pub blend_attachments: Option<&'a [BlendState]>,
 }
 
 impl<'a> PipelineDesc<'a> {
@@ -26,13 +27,14 @@ impl<'a> PipelineDesc<'a> {
             vert_spv,
             frag_spv,
             color_formats,
-            depth_format: vk::Format::D32_SFLOAT,
-            cull_mode: vk::CullModeFlags::NONE,
+            depth_format: Some(Format::Depth32Float),
+            cull_mode: CullMode::None,
             depth_test: true,
             depth_write: true,
-            depth_compare: vk::CompareOp::LESS,
+            depth_compare: CompareOp::Less,
             vertex_layout,
             push_constant_ranges,
+            blend_attachments: None,
         }
     }
 
@@ -47,13 +49,14 @@ impl<'a> PipelineDesc<'a> {
             vert_spv,
             frag_spv,
             color_formats,
-            depth_format: vk::Format::D32_SFLOAT,
-            cull_mode: vk::CullModeFlags::NONE,
+            depth_format: Some(Format::Depth32Float),
+            cull_mode: CullMode::None,
             depth_test: true,
             depth_write: false,
-            depth_compare: vk::CompareOp::EQUAL,
+            depth_compare: CompareOp::Equal,
             vertex_layout,
             push_constant_ranges,
+            blend_attachments: None,
         }
     }
 }

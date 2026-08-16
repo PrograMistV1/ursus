@@ -1,10 +1,14 @@
 use crate::passes::material_buffer::MaterialBuffer;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::Vertex;
-use engine_core::render::gfx::types::{PipelineId, PushConstantRange, ShaderStage, VertexFormat};
+use engine_core::render::gfx::types::{
+    CompareOp, CullMode, Format, PipelineId, PushConstantRange, ShaderStage, VertexFormat,
+};
 use engine_core::render::gfx::CommandEncoder;
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedCamera, ExtractedMeshes, RenderWorld};
+use engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
+use std::slice;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -21,7 +25,6 @@ pub struct DepthPrepass {
 impl DepthPrepass {
     pub fn new(gpu: &mut GpuAssetServer, material_buffer: &MaterialBuffer) -> anyhow::Result<Self> {
         let layout = Vertex::layout().only_locations(&[0, 2]);
-
         let set_layouts = [gpu.bindless_set(), material_buffer.descriptor_set];
 
         let handle = gpu.shaders.by_name("depth_prepass").expect("шейдер 'depth_prepass' не зарегистрирован");
@@ -31,14 +34,21 @@ impl DepthPrepass {
 
         let push_range = PushConstantRange::of::<DepthPrepassPC>(ShaderStage::VertexFragment);
 
-        let pipeline = gpu.create_depth_only_pipeline(
-            &vert_spv,
-            Some(&frag_spv),
-            &layout,
-            std::slice::from_ref(&push_range),
-            &set_layouts,
-            None,
-        )?;
+        let desc = PipelineDesc {
+            vert_spv: &vert_spv,
+            frag_spv: &frag_spv,
+            color_formats: &[],
+            depth_format: Some(Format::Depth32Float),
+            cull_mode: CullMode::None,
+            depth_test: true,
+            depth_write: true,
+            depth_compare: CompareOp::LessOrEqual,
+            vertex_layout: &layout,
+            push_constant_ranges: slice::from_ref(&push_range),
+            blend_attachments: None,
+        };
+
+        let pipeline = gpu.create_graphics_pipeline(&desc, &set_layouts)?;
 
         Ok(Self { pipeline })
     }

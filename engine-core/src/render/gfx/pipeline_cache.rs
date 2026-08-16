@@ -1,5 +1,5 @@
 use crate::render::gfx::types::handles::PipelineId;
-use crate::render::gfx::types::{Format, PushConstantRange, VertexLayout};
+use crate::render::gfx::types::Format;
 use crate::vulkan::gfx_pipeline::builder::PipelineBuilder;
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use ash::vk;
@@ -39,69 +39,27 @@ impl PipelineCache {
         let binding = desc.vertex_layout.to_vk_binding(0);
         let attributes = desc.vertex_layout.to_vk_attributes(0);
 
-        let (handle, layout) = PipelineBuilder::mesh(
+        let depth_format_vk = desc.depth_format.map(Format::to_vk).unwrap_or(vk::Format::UNDEFINED);
+
+        let vk_blend: Option<Vec<vk::PipelineColorBlendAttachmentState>> =
+            desc.blend_attachments.map(|states| states.iter().map(|s| s.to_vk()).collect());
+
+        let mut builder = PipelineBuilder::mesh(
             desc.vert_spv,
             desc.frag_spv,
             desc.color_formats,
             std::slice::from_ref(&binding),
             &attributes,
         )
-        .cull_mode(desc.cull_mode)
+        .cull_mode(desc.cull_mode.to_vk())
         .depth_test(desc.depth_test, desc.depth_write)
-        .depth_compare(desc.depth_compare)
-        .depth_format(desc.depth_format)
+        .depth_compare(desc.depth_compare.to_vk())
+        .depth_format(depth_format_vk)
         .set_layouts(set_layouts)
-        .push_constants(desc.push_constant_ranges)
-        .build(device)?;
+        .push_constants(desc.push_constant_ranges);
 
-        Ok(self.insert(handle, layout))
-    }
-
-    //todo: this function has too many arguments (8/7)
-    #[allow(clippy::too_many_arguments)]
-    pub fn create_fullscreen_pipeline(
-        &mut self,
-        device: &ash::Device,
-        vert_spv: &[u8],
-        frag_spv: &[u8],
-        color_formats: &[Format],
-        set_layouts: &[vk::DescriptorSetLayout],
-        push_constant_ranges: &[PushConstantRange],
-        blend_attachments: Option<&[vk::PipelineColorBlendAttachmentState]>,
-    ) -> anyhow::Result<PipelineId> {
-        let mut builder = PipelineBuilder::fullscreen(vert_spv, frag_spv, color_formats)
-            .set_layouts(set_layouts)
-            .push_constants(push_constant_ranges);
-
-        if let Some(blend) = blend_attachments {
+        if let Some(blend) = vk_blend.as_deref() {
             builder = builder.blend_attachments(blend);
-        }
-
-        let (handle, layout) = builder.build(device)?;
-        Ok(self.insert(handle, layout))
-    }
-
-    //todo: this function has too many arguments (8/7)
-    #[allow(clippy::too_many_arguments)]
-    pub fn create_depth_only_pipeline(
-        &mut self,
-        device: &ash::Device,
-        vert_spv: &[u8],
-        frag_spv: Option<&[u8]>,
-        vertex_layout: &VertexLayout,
-        push_constant_ranges: &[PushConstantRange],
-        set_layouts: &[vk::DescriptorSetLayout],
-        depth_bias: Option<(f32, f32)>,
-    ) -> anyhow::Result<PipelineId> {
-        let binding = vertex_layout.to_vk_binding(0);
-        let attributes = vertex_layout.to_vk_attributes(0);
-
-        let mut builder = PipelineBuilder::depth_only(vert_spv, frag_spv, std::slice::from_ref(&binding), &attributes)
-            .set_layouts(set_layouts)
-            .push_constants(push_constant_ranges);
-
-        if let Some((constant, slope)) = depth_bias {
-            builder = builder.depth_bias(constant, slope);
         }
 
         let (handle, layout) = builder.build(device)?;

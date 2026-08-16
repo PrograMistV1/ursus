@@ -2,11 +2,12 @@ use crate::passes::ui::UiPass;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use engine_core::render::gfx::types::format::{Format, ImageLayout};
-use engine_core::render::gfx::types::{PushConstantRange, ShaderStage};
+use engine_core::render::gfx::types::{CompareOp, CullMode, PushConstantRange, ShaderStage, VertexLayout};
 use engine_core::render::gfx::CommandEncoder;
 use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::render::world::{PreparedUiDrawList, UiPrimitive};
 use engine_core::vulkan::core::{DeviceContext, SubmitContext};
+use engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use engine_core::vulkan::resources::texture::TextureSource;
 use engine_core::vulkan::{GpuTexture, VulkanContext};
 use glam::Vec2;
@@ -100,14 +101,23 @@ impl RenderPipeline for LoadingPipeline {
         let vert_spv = vert_spv.to_vec();
         let frag_spv = frag_spv.expect("'loading' must have frag").to_vec();
 
-        let bg_pipeline = gpu_assets.create_fullscreen_pipeline(
-            &vert_spv,
-            &frag_spv,
-            std::slice::from_ref(&swapchain.format),
-            &[],
-            std::slice::from_ref(&push_range),
-            None,
-        )?;
+        let empty_layout = VertexLayout { stride: 0, attributes: Vec::new() };
+
+        let bg_pipeline_desc = PipelineDesc {
+            vert_spv: &vert_spv,
+            frag_spv: &frag_spv,
+            color_formats: std::slice::from_ref(&swapchain.format),
+            depth_format: None,
+            cull_mode: CullMode::None,
+            depth_test: false,
+            depth_write: false,
+            depth_compare: CompareOp::Always,
+            vertex_layout: &empty_layout,
+            push_constant_ranges: std::slice::from_ref(&push_range),
+            blend_attachments: None,
+        };
+
+        let bg_pipeline = gpu_assets.create_graphics_pipeline(&bg_pipeline_desc, &[])?;
 
         let (logo_pixels, logo_w, logo_h) = load_svg_as_rgba(LOGO_SVG).unwrap_or_else(|e| {
             log::warn!("Лого не загружено: {} - fallback 1x1", e);

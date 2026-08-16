@@ -1,9 +1,7 @@
 use crate::assets::{GpuTextureStore, MaterialStore, MeshStore, ShaderRegistry};
 use crate::render::gfx::descriptor::DescriptorAllocator;
 use crate::render::gfx::sampler::SamplerStore;
-use crate::render::gfx::types::{
-    BlendState, BufferUsage, DescriptorSetId, Format, PipelineId, PushConstantRange, SamplerId, VertexLayout,
-};
+use crate::render::gfx::types::{BufferUsage, DescriptorSetId, PipelineId, SamplerId};
 use crate::render::gfx::PipelineCache;
 use crate::render::gfx::TechniqueRegistry;
 use crate::vulkan::gfx_pipeline::pipeline::PipelineDesc;
@@ -107,52 +105,6 @@ impl GpuAssetServer {
     ) -> anyhow::Result<PipelineId> {
         let layouts: Vec<vk::DescriptorSetLayout> = set_layouts.iter().map(|&id| self.descriptors.layout(id)).collect();
         self.pipeline_cache.create_graphics_pipeline(&self.device, desc, &layouts)
-    }
-
-    pub fn create_fullscreen_pipeline(
-        &mut self,
-        vert_spv: &[u8],
-        frag_spv: &[u8],
-        color_formats: &[Format],
-        set_layouts: &[DescriptorSetId],
-        push_constant_ranges: &[PushConstantRange],
-        blend_attachments: Option<&[BlendState]>,
-    ) -> anyhow::Result<PipelineId> {
-        let layouts: Vec<vk::DescriptorSetLayout> = set_layouts.iter().map(|&id| self.descriptors.layout(id)).collect();
-
-        let vk_blend: Option<Vec<vk::PipelineColorBlendAttachmentState>> =
-            blend_attachments.map(|states| states.iter().map(|s| s.to_vk()).collect());
-
-        self.pipeline_cache.create_fullscreen_pipeline(
-            &self.device,
-            vert_spv,
-            frag_spv,
-            color_formats,
-            &layouts,
-            push_constant_ranges,
-            vk_blend.as_deref(),
-        )
-    }
-
-    pub fn create_depth_only_pipeline(
-        &mut self,
-        vert_spv: &[u8],
-        frag_spv: Option<&[u8]>,
-        vertex_layout: &VertexLayout,
-        push_constant_ranges: &[PushConstantRange],
-        set_layouts: &[DescriptorSetId],
-        depth_bias: Option<(f32, f32)>,
-    ) -> anyhow::Result<PipelineId> {
-        let layouts: Vec<vk::DescriptorSetLayout> = set_layouts.iter().map(|&id| self.descriptors.layout(id)).collect();
-        self.pipeline_cache.create_depth_only_pipeline(
-            &self.device,
-            vert_spv,
-            frag_spv,
-            vertex_layout,
-            push_constant_ranges,
-            &layouts,
-            depth_bias,
-        )
     }
 
     pub fn create_mapped_buffer<T: Copy>(

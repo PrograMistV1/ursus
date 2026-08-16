@@ -3,13 +3,14 @@ use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::{GpuMesh, Vertex};
 use engine_core::components::mesh::MaterialHandle;
 use engine_core::render::gfx::types::format::Format;
-use engine_core::render::gfx::types::{PipelineId, PushConstantRange, ShaderStage, VertexFormat};
+use engine_core::render::gfx::types::{CompareOp, PipelineId, PushConstantRange, ShaderStage, VertexFormat};
 use engine_core::render::gfx::{CommandEncoder, TechniqueId};
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedCamera, ExtractedMeshes, ExtractedRenderSettings, RenderWorld};
 use engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use glam::Mat4;
 use std::collections::HashMap;
+use std::slice;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -66,14 +67,19 @@ impl GeometryPass {
         let push_range = PushConstantRange::of::<MeshPushConstants>(ShaderStage::VertexFragment);
         let set_layouts = [gpu.bindless_set(), material_buffer.descriptor_set];
 
-        let mut pipeline_desc = PipelineDesc::with_depth_equal(
-            &vert_spv,
-            &frag_spv,
-            &self.color_formats,
-            &layout,
-            std::slice::from_ref(&push_range),
-        );
-        pipeline_desc.cull_mode = desc.cull_mode;
+        let pipeline_desc = PipelineDesc {
+            vert_spv: &vert_spv,
+            frag_spv: &frag_spv,
+            color_formats: &self.color_formats,
+            depth_format: Some(Format::Depth32Float),
+            cull_mode: desc.cull_mode,
+            depth_test: true,
+            depth_write: false,
+            depth_compare: CompareOp::Equal,
+            vertex_layout: &layout,
+            push_constant_ranges: slice::from_ref(&push_range),
+            blend_attachments: None,
+        };
 
         let id = gpu.create_graphics_pipeline(&pipeline_desc, &set_layouts)?;
         self.pipelines.insert(technique, id);
