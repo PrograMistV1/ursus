@@ -8,6 +8,7 @@ use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{PreparedUiDrawList, RenderWorld, UiPrimitive};
 use engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use glam::Vec2;
+use std::slice;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -44,18 +45,18 @@ impl UiPass {
         let desc = PipelineDesc {
             vert_spv: &vert_spv,
             frag_spv: &frag_spv,
-            color_formats: std::slice::from_ref(&swapchain_format),
+            color_formats: slice::from_ref(&swapchain_format),
             depth_format: None,
             cull_mode: CullMode::None,
             depth_test: false,
             depth_write: false,
             depth_compare: CompareOp::Always,
             vertex_layout: &empty_layout,
-            push_constant_ranges: std::slice::from_ref(&push_range),
+            push_constant_ranges: slice::from_ref(&push_range),
             blend_attachments: Some(&blend),
         };
 
-        let pipeline = gpu.create_graphics_pipeline(&desc, std::slice::from_ref(&bindless_set))?;
+        let pipeline = gpu.create_graphics_pipeline(&desc, slice::from_ref(&bindless_set))?;
 
         Ok(Self { pipeline })
     }

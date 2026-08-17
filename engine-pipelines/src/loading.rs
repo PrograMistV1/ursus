@@ -12,6 +12,7 @@ use engine_core::vulkan::resources::texture::TextureSource;
 use engine_core::vulkan::{GpuTexture, VulkanContext};
 use glam::Vec2;
 use std::cell::RefCell;
+use std::slice;
 use std::sync::Arc;
 
 const LOGO_SVG: &str = r#"<svg width="215" height="185" viewBox="0 0 215 185" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -106,14 +107,14 @@ impl RenderPipeline for LoadingPipeline {
         let bg_pipeline_desc = PipelineDesc {
             vert_spv: &vert_spv,
             frag_spv: &frag_spv,
-            color_formats: std::slice::from_ref(&swapchain.format),
+            color_formats: slice::from_ref(&swapchain.format),
             depth_format: None,
             cull_mode: CullMode::None,
             depth_test: false,
             depth_write: false,
             depth_compare: CompareOp::Always,
             vertex_layout: &empty_layout,
-            push_constant_ranges: std::slice::from_ref(&push_range),
+            push_constant_ranges: slice::from_ref(&push_range),
             blend_attachments: None,
         };
 

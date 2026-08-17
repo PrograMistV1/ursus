@@ -1,5 +1,6 @@
 use crate::assets::ShaderHandle;
 use crate::render::gfx::types::{BlendState, CullMode};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct TechniqueId(pub u32);
@@ -32,7 +33,7 @@ impl TechniqueDesc {
 #[derive(Default)]
 pub struct TechniqueRegistry {
     techniques: Vec<TechniqueDesc>,
-    by_name: std::collections::HashMap<String, TechniqueId>,
+    by_name: HashMap<String, TechniqueId>,
 }
 
 impl TechniqueRegistry {

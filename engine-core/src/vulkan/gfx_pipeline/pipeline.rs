@@ -15,52 +15,6 @@ pub struct PipelineDesc<'a> {
     pub blend_attachments: Option<&'a [BlendState]>,
 }
 
-impl<'a> PipelineDesc<'a> {
-    pub fn standard(
-        vert_spv: &'a [u8],
-        frag_spv: &'a [u8],
-        color_formats: &'a [Format],
-        vertex_layout: &'a VertexLayout,
-        push_constant_ranges: &'a [PushConstantRange],
-    ) -> Self {
-        Self {
-            vert_spv,
-            frag_spv,
-            color_formats,
-            depth_format: Some(Format::Depth32Float),
-            cull_mode: CullMode::None,
-            depth_test: true,
-            depth_write: true,
-            depth_compare: CompareOp::Less,
-            vertex_layout,
-            push_constant_ranges,
-            blend_attachments: None,
-        }
-    }
-
-    pub fn with_depth_equal(
-        vert_spv: &'a [u8],
-        frag_spv: &'a [u8],
-        color_formats: &'a [Format],
-        vertex_layout: &'a VertexLayout,
-        push_constant_ranges: &'a [PushConstantRange],
-    ) -> Self {
-        Self {
-            vert_spv,
-            frag_spv,
-            color_formats,
-            depth_format: Some(Format::Depth32Float),
-            cull_mode: CullMode::None,
-            depth_test: true,
-            depth_write: false,
-            depth_compare: CompareOp::Equal,
-            vertex_layout,
-            push_constant_ranges,
-            blend_attachments: None,
-        }
-    }
-}
-
 pub struct Pipeline {
     pub handle: vk::Pipeline,
     pub layout: vk::PipelineLayout,

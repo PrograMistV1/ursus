@@ -8,6 +8,7 @@ use engine_core::render::gfx::CommandEncoder;
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedLights, ExtractedShadowMeshes, RenderWorld};
 use engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
+use std::slice;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -43,7 +44,7 @@ impl ShadowPass {
             depth_write: true,
             depth_compare: CompareOp::LessOrEqual,
             vertex_layout: &layout,
-            push_constant_ranges: std::slice::from_ref(&push_range),
+            push_constant_ranges: slice::from_ref(&push_range),
             blend_attachments: None,
         };
 

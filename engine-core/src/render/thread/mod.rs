@@ -1,7 +1,7 @@
 pub mod command;
 
 use std::sync::mpsc::Receiver;
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 use std::time::Instant;
 
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -33,7 +33,7 @@ pub fn render_thread_main(
     frame_stats: FrameStats,
     cmd_rx: Receiver<RenderCommand>,
     upload_rx: Receiver<GpuUploadRequest>,
-    ready_tx: std::sync::mpsc::SyncSender<()>,
+    ready_tx: mpsc::SyncSender<()>,
 ) {
     if let Err(e) = render_loop(handles, flags, initial_pipeline, triple_buf, frame_stats, cmd_rx, upload_rx, ready_tx)
     {
@@ -51,7 +51,7 @@ fn render_loop(
     frame_stats: FrameStats,
     cmd_rx: Receiver<RenderCommand>,
     upload_rx: Receiver<GpuUploadRequest>,
-    ready_tx: std::sync::mpsc::SyncSender<()>,
+    ready_tx: mpsc::SyncSender<()>,
 ) -> anyhow::Result<()> {
     let mut vk = VulkanContext::from_handles(handles.display, handles.window, flags)?;
 
@@ -104,8 +104,8 @@ fn render_loop(
                         continue 'outer;
                     }
                 }
-                Err(std::sync::mpsc::TryRecvError::Empty) => break,
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
                     log::warn!("Render thread: cmd channel closed, shutting down");
                     return Ok(());
                 }
@@ -215,8 +215,8 @@ fn flush_uploads_gpu(rx: &Receiver<GpuUploadRequest>, gpu: &mut GpuAssetServer) 
                     gpu.materials.register(handle, payload, texture_slots);
                 }
             },
-            Err(std::sync::mpsc::TryRecvError::Empty) => break,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+            Err(mpsc::TryRecvError::Empty) => break,
+            Err(mpsc::TryRecvError::Disconnected) => break,
         }
     }
     Ok(())
