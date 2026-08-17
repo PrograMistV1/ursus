@@ -2,7 +2,7 @@ use crate::passes::ui::UiPass;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use engine_core::render::gfx::types::format::{Format, ImageLayout};
-use engine_core::render::gfx::types::{CompareOp, CullMode, PushConstantRange, ShaderStage, VertexLayout};
+use engine_core::render::gfx::types::{CompareOp, PushConstantRange, ShaderStage, VertexLayout};
 use engine_core::render::gfx::CommandEncoder;
 use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::render::world::{PreparedUiDrawList, UiPrimitive};
@@ -104,19 +104,16 @@ impl RenderPipeline for LoadingPipeline {
 
         let empty_layout = VertexLayout { stride: 0, attributes: Vec::new() };
 
-        let bg_pipeline_desc = PipelineDesc {
-            vert_spv: &vert_spv,
-            frag_spv: &frag_spv,
-            color_formats: slice::from_ref(&swapchain.format),
-            depth_format: None,
-            cull_mode: CullMode::None,
-            depth_test: false,
-            depth_write: false,
-            depth_compare: CompareOp::Always,
-            vertex_layout: &empty_layout,
-            push_constant_ranges: slice::from_ref(&push_range),
-            blend_attachments: None,
-        };
+        let bg_pipeline_desc = PipelineDesc::new(
+            &vert_spv,
+            &frag_spv,
+            slice::from_ref(&swapchain.format),
+            &empty_layout,
+            slice::from_ref(&push_range),
+        )
+        .depth_test(false)
+        .depth_write(false)
+        .depth_compare(CompareOp::Always);
 
         let bg_pipeline = gpu_assets.create_graphics_pipeline(&bg_pipeline_desc, &[])?;
 

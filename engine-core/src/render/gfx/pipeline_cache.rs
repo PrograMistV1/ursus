@@ -39,7 +39,7 @@ impl PipelineCache {
         let binding = desc.vertex_layout.to_vk_binding(0);
         let attributes = desc.vertex_layout.to_vk_attributes(0);
 
-        let depth_format_vk = desc.depth_format.map(Format::to_vk).unwrap_or(vk::Format::UNDEFINED);
+        let depth_format_vk = desc.depth.format.map(Format::to_vk).unwrap_or(vk::Format::UNDEFINED);
 
         let vk_blend: Option<Vec<vk::PipelineColorBlendAttachmentState>> =
             desc.blend_attachments.map(|states| states.iter().map(|s| s.to_vk()).collect());
@@ -52,8 +52,8 @@ impl PipelineCache {
             &attributes,
         )
         .cull_mode(desc.cull_mode.to_vk())
-        .depth_test(desc.depth_test, desc.depth_write)
-        .depth_compare(desc.depth_compare.to_vk())
+        .depth_test(desc.depth.test, desc.depth.write)
+        .depth_compare(desc.depth.compare.to_vk())
         .depth_format(depth_format_vk)
         .set_layouts(set_layouts)
         .push_constants(desc.push_constant_ranges);

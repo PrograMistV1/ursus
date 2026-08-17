@@ -1,9 +1,7 @@
 use crate::passes::material_buffer::MaterialBuffer;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::assets::Vertex;
-use engine_core::render::gfx::types::{
-    CompareOp, CullMode, Format, PipelineId, PushConstantRange, ShaderStage, VertexFormat,
-};
+use engine_core::render::gfx::types::{CompareOp, Format, PipelineId, PushConstantRange, ShaderStage, VertexFormat};
 use engine_core::render::gfx::CommandEncoder;
 use engine_core::render::resource::ResourceHandle;
 use engine_core::render::world::{ExtractedLights, ExtractedShadowMeshes, RenderWorld};
@@ -34,19 +32,9 @@ impl ShadowPass {
 
         let push_range = PushConstantRange::of::<ShadowPC>(ShaderStage::VertexFragment);
 
-        let desc = PipelineDesc {
-            vert_spv: &vert_spv,
-            frag_spv: &frag_spv,
-            color_formats: &[],
-            depth_format: Some(Format::Depth32Float),
-            cull_mode: CullMode::None,
-            depth_test: true,
-            depth_write: true,
-            depth_compare: CompareOp::LessOrEqual,
-            vertex_layout: &layout,
-            push_constant_ranges: slice::from_ref(&push_range),
-            blend_attachments: None,
-        };
+        let desc = PipelineDesc::new(&vert_spv, &frag_spv, &[], &layout, slice::from_ref(&push_range))
+            .depth_format(Format::Depth32Float)
+            .depth_compare(CompareOp::LessOrEqual);
 
         let pipeline = gpu.create_graphics_pipeline(&desc, &set_layouts)?;
 

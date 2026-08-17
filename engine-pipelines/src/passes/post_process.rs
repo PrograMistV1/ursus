@@ -3,7 +3,7 @@ use engine_core::render::gfx::descriptor::DescriptorSetDesc;
 use engine_core::render::gfx::sampler::SamplerDesc;
 use engine_core::render::gfx::types::format::Format;
 use engine_core::render::gfx::types::{
-    CompareOp, CullMode, DescriptorSetId, PipelineId, PushConstantRange, SamplerId, ShaderStage, VertexLayout,
+    CompareOp, DescriptorSetId, PipelineId, PushConstantRange, SamplerId, ShaderStage, VertexLayout,
 };
 use engine_core::render::gfx::CommandEncoder;
 use engine_core::render::resource::ResourceHandle;
@@ -40,19 +40,16 @@ impl PostProcessPass {
 
         let empty_layout = VertexLayout { stride: 0, attributes: Vec::new() };
 
-        let desc = PipelineDesc {
-            vert_spv: &vert_spv,
-            frag_spv: &frag_spv,
-            color_formats: slice::from_ref(&swapchain_format),
-            depth_format: None,
-            cull_mode: CullMode::None,
-            depth_test: false,
-            depth_write: false,
-            depth_compare: CompareOp::Always,
-            vertex_layout: &empty_layout,
-            push_constant_ranges: slice::from_ref(&push_range),
-            blend_attachments: None,
-        };
+        let desc = PipelineDesc::new(
+            &vert_spv,
+            &frag_spv,
+            slice::from_ref(&swapchain_format),
+            &empty_layout,
+            slice::from_ref(&push_range),
+        )
+        .depth_test(false)
+        .depth_write(false)
+        .depth_compare(CompareOp::Always);
 
         let pipeline = gpu.create_graphics_pipeline(&desc, slice::from_ref(&set_id))?;
 

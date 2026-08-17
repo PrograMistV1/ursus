@@ -67,19 +67,12 @@ impl GeometryPass {
         let push_range = PushConstantRange::of::<MeshPushConstants>(ShaderStage::VertexFragment);
         let set_layouts = [gpu.bindless_set(), material_buffer.descriptor_set];
 
-        let pipeline_desc = PipelineDesc {
-            vert_spv: &vert_spv,
-            frag_spv: &frag_spv,
-            color_formats: &self.color_formats,
-            depth_format: Some(Format::Depth32Float),
-            cull_mode: desc.cull_mode,
-            depth_test: true,
-            depth_write: false,
-            depth_compare: CompareOp::Equal,
-            vertex_layout: &layout,
-            push_constant_ranges: slice::from_ref(&push_range),
-            blend_attachments: None,
-        };
+        let pipeline_desc =
+            PipelineDesc::new(&vert_spv, &frag_spv, &self.color_formats, &layout, slice::from_ref(&push_range))
+                .depth_format(Format::Depth32Float)
+                .depth_write(false)
+                .depth_compare(CompareOp::Equal)
+                .cull_mode(desc.cull_mode);
 
         let id = gpu.create_graphics_pipeline(&pipeline_desc, &set_layouts)?;
         self.pipelines.insert(technique, id);
