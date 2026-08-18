@@ -6,6 +6,7 @@ use engine_core::components::mesh::MaterialHandle;
 use engine_core::components::ui::{UiLayout, UiText};
 use engine_core::render::gfx::types::Format;
 use engine_core::render::thread::command::PipelineFactory;
+use engine_pipelines::plugins::LightingPlugin;
 use engine_pipelines::DefaultPipeline;
 use glam::{Quat, Vec2, Vec3};
 
@@ -32,6 +33,8 @@ impl App for MyApp {
     }
 
     fn on_start(&mut self, ctx: &mut EngineContext) {
+        ctx.add_plugin(LightingPlugin);
+
         let sponza_path = assets_dir().join("sponza/glTF/Sponza.gltf");
         let primitives = engine_gltf_loader::load_gltf(&sponza_path).expect("failed to load Sponza");
 

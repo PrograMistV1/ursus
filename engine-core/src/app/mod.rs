@@ -1,14 +1,16 @@
 mod context;
 mod handler;
+mod plugin;
 mod traits;
+
 pub mod window_config;
 
 pub use context::EngineContext;
+pub use plugin::Plugin;
 pub use traits::App;
 
-use handler::EngineHandler;
-
 use crate::EngineFlags;
+use handler::EngineHandler;
 use winit::event_loop::{ControlFlow, EventLoop};
 
 pub struct Engine;

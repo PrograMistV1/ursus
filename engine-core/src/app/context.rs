@@ -1,16 +1,16 @@
-use std::sync::mpsc::Sender;
-use std::sync::Arc;
-
+use crate::app::Plugin;
 use crate::assets::asset_registry::AssetRegistry;
 use crate::assets::upload::GpuUploadRequest;
 use crate::ecs::tick::default_tick_schedule;
-use crate::ecs::{GameWorld, TickSchedule};
-use crate::render::extract::ExtractSchedule;
+use crate::ecs::{GameWorld, TickSchedule, TickSystem};
+use crate::render::extract::{ExtractSchedule, ExtractSystem};
 use crate::render::frame_pipeline::render_pipeline::RenderPipeline;
 use crate::render::frame_stats::FrameStats;
 use crate::render::thread::command::{PipelineFactory, RenderCommand};
 use crate::render::triple_buffer::TripleBuffer;
 use crate::render::world::{ExtractedRenderSettings, RenderWorld};
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
 
 #[allow(clippy::enum_variant_names)]
 pub enum WindowCommand {
@@ -97,5 +97,23 @@ impl EngineContext {
     }
     pub fn set_fullscreen(&self, enabled: bool) {
         let _ = self.window_cmd_tx.send(WindowCommand::SetFullscreen(enabled));
+    }
+
+    pub fn add_extract_system(&mut self, system: impl ExtractSystem + 'static) {
+        self.extract_schedule.add(system);
+    }
+
+    pub fn add_tick_system(&mut self, system: impl TickSystem + 'static) {
+        self.tick_schedule.add(system);
+    }
+
+    pub fn add_plugin(&mut self, plugin: impl Plugin) {
+        plugin.build(self);
+    }
+
+    pub fn add_plugins(&mut self, plugins: impl IntoIterator<Item = impl Plugin>) {
+        for p in plugins {
+            self.add_plugin(p);
+        }
     }
 }
