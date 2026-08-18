@@ -1,11 +1,11 @@
-use crate::assets::upload::GpuUploadRequest;
-use crate::assets::AssetRegistry;
-use crate::components::light::{DirectionalLightComponent, PointLightComponent};
-use crate::math::light_frustum::compute_light_view_proj;
-use crate::render::extract::ExtractSystem;
-use crate::render::gfx::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
-use crate::render::world::{ExtractedLights, RenderWorld};
-use crate::GameWorld;
+use engine_core::assets::upload::GpuUploadRequest;
+use engine_core::assets::AssetRegistry;
+use engine_core::components::light::{DirectionalLightComponent, PointLightComponent};
+use engine_core::math::light_frustum::compute_light_view_proj;
+use engine_core::render::extract::ExtractSystem;
+use engine_core::render::gfx::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
+use engine_core::render::world::{ExtractedLights, RenderWorld};
+use engine_core::GameWorld;
 use std::sync::mpsc::Sender;
 
 pub struct LightExtract;
@@ -58,7 +58,7 @@ impl ExtractSystem for LightExtract {
 }
 
 fn compute_scene_bounds(rw: &RenderWorld) -> (glam::Vec3, f32) {
-    use crate::render::world::ExtractedShadowMeshes;
+    use engine_core::render::world::ExtractedShadowMeshes;
 
     let Some(meshes) = rw.get::<ExtractedShadowMeshes>() else {
         return (glam::Vec3::new(0.0, 2.0, 0.0), 20.0); // fallback
@@ -70,7 +70,7 @@ fn compute_scene_bounds(rw: &RenderWorld) -> (glam::Vec3, f32) {
 
     for inst in &meshes.instances {
         let Some(local_aabb) = &inst.aabb else { continue };
-        let world_aabb = crate::math::frustum::transform_aabb(local_aabb, inst.model);
+        let world_aabb = engine_core::math::frustum::transform_aabb(local_aabb, inst.model);
         min = min.min(world_aabb.min);
         max = max.max(world_aabb.max);
         any = true;

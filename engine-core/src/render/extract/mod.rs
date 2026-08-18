@@ -1,5 +1,4 @@
 mod camera;
-pub mod lights;
 pub mod meshes;
 mod shape_ui;
 pub mod ui;
@@ -7,7 +6,6 @@ pub mod ui;
 use crate::assets::upload::GpuUploadRequest;
 use crate::assets::AssetRegistry;
 use crate::render::extract::camera::CameraExtract;
-use crate::render::extract::lights::LightExtract;
 use crate::render::extract::meshes::MeshExtract;
 use crate::render::extract::shape_ui::ShapeUiSystem;
 use crate::render::extract::ui::UiExtract;
@@ -54,7 +52,6 @@ impl Default for ExtractSchedule {
         let mut schedule = ExtractSchedule { systems: Vec::new() };
         schedule.add(CameraExtract);
         schedule.add(MeshExtract);
-        schedule.add(LightExtract);
         schedule.add(UiExtract);
         schedule.add(ShapeUiSystem);
         schedule
