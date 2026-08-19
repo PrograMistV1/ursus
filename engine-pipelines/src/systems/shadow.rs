@@ -1,15 +1,21 @@
-use crate::assets::upload::GpuUploadRequest;
-use crate::assets::AssetRegistry;
-use crate::components::mesh::{MaterialHandle, MeshHandle, TechniqueHandle};
-use crate::components::transform::Transform;
-use crate::components::transform_interpolation::TransformInterpolation;
-use crate::render::extract::ExtractSystem;
-use crate::render::world::{ExtractedInstance, ExtractedMeshes, ExtractedRenderSettings, RenderWorld};
-use crate::GameWorld;
+use engine_core::assets::mesh::Aabb;
+use engine_core::assets::upload::GpuUploadRequest;
+use engine_core::assets::AssetRegistry;
+use engine_core::components::mesh::{MaterialHandle, MeshHandle, TechniqueHandle};
+use engine_core::components::transform::Transform;
+use engine_core::components::transform_interpolation::TransformInterpolation;
+use engine_core::render::extract::ExtractSystem;
+use engine_core::render::world::{ExtractedInstance, ExtractedRenderSettings, RenderWorld};
+use engine_core::GameWorld;
 use std::sync::mpsc::Sender;
 
-pub struct MeshExtract;
-impl ExtractSystem for MeshExtract {
+#[derive(Default, Clone)]
+pub struct ExtractedShadowMeshes {
+    pub instances: Vec<ExtractedInstance>,
+}
+
+pub struct ShadowExtract;
+impl ExtractSystem for ShadowExtract {
     fn extract(
         &self,
         world: &GameWorld,
@@ -19,7 +25,7 @@ impl ExtractSystem for MeshExtract {
     ) {
         let alpha = rw.get::<ExtractedRenderSettings>().map(|s| s.interpolation_alpha).unwrap_or(1.0);
 
-        let mut meshes = ExtractedMeshes::default();
+        let mut shadow_meshes = ExtractedShadowMeshes::default();
 
         for (mesh, transform, interp, mat, technique, aabb) in world
             .inner
@@ -29,7 +35,7 @@ impl ExtractSystem for MeshExtract {
                 Option<&TransformInterpolation>,
                 Option<&MaterialHandle>,
                 Option<&TechniqueHandle>,
-                Option<&crate::assets::mesh::Aabb>,
+                Option<&Aabb>,
             )>()
             .iter()
         {
@@ -38,7 +44,7 @@ impl ExtractSystem for MeshExtract {
                 None => transform.matrix(),
             };
 
-            meshes.instances.push(ExtractedInstance {
+            shadow_meshes.instances.push(ExtractedInstance {
                 mesh: *mesh,
                 material: mat.copied(),
                 technique: technique.map(|t| t.0.clone()),
@@ -47,9 +53,9 @@ impl ExtractSystem for MeshExtract {
             });
         }
 
-        rw.insert(meshes);
+        rw.insert(shadow_meshes);
     }
     fn name(&self) -> &'static str {
-        "extract_meshes"
+        "extract_shadow_meshes"
     }
 }

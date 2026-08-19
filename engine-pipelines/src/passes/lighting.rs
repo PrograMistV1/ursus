@@ -1,5 +1,5 @@
 use crate::passes::light_buffer::{LightBuffer, LightingUbo};
-use crate::systems::lights::ExtractedLights;
+use crate::systems::ExtractedLights;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::gfx::descriptor::DescriptorSetDesc;
 use engine_core::render::gfx::sampler::SamplerDesc;

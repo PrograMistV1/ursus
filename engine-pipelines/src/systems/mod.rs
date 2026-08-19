@@ -1,3 +1,5 @@
 pub mod lights;
+pub mod shadow;
 
-pub use lights::LightExtract;
+pub use lights::{ExtractedLights, LightExtract};
+pub use shadow::{ExtractedShadowMeshes, ShadowExtract};

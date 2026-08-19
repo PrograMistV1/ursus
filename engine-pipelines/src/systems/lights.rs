@@ -1,4 +1,5 @@
 use crate::passes::light_buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
+use crate::systems::ExtractedShadowMeshes;
 use engine_core::assets::upload::GpuUploadRequest;
 use engine_core::assets::AssetRegistry;
 use engine_core::components::light::{DirectionalLightComponent, PointLightComponent};
@@ -78,8 +79,6 @@ impl ExtractSystem for LightExtract {
 }
 
 fn compute_scene_bounds(rw: &RenderWorld) -> (glam::Vec3, f32) {
-    use engine_core::render::world::ExtractedShadowMeshes;
-
     let Some(meshes) = rw.get::<ExtractedShadowMeshes>() else {
         return (glam::Vec3::new(0.0, 2.0, 0.0), 20.0); // fallback
     };

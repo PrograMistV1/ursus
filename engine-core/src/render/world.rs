@@ -52,11 +52,6 @@ pub struct ExtractedMeshes {
     pub instances: Vec<ExtractedInstance>,
 }
 
-#[derive(Default, Clone)]
-pub struct ExtractedShadowMeshes {
-    pub instances: Vec<ExtractedInstance>,
-}
-
 #[derive(Clone)]
 pub struct ExtractedCamera {
     pub eye: Vec3,
