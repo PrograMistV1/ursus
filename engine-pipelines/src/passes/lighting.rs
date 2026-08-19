@@ -1,4 +1,5 @@
 use crate::passes::light_buffer::{LightBuffer, LightingUbo};
+use crate::systems::lights::ExtractedLights;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::gfx::descriptor::DescriptorSetDesc;
 use engine_core::render::gfx::sampler::SamplerDesc;
@@ -8,7 +9,7 @@ use engine_core::render::gfx::types::{
 };
 use engine_core::render::gfx::CommandEncoder;
 use engine_core::render::resource::ResourceHandle;
-use engine_core::render::world::{ExtractedCamera, ExtractedLights, RenderWorld};
+use engine_core::render::world::{ExtractedCamera, RenderWorld};
 use engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use std::slice;
 

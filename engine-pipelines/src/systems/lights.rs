@@ -1,12 +1,32 @@
+use crate::passes::light_buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
 use engine_core::assets::upload::GpuUploadRequest;
 use engine_core::assets::AssetRegistry;
 use engine_core::components::light::{DirectionalLightComponent, PointLightComponent};
 use engine_core::math::light_frustum::compute_light_view_proj;
 use engine_core::render::extract::ExtractSystem;
-use engine_core::render::gfx::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
-use engine_core::render::world::{ExtractedLights, RenderWorld};
+use engine_core::render::world::RenderWorld;
 use engine_core::GameWorld;
+use glam::Mat4;
 use std::sync::mpsc::Sender;
+
+#[derive(Clone)]
+pub struct ExtractedLights {
+    pub directional: DirectionalLight,
+    pub point_lights: [GpuPointLight; MAX_POINT_LIGHTS],
+    pub point_light_count: u32,
+    pub light_view_proj: Mat4,
+}
+
+impl Default for ExtractedLights {
+    fn default() -> Self {
+        Self {
+            directional: DirectionalLight { direction: [-0.3, -1.0, -0.2, 0.0], color: [1.0, 0.95, 0.85, 2.0] },
+            point_lights: [GpuPointLight { position: [0.0; 4], color: [0.0; 4] }; MAX_POINT_LIGHTS],
+            point_light_count: 0,
+            light_view_proj: Mat4::IDENTITY,
+        }
+    }
+}
 
 pub struct LightExtract;
 impl ExtractSystem for LightExtract {

@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use crate::assets::mesh::Aabb;
 use crate::assets::TextureHandle;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
-use crate::render::gfx::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
 use glam::{Mat4, Vec2, Vec3};
 
 pub struct RenderWorld {
@@ -69,25 +68,6 @@ pub struct ExtractedCamera {
 impl Default for ExtractedCamera {
     fn default() -> Self {
         Self { eye: Vec3::ZERO, view: Mat4::IDENTITY, proj: Mat4::IDENTITY, view_proj: Mat4::IDENTITY }
-    }
-}
-
-#[derive(Clone)]
-pub struct ExtractedLights {
-    pub directional: DirectionalLight,
-    pub point_lights: [GpuPointLight; MAX_POINT_LIGHTS],
-    pub point_light_count: u32,
-    pub light_view_proj: Mat4,
-}
-
-impl Default for ExtractedLights {
-    fn default() -> Self {
-        Self {
-            directional: DirectionalLight { direction: [-0.3, -1.0, -0.2, 0.0], color: [1.0, 0.95, 0.85, 2.0] },
-            point_lights: [GpuPointLight { position: [0.0; 4], color: [0.0; 4] }; MAX_POINT_LIGHTS],
-            point_light_count: 0,
-            light_view_proj: Mat4::IDENTITY,
-        }
     }
 }
 
