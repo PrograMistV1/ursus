@@ -1,4 +1,3 @@
-use crate::assets::material::MaterialPayload;
 use crate::assets::mesh::CpuMesh;
 use crate::render::gfx::types::Format;
 use std::path::Path;
@@ -11,14 +10,8 @@ pub struct LoadedTexture {
     pub format: Format,
 }
 
-pub struct LoadedMaterial {
-    pub payload: Box<dyn MaterialPayload>,
-    pub textures: Vec<(String, LoadedTexture)>,
-}
-
 pub struct LoadedPrimitive {
     pub mesh: CpuMesh,
-    pub material: Option<LoadedMaterial>,
     pub node_translation: [f32; 3],
     pub node_rotation: [f32; 4],
     pub node_scale: [f32; 3],

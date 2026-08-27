@@ -1,16 +1,7 @@
-use crate::passes::material_buffer::MaterialBuffer;
-use engine_core::assets::gpu_server::GpuAssetServer;
-use engine_core::assets::{GpuMesh, Vertex};
+use engine_core::assets::GpuMesh;
 use engine_core::components::mesh::MaterialHandle;
-use engine_core::render::gfx::types::format::Format;
-use engine_core::render::gfx::types::{CompareOp, PipelineId, PushConstantRange, ShaderStage, VertexFormat};
-use engine_core::render::gfx::{CommandEncoder, TechniqueId};
-use engine_core::render::resource::ResourceHandle;
-use engine_core::render::world::{ExtractedCamera, ExtractedMeshes, ExtractedRenderSettings, RenderWorld};
-use engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
+use engine_core::render::gfx::TechniqueId;
 use glam::Mat4;
-use std::collections::HashMap;
-use std::slice;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -28,125 +19,6 @@ pub struct DrawCall<'a> {
     pub technique: TechniqueId,
 }
 
-pub struct GeometryPass {
-    pipelines: HashMap<TechniqueId, PipelineId>,
-    color_formats: [Format; 2],
-    default_technique: TechniqueId,
-}
+pub struct GeometryPass {}
 
-impl GeometryPass {
-    pub fn new(
-        gpu: &mut GpuAssetServer,
-        color_formats: [Format; 2],
-        material_buffer: &MaterialBuffer,
-        default_technique: TechniqueId,
-    ) -> anyhow::Result<Self> {
-        let mut pass = Self { pipelines: HashMap::new(), color_formats, default_technique };
-        pass.get_or_create_pipeline(gpu, default_technique, material_buffer)?;
-        Ok(pass)
-    }
-
-    pub fn get_or_create_pipeline(
-        &mut self,
-        gpu: &mut GpuAssetServer,
-        technique: TechniqueId,
-        material_buffer: &MaterialBuffer,
-    ) -> anyhow::Result<PipelineId> {
-        if let Some(&id) = self.pipelines.get(&technique) {
-            return Ok(id);
-        }
-
-        let desc = gpu.techniques.get(technique).clone();
-
-        let (vert_spv, frag_spv) = gpu.shaders.load_spv(desc.shader)?;
-        let vert_spv = vert_spv.to_vec();
-        let frag_spv =
-            frag_spv.unwrap_or_else(|| panic!("техника '{}' ссылается на шейдер без frag-стадии", desc.name)).to_vec();
-
-        let layout = Vertex::layout();
-        let push_range = PushConstantRange::of::<MeshPushConstants>(ShaderStage::VertexFragment);
-        let set_layouts = [gpu.bindless_set(), material_buffer.descriptor_set];
-
-        let pipeline_desc =
-            PipelineDesc::new(&vert_spv, &frag_spv, &self.color_formats, &layout, slice::from_ref(&push_range))
-                .depth_format(Format::Depth32Float)
-                .depth_write(false)
-                .depth_compare(CompareOp::Equal)
-                .cull_mode(desc.cull_mode);
-
-        let id = gpu.create_graphics_pipeline(&pipeline_desc, &set_layouts)?;
-        self.pipelines.insert(technique, id);
-        Ok(id)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn record(
-        &mut self,
-        enc: &mut CommandEncoder,
-        rw: &RenderWorld,
-        gpu: &GpuAssetServer,
-        material_buffer: &MaterialBuffer,
-        albedo: ResourceHandle,
-        normal: ResourceHandle,
-        depth: ResourceHandle,
-    ) -> anyhow::Result<()> {
-        let camera = rw.get::<ExtractedCamera>().cloned().unwrap_or_default();
-        let meshes = rw.get::<ExtractedMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
-        let settings = rw.get::<ExtractedRenderSettings>().cloned().unwrap_or_default();
-
-        let mut draw_calls: Vec<DrawCall> = meshes
-            .iter()
-            .filter_map(|inst| {
-                let technique = inst
-                    .technique
-                    .as_deref()
-                    .and_then(|name| gpu.techniques.by_name(name))
-                    .unwrap_or(self.default_technique);
-                Some(DrawCall {
-                    gpu_mesh: gpu.meshes.get(inst.mesh)?,
-                    model: inst.model,
-                    material: inst.material,
-                    technique,
-                })
-            })
-            .collect();
-
-        draw_calls.sort_by_key(|dc| (dc.technique.0, dc.gpu_mesh as *const _ as usize));
-
-        enc.begin_rendering_gbuffer(albedo, normal, depth, settings.clear_color);
-
-        let mut current_technique: Option<TechniqueId> = None;
-
-        for dc in &draw_calls {
-            if current_technique != Some(dc.technique) {
-                let Some(&pipeline) = self.pipelines.get(&dc.technique) else {
-                    log::warn!(
-                        "GeometryPass: pipeline for technique {:?} was not created in advance (get_or_create_pipeline was not called) - instance skipped",
-                        dc.technique
-                    );
-                    continue;
-                };
-                enc.bind_pipeline(pipeline);
-                enc.bind_descriptor_sets(pipeline, &[gpu.bindless_set(), material_buffer.descriptor_set]);
-                current_technique = Some(dc.technique);
-            }
-
-            let Some(&pipeline) = self.pipelines.get(&dc.technique) else {
-                continue;
-            };
-            let mvp = camera.view_proj * dc.model;
-            let pc = MeshPushConstants {
-                mvp: mvp.to_cols_array_2d(),
-                model: dc.model.to_cols_array_2d(),
-                material_id: dc.material.map(|m| m.0).unwrap_or(0),
-                _pad: [0; 3],
-            };
-            enc.push_constants(pipeline, ShaderStage::VertexFragment, &pc);
-            enc.bind_mesh(dc.gpu_mesh);
-            enc.draw_indexed(dc.gpu_mesh.index_count);
-        }
-
-        enc.end_rendering();
-        Ok(())
-    }
-}
+impl GeometryPass {}

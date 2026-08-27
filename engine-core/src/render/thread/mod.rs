@@ -211,9 +211,7 @@ fn flush_uploads_gpu(rx: &Receiver<GpuUploadRequest>, gpu: &mut GpuAssetServer) 
                         log::error!("GPU upload texture failed: {e}");
                     }
                 }
-                GpuUploadRequest::Material { handle, payload, texture_slots } => {
-                    gpu.materials.register(handle, payload, texture_slots);
-                }
+                GpuUploadRequest::Material { handle: _handle, texture_slots: _texture_slots } => {}
             },
             Err(mpsc::TryRecvError::Empty) => break,
             Err(mpsc::TryRecvError::Disconnected) => break,

@@ -4,6 +4,7 @@ use std::sync::Arc;
 /// Renders text on a colored background in an RGBA8 pixel buffer using SVG.
 /// Not intended to be reusable - just a quick way to get
 /// a texture with a caption for material testing.
+#[expect(dead_code)]
 pub fn render_label_texture(lines: &[&str], bg_color: &str, fg_color: &str) -> anyhow::Result<(Vec<u8>, u32, u32)> {
     let font_size = 40.0;
     let line_height = 32.0;

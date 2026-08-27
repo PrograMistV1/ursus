@@ -1,5 +1,3 @@
-use crate::assets::material::MaterialPayload;
-use crate::assets::material_handle_allocator::MaterialHandleAllocator;
 use crate::assets::mesh::{Aabb, CpuMesh};
 use crate::assets::mesh_handle_allocator::MeshHandleAllocator;
 use crate::assets::text::FontId;
@@ -38,7 +36,6 @@ pub struct AssetRegistry {
     meshes: MeshHandleAllocator,
     texture_handles: TextureHandleAllocator,
     textures: TextureStore,
-    material_handles: MaterialHandleAllocator,
     text: TextService,
     upload_queue: UploadQueue,
 }
@@ -47,7 +44,6 @@ impl AssetRegistry {
     pub(crate) fn new() -> Self {
         Self {
             meshes: MeshHandleAllocator::new(),
-            material_handles: MaterialHandleAllocator::new(),
             upload_queue: UploadQueue::new(),
             texture_handles: TextureHandleAllocator::new(),
             textures: TextureStore::new(),
@@ -101,32 +97,6 @@ impl AssetRegistry {
         name: impl Into<String>,
     ) -> TextureHandle {
         self.dedup_or_upload_texture(pixels, width, height, format, name.into())
-    }
-
-    /// Registers a material payload and queues its texture bindings.
-    ///
-    /// Game thread only. `payload` carries whatever material data your render pipeline
-    /// expects (e.g. `PbrMetallicRoughness` from `engine-gltf-loader`); `texture_slots` maps
-    /// role names (e.g. `"base_color"`, `"normal"`) to texture handles obtained from
-    /// [`Self::upload_texture_rgba8`].
-    ///
-    /// ```ignore
-    /// let diffuse = cpu_assets.upload_texture_rgba8(pixels, w, h, Format::Rgba8Srgb, "brick_diffuse");
-    /// let material = cpu_assets.register_material(
-    ///     Box::new(PbrMetallicRoughness { name: "brick".into(), base_color: [1.0; 4], metallic: 0.0, roughness: 0.8, emissive: [0.0; 3] }),
-    ///     vec![("base_color".to_string(), diffuse)],
-    /// );
-    /// ```
-    pub fn register_material(
-        &mut self,
-        payload: Box<dyn MaterialPayload>,
-        texture_slots: Vec<(String, TextureHandle)>,
-    ) -> MaterialHandle {
-        let handle = self.material_handles.alloc();
-
-        self.upload_queue.push(GpuUploadRequest::Material { handle, payload, texture_slots });
-
-        handle
     }
 
     // ==================== Crate-internal API ====================

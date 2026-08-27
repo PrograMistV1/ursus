@@ -1,16 +1,11 @@
-use crate::passes::depth_prepass::DepthPrepass;
 use crate::passes::fsr::FsrPass;
-use crate::passes::geometry::GeometryPass;
 use crate::passes::lighting::LightingPass;
-use crate::passes::material_buffer::{resolve_material, MaterialBuffer, MaterialData};
 use crate::passes::post_process::PostProcessPass;
-use crate::passes::shadow::ShadowPass;
 use crate::passes::ui::UiPass;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use engine_core::render::gfx::descriptor::ImageUsage;
 use engine_core::render::gfx::types::{Format, ImageLayout};
-use engine_core::render::gfx::TechniqueDesc;
 use engine_core::render::graph::{pass, RenderGraph};
 use engine_core::render::resource::{ResourceDesc, ResourceExtent};
 use engine_core::vulkan::VulkanContext;
@@ -33,12 +28,6 @@ impl RenderPipeline for DefaultPipeline {
         graph: &mut RenderGraph,
     ) -> anyhow::Result<PipelineHandles> {
         crate::builtin_shaders::register_builtin(&mut gpu_assets.shaders);
-
-        let diffuse_shader = gpu_assets.shaders.by_name("diffuse").unwrap();
-        let diffuse_technique = gpu_assets.techniques.register(TechniqueDesc::new("diffuse", diffuse_shader));
-
-        let unlit_shader = gpu_assets.shaders.by_name("unlit").unwrap();
-        let unlit_technique = gpu_assets.techniques.register(TechniqueDesc::new("unlit", unlit_shader));
 
         let swapchain = ctx.swapchain.as_ref().unwrap();
 
@@ -70,56 +59,8 @@ impl RenderPipeline for DefaultPipeline {
         );
         let h_swapchain = graph.pool.register_swapchain_external(swapchain.format);
 
-        let material_buffer = Arc::new(MaterialBuffer::new(gpu_assets)?);
-
-        let shadow_pass = ShadowPass::new(gpu_assets, &material_buffer)?;
-        let depth_prepass = DepthPrepass::new(gpu_assets, &material_buffer)?;
-
-        let mut geometry_pass = GeometryPass::new(
-            gpu_assets,
-            [Format::Rgba8Unorm, Format::Rgba16Float],
-            &material_buffer,
-            diffuse_technique,
-        )?;
-        geometry_pass.get_or_create_pipeline(gpu_assets, unlit_technique, &material_buffer)?;
-
         let lighting_pass = LightingPass::new(gpu_assets, Format::Rgba16Float)?;
         let post_pass = PostProcessPass::new(gpu_assets, LDR_FORMAT)?;
-
-        {
-            let material_buffer = Arc::clone(&material_buffer);
-            pass("shadow")
-                .write(h_shadow_map, ImageLayout::DepthAttachment)
-                .record(move |enc, rw, gpu| shadow_pass.record(enc, rw, gpu, &material_buffer, h_shadow_map))
-                .build(graph, gpu_assets);
-        }
-
-        {
-            let material_buffer = Arc::clone(&material_buffer);
-            pass("depth_prepass")
-                .write(h_depth, ImageLayout::DepthAttachment)
-                .record(move |enc, rw, gpu| depth_prepass.record(enc, rw, gpu, &material_buffer, h_depth))
-                .build(graph, gpu_assets);
-        }
-
-        {
-            let material_buffer = Arc::clone(&material_buffer);
-            pass("geometry")
-                .write(h_gbuffer_albedo, ImageLayout::ColorAttachment)
-                .write(h_gbuffer_normal, ImageLayout::ColorAttachment)
-                .read_write(h_depth, ImageLayout::DepthAttachment)
-                .record(move |enc, rw, gpu| {
-                    let max_handle = gpu.materials.handles().map(|h| h.0).max();
-                    let len = max_handle.map(|m| m as usize + 1).unwrap_or(1).max(1);
-                    let mut collected = vec![MaterialData::default_white(); len];
-                    for handle in gpu.materials.handles() {
-                        collected[handle.0 as usize] = resolve_material(gpu, handle);
-                    }
-                    material_buffer.upload(&collected);
-                    geometry_pass.record(enc, rw, gpu, &material_buffer, h_gbuffer_albedo, h_gbuffer_normal, h_depth)
-                })
-                .build(graph, gpu_assets);
-        }
 
         pass("lighting")
             .read(h_gbuffer_albedo, ImageLayout::ShaderReadOnly)

@@ -61,7 +61,6 @@ impl AssetLoader for ObjLoader {
         Ok(LoadedMeshSource {
             primitives: vec![LoadedPrimitive {
                 mesh,
-                material: None,
                 node_translation: [0.0; 3],
                 node_rotation: [0.0, 0.0, 0.0, 1.0],
                 node_scale: [1.0; 3],

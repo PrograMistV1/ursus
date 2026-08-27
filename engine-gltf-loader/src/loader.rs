@@ -1,11 +1,6 @@
-use crate::materials::{PbrMetallicRoughness, UnlitMaterial};
 use crate::tangents::compute_tangents;
-use engine_core::assets::loader_registry::{
-    AssetLoader, LoadedMaterial, LoadedMeshSource, LoadedPrimitive, LoadedTexture,
-};
-use engine_core::assets::material::MaterialPayload;
+use engine_core::assets::loader_registry::{AssetLoader, LoadedMeshSource, LoadedPrimitive};
 use engine_core::assets::mesh::{CpuMesh, Vertex};
-use engine_core::render::gfx::types::Format;
 use glam::{Vec2, Vec3};
 use image::DynamicImage;
 use std::path::Path;
@@ -13,7 +8,6 @@ use std::path::Path;
 pub struct GltfPrimitive {
     pub mesh: CpuMesh,
     pub textures: Vec<(String, Vec<u8>, u32, u32, String, usize)>,
-    pub material: Option<Box<dyn MaterialPayload>>,
     pub node_translation: [f32; 3],
     pub node_rotation: [f32; 4],
     pub node_scale: [f32; 3],
@@ -81,25 +75,8 @@ pub fn load_gltf(path: &Path) -> anyhow::Result<Vec<GltfPrimitive>> {
             log::debug!("glTF '{}': {} вершин, {} индексов", mesh_name, vertices.len(), indices.len());
 
             let mut tex_data: Vec<(String, Vec<u8>, u32, u32, String, usize)> = Vec::new();
-            let mut mat_out: Option<Box<dyn MaterialPayload>> = None;
-
             if let Some(mat) = primitive.material().index().map(|_| primitive.material()) {
                 let pbr = mat.pbr_metallic_roughness();
-
-                let base_color = pbr.base_color_factor();
-                let metallic = pbr.metallic_factor();
-                let roughness = pbr.roughness_factor();
-                let emissive = mat.emissive_factor();
-                let name = mat.name().unwrap_or("gltf_material").to_string();
-
-                let is_unlit = mat.unlit();
-
-                mat_out = Some(if is_unlit {
-                    Box::new(UnlitMaterial { name, base_color }) as Box<dyn MaterialPayload>
-                } else {
-                    Box::new(PbrMetallicRoughness { name, base_color, metallic, roughness, emissive })
-                        as Box<dyn MaterialPayload>
-                });
 
                 if let Some(info) = pbr.base_color_texture() {
                     if let Some((bytes, w, h)) = image_bytes(&images, info.texture().source().index()) {
@@ -170,7 +147,6 @@ pub fn load_gltf(path: &Path) -> anyhow::Result<Vec<GltfPrimitive>> {
             primitives.push(GltfPrimitive {
                 mesh: CpuMesh::new(mesh_name, vertices, indices),
                 textures: tex_data,
-                material: mat_out,
                 node_translation: translation,
                 node_rotation: rotation,
                 node_scale: scale,
@@ -220,20 +196,6 @@ impl AssetLoader for GltfLoader {
             .into_iter()
             .map(|p| LoadedPrimitive {
                 mesh: p.mesh,
-                material: p.material.map(|payload| LoadedMaterial {
-                    payload,
-                    textures: p
-                        .textures
-                        .into_iter()
-                        .map(|(role, pixels, width, height, _name, _image_index)| {
-                            let format = match role.as_str() {
-                                "base_color" | "emissive" => Format::Rgba8Srgb,
-                                _ => Format::Rgba8Unorm,
-                            };
-                            (role, LoadedTexture { pixels, width, height, format })
-                        })
-                        .collect(),
-                }),
                 node_translation: p.node_translation,
                 node_rotation: p.node_rotation,
                 node_scale: p.node_scale,

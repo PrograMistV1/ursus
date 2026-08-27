@@ -1,4 +1,4 @@
-use crate::assets::{GpuTextureStore, MaterialStore, MeshStore, ShaderRegistry};
+use crate::assets::{GpuTextureStore, MeshStore, ShaderRegistry};
 use crate::render::gfx::descriptor::DescriptorAllocator;
 use crate::render::gfx::sampler::SamplerStore;
 use crate::render::gfx::types::{BufferUsage, DescriptorSetId, PipelineId, SamplerId};
@@ -11,7 +11,6 @@ use ash::vk;
 pub struct GpuAssetServer {
     pub meshes: MeshStore,
     pub textures: GpuTextureStore,
-    pub materials: MaterialStore,
 
     pub shaders: ShaderRegistry,
     pub techniques: TechniqueRegistry,
@@ -62,7 +61,6 @@ impl GpuAssetServer {
             command_pool,
             descriptors,
             samplers,
-            materials: MaterialStore::new(),
         })
     }
 

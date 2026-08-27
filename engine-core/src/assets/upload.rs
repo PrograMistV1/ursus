@@ -1,4 +1,3 @@
-use crate::assets::material::MaterialPayload;
 use crate::assets::mesh::Vertex;
 use crate::assets::TextureHandle;
 use crate::components::mesh::{MaterialHandle, MeshHandle};
@@ -21,7 +20,6 @@ pub enum GpuUploadRequest {
     },
     Material {
         handle: MaterialHandle,
-        payload: Box<dyn MaterialPayload>,
         texture_slots: Vec<(String, TextureHandle)>,
     },
 }

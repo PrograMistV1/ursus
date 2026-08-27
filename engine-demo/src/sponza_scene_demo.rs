@@ -2,9 +2,7 @@ use engine_core::app::window_config::WindowConfig;
 use engine_core::app::{App, Engine, EngineContext};
 use engine_core::components::camera::{ActiveCamera, CameraComponent};
 use engine_core::components::light::DirectionalLightComponent;
-use engine_core::components::mesh::MaterialHandle;
 use engine_core::components::ui::{UiLayout, UiText};
-use engine_core::render::gfx::types::Format;
 use engine_core::render::thread::command::PipelineFactory;
 use engine_pipelines::plugins::LightingPlugin;
 use engine_pipelines::DefaultPipeline;
@@ -41,33 +39,13 @@ impl App for MyApp {
         for prim in primitives {
             let mesh_handle = ctx.asset_registry.upload_mesh(prim.mesh);
 
-            let material_handle: Option<MaterialHandle> = prim.material.map(|payload| {
-                let texture_slots = prim
-                    .textures
-                    .into_iter()
-                    .map(|(role, pixels, w, h, name, _image_index)| {
-                        let format = match role.as_str() {
-                            "base_color" | "emissive" => Format::Rgba8Srgb,
-                            _ => Format::Rgba8Unorm,
-                        };
-                        let tex = ctx.asset_registry.upload_texture_rgba8(pixels, w, h, format, name);
-                        (role, tex)
-                    })
-                    .collect();
-
-                ctx.asset_registry.register_material(payload, texture_slots)
-            });
-
             let transform = engine_core::components::transform::Transform {
                 position: Vec3::from(prim.node_translation),
                 rotation: Quat::from_array(prim.node_rotation),
                 scale: Vec3::from(prim.node_scale),
             };
 
-            let mut builder = ctx.world.spawn().insert(mesh_handle).insert(transform);
-            if let Some(m) = material_handle {
-                builder = builder.insert(m);
-            }
+            let builder = ctx.world.spawn().insert(mesh_handle).insert(transform);
             builder.build();
         }
 

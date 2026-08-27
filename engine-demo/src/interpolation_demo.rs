@@ -6,9 +6,7 @@ use engine_core::components::mesh::TechniqueHandle;
 use engine_core::components::transform::Transform;
 use engine_core::components::transform_interpolation::TransformInterpolation;
 use engine_core::ecs::world::Entity;
-use engine_core::render::gfx::types::Format;
 use engine_core::render::thread::command::PipelineFactory;
-use engine_gltf_loader::PbrMetallicRoughness;
 use engine_pipelines::DefaultPipeline;
 use glam::{Quat, Vec3};
 use std::f32::consts::PI;
@@ -47,43 +45,10 @@ impl App for InterpolationDemoApp {
 
         let cube_mesh = ctx.asset_registry.upload_mesh(CpuMesh::cube());
 
-        let interpolated_material = {
-            let (pixels, w, h) = text_texture::render_label_texture(&["Interpolated", "Diffuse"], "#2a4d69", "#ffffff")
-                .expect("failed to generate texture Interpolated");
-            let tex = ctx.asset_registry.upload_texture_rgba8(pixels, w, h, Format::Rgba8Srgb, "label_interpolated");
-            ctx.asset_registry.register_material(
-                Box::new(PbrMetallicRoughness {
-                    name: "interpolated_label".into(),
-                    base_color: [1.0, 1.0, 1.0, 1.0],
-                    metallic: 0.0,
-                    roughness: 0.8,
-                    emissive: [0.0; 3],
-                }),
-                vec![("base_color".to_string(), tex)],
-            )
-        };
-
-        let no_interpolated_material = {
-            let (pixels, w, h) = text_texture::render_label_texture(&["NoInterpolated", "Unlit"], "#8a3d2a", "#ffffff")
-                .expect("failed to generate texture NoInterpolated");
-            let tex = ctx.asset_registry.upload_texture_rgba8(pixels, w, h, Format::Rgba8Srgb, "label_no_interpolated");
-            ctx.asset_registry.register_material(
-                Box::new(PbrMetallicRoughness {
-                    name: "no_interpolated_label".into(),
-                    base_color: [1.0, 1.0, 1.0, 1.0],
-                    metallic: 0.0,
-                    roughness: 0.8,
-                    emissive: [0.0; 3],
-                }),
-                vec![("base_color".to_string(), tex)],
-            )
-        };
-
         let interpolated = ctx
             .world
             .spawn()
             .insert(cube_mesh)
-            .insert(interpolated_material)
             .insert(Transform::at(-1.5, 2.0, -3.0))
             .insert(TransformInterpolation::default())
             .build();
@@ -93,7 +58,6 @@ impl App for InterpolationDemoApp {
             .world
             .spawn()
             .insert(cube_mesh)
-            .insert(no_interpolated_material)
             .insert(Transform::at(1.5, 2.0, -3.0))
             .insert(TechniqueHandle("unlit".into()))
             .build();
