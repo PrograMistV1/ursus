@@ -1,14 +1,16 @@
 use crate::error::MaterialError;
+use crate::field::FieldDesc;
 use crate::material::Material;
 use crate::requirements::Requirements;
+use crate::value::MaterialValue;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Converts a `Material`'s properties into the raw GPU bytes a specific
-/// shader expects. Each strategy owns its own `#[repr(C)]` GPU-data struct
-/// internally and is the only place in engine-materials that knows that
-/// struct's layout - `pack` erases it to `Vec<u8>` at the trait boundary so
-/// callers (the registry, the renderer) can stay polymorphic over strategies.
+/// Interprets a `Material`'s properties for a specific way of shading it.
+/// A strategy describes what GPU fields it needs (`fields`) and how to
+/// resolve each one from a material (`resolve`); it does not decide how
+/// those fields are laid out in memory - that is the responsibility of a
+/// separate packing module (see `pack::aos`) that consumes both methods.
 ///
 /// Custom strategies are ordinary implementations of this trait, registered
 /// into a `StrategyRegistry` - no changes to engine-materials are needed to
@@ -18,28 +20,24 @@ pub trait ShadingStrategy: Send + Sync {
     /// `Material::strategy`.
     fn name(&self) -> &'static str;
 
-    /// What this strategy needs from a material to be able to pack it.
+    /// What this strategy needs from a material to be able to resolve it.
     fn requirements(&self) -> &Requirements;
 
-    /// Size in bytes of the packed GPU data this strategy produces. Used by
-    /// callers that need to lay out a fixed-stride buffer (e.g. a
-    /// `MaterialData` SSBO indexed by `material_id`) without packing first.
-    fn gpu_data_size(&self) -> usize;
+    /// The fields this strategy produces, in a fixed order. `resolve()`
+    /// returns one value per field, in this same order.
+    fn fields(&self) -> &[FieldDesc];
 
-    /// Packs `material`'s properties into this strategy's GPU data layout.
-    /// Returns exactly `gpu_data_size()` bytes on success.
-    fn pack(&self, material: &Material) -> Result<Vec<u8>, MaterialError>;
+    /// Resolves this material's value for every field in `fields()`,
+    /// applying this strategy's own fallbacks for missing properties.
+    fn resolve(&self, material: &Material) -> Result<Vec<MaterialValue>, MaterialError>;
 
-    /// Validates a material's properties against `requirements()`. Provided
-    /// so callers can validate once (e.g. at material-assignment time)
-    /// separately from packing every frame.
+    /// Validates a material's properties against `requirements()`.
     fn validate(&self, material: &Material) -> Result<(), MaterialError> {
         self.requirements().validate(material, self.name())
     }
 }
 
-/// Registry of available shading strategies, looked up by name. Analogous in
-/// spirit to `ShaderRegistry` elsewhere in the engine.
+/// Registry of available shading strategies, looked up by name.
 #[derive(Default)]
 pub struct StrategyRegistry {
     by_name: HashMap<&'static str, Arc<dyn ShadingStrategy>>,
@@ -61,13 +59,13 @@ impl StrategyRegistry {
         self.by_name.get(name).cloned()
     }
 
-    /// Looks up and packs `material` using the strategy named by
-    /// `material.strategy`. The single entry point most callers should use.
-    pub fn pack(&self, material: &Material) -> Result<Vec<u8>, MaterialError> {
+    /// Looks up the strategy named by `material.strategy`, validates the
+    /// material against it, and resolves it.
+    pub fn resolve(&self, material: &Material) -> Result<Vec<MaterialValue>, MaterialError> {
         let strategy = self
             .by_name(material.strategy)
             .ok_or_else(|| MaterialError::UnknownStrategy(material.strategy.to_string()))?;
         strategy.validate(material)?;
-        strategy.pack(material)
+        strategy.resolve(material)
     }
 }

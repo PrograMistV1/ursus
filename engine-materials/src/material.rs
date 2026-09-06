@@ -1,18 +1,15 @@
 use crate::value::{MaterialValue, PropertyId};
 use std::collections::HashMap;
 
+/// Stable handle identifying a material instance. Lives here rather than in
+/// engine-core so engine-materials stays the single source of truth for
+/// material identity - engine-core's ECS just stores this as a component.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct MaterialId(pub u32);
+pub struct MaterialHandle(pub u32);
 
-/// A named bag of shading-agnostic properties. `Material` has no notion of
-/// "which shader" or "which pipeline" renders it - that decision belongs to
-/// whichever `ShadingStrategy` is paired with this material at pack time.
 #[derive(Debug, Clone)]
 pub struct Material {
     pub name: String,
-    /// Which strategy this material is meant to be packed with, by name.
-    /// Looked up in `StrategyRegistry::by_name` - kept as a plain string so
-    /// `Material` doesn't depend on the strategy trait/registry types.
     pub strategy: &'static str,
     properties: HashMap<PropertyId, MaterialValue>,
 }

@@ -1,22 +1,25 @@
 use crate::error::MaterialError;
+use crate::field::{FieldDesc, FieldType};
 use crate::material::Material;
 use crate::requirements::Requirements;
 use crate::strategies::properties::*;
 use crate::strategy::ShadingStrategy;
-use crate::value::MaterialValue;
-use glam::Vec4;
+use crate::value::{MaterialValue, TextureRef};
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct PbrGpuData {
-    base_color: [f32; 4],
-    emissive: [f32; 4],
-    metallic: f32,
-    roughness: f32,
-    _pad: [f32; 2],
-    tex_indices0: [u32; 4], // diffuse, normal, metallic_roughness, emissive
-    tex_indices1: [u32; 4], // occlusion, pad, pad, pad
-}
+/// Field order matches the `MaterialData` struct in mesh.frag /
+/// depth_prepass.frag / shadow.frag: base_color, emissive, metallic,
+/// roughness, then texture indices.
+const FIELDS: &[FieldDesc] = &[
+    FieldDesc::new("base_color", FieldType::Vec4),
+    FieldDesc::new("emissive", FieldType::Vec4),
+    FieldDesc::new("metallic", FieldType::Float),
+    FieldDesc::new("roughness", FieldType::Float),
+    FieldDesc::new("diffuse_texture", FieldType::UInt),
+    FieldDesc::new("normal_texture", FieldType::UInt),
+    FieldDesc::new("metallic_roughness_texture", FieldType::UInt),
+    FieldDesc::new("emissive_texture", FieldType::UInt),
+    FieldDesc::new("occlusion_texture", FieldType::UInt),
+];
 
 pub struct PbrStrategy {
     requirements: Requirements,
@@ -25,20 +28,19 @@ pub struct PbrStrategy {
 impl Default for PbrStrategy {
     fn default() -> Self {
         let requirements = Requirements::new()
-            .optional(BASE_COLOR, MaterialValue::Color(Vec4::ONE))
-            .optional(EMISSIVE, MaterialValue::Color(Vec4::new(0.0, 0.0, 0.0, 1.0)))
+            .optional(BASE_COLOR, MaterialValue::Color(glam::Vec4::ONE))
+            .optional(EMISSIVE, MaterialValue::Color(glam::Vec4::new(0.0, 0.0, 0.0, 1.0)))
             .optional(METALLIC, MaterialValue::Float(0.0))
             .optional(ROUGHNESS, MaterialValue::Float(1.0));
-        // Texture properties are intentionally not in `requirements` at all
-        // (not even `optional`): a missing texture property means "no
-        // texture", packed as bindless slot 0, not "use this default value".
         Self { requirements }
     }
 }
 
 impl PbrStrategy {
-    fn texture_slot(material: &Material, id: crate::value::PropertyId) -> u32 {
-        material.get(id).and_then(MaterialValue::as_texture).map(|t| t.0).unwrap_or(0)
+    /// Texture fields fall back to bindless slot 0 (the white-texture
+    /// fallback) when a material has no value for them.
+    fn texture_value(material: &Material, id: crate::value::PropertyId) -> MaterialValue {
+        material.get(id).copied().unwrap_or(MaterialValue::Texture(TextureRef(0)))
     }
 }
 
@@ -51,56 +53,29 @@ impl ShadingStrategy for PbrStrategy {
         &self.requirements
     }
 
-    fn gpu_data_size(&self) -> usize {
-        size_of::<PbrGpuData>()
+    fn fields(&self) -> &[FieldDesc] {
+        FIELDS
     }
 
-    fn pack(&self, material: &Material) -> Result<Vec<u8>, MaterialError> {
+    fn resolve(&self, material: &Material) -> Result<Vec<MaterialValue>, MaterialError> {
         let get = |id| {
-            self.requirements.get_or_default(material, id).ok_or_else(|| MaterialError::MissingProperty {
+            self.requirements.get_or_default(material, id).copied().ok_or_else(|| MaterialError::MissingProperty {
                 material: material.name.clone(),
                 strategy: self.name(),
                 property: id,
             })
         };
 
-        let base_color = get(BASE_COLOR)?
-            .as_vec4()
-            .ok_or_else(|| type_mismatch(material, BASE_COLOR, "Color/Vec4", get(BASE_COLOR).unwrap()))?;
-        let emissive = get(EMISSIVE)?
-            .as_vec4()
-            .ok_or_else(|| type_mismatch(material, EMISSIVE, "Color/Vec4", get(EMISSIVE).unwrap()))?;
-        let metallic = get(METALLIC)?
-            .as_float()
-            .ok_or_else(|| type_mismatch(material, METALLIC, "Float", get(METALLIC).unwrap()))?;
-        let roughness = get(ROUGHNESS)?
-            .as_float()
-            .ok_or_else(|| type_mismatch(material, ROUGHNESS, "Float", get(ROUGHNESS).unwrap()))?;
-
-        let data = PbrGpuData {
-            base_color: base_color.into(),
-            emissive: emissive.into(),
-            metallic,
-            roughness,
-            _pad: [0.0; 2],
-            tex_indices0: [
-                Self::texture_slot(material, DIFFUSE_TEXTURE),
-                Self::texture_slot(material, NORMAL_TEXTURE),
-                Self::texture_slot(material, METALLIC_ROUGHNESS_TEXTURE),
-                Self::texture_slot(material, EMISSIVE_TEXTURE),
-            ],
-            tex_indices1: [Self::texture_slot(material, OCCLUSION_TEXTURE), 0, 0, 0],
-        };
-
-        Ok(bytemuck::bytes_of(&data).to_vec())
+        Ok(vec![
+            get(BASE_COLOR)?,
+            get(EMISSIVE)?,
+            get(METALLIC)?,
+            get(ROUGHNESS)?,
+            Self::texture_value(material, DIFFUSE_TEXTURE),
+            Self::texture_value(material, NORMAL_TEXTURE),
+            Self::texture_value(material, METALLIC_ROUGHNESS_TEXTURE),
+            Self::texture_value(material, EMISSIVE_TEXTURE),
+            Self::texture_value(material, OCCLUSION_TEXTURE),
+        ])
     }
-}
-
-fn type_mismatch(
-    material: &Material,
-    property: crate::value::PropertyId,
-    expected: &'static str,
-    actual: &MaterialValue,
-) -> MaterialError {
-    MaterialError::TypeMismatch { material: material.name.clone(), property, expected, actual: actual.type_name() }
 }
