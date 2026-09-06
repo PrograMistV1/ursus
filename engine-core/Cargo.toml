@@ -26,5 +26,6 @@ puffin_http = "0.17.0"
 clap = { version = "4", features = ["derive"] }
 
 engine-macros = { path = "../engine-macros" }
+engine-materials = { path = "../engine-materials" }
 
 [build-dependencies]

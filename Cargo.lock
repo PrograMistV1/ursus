@@ -610,6 +610,7 @@ dependencies = [
  "clap",
  "cosmic-text",
  "engine-macros",
+ "engine-materials",
  "env_logger",
  "etagere",
  "glam",

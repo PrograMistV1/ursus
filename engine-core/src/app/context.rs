@@ -3,6 +3,7 @@ use crate::assets::asset_registry::AssetRegistry;
 use crate::assets::upload::GpuUploadRequest;
 use crate::ecs::tick::default_tick_schedule;
 use crate::ecs::{GameWorld, TickSchedule, TickSystem};
+use crate::render::extract::material::extract_dirty_materials;
 use crate::render::extract::{ExtractSchedule, ExtractSystem};
 use crate::render::frame_pipeline::render_pipeline::RenderPipeline;
 use crate::render::frame_stats::FrameStats;
@@ -86,6 +87,7 @@ impl EngineContext {
             interpolation_alpha,
         });
         self.extract_schedule.run(&self.world, write, &mut self.asset_registry, &self.upload_tx);
+        extract_dirty_materials(&mut self.asset_registry, &self.upload_tx);
         self.triple_buf.publish();
     }
 

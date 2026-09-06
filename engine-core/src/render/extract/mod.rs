@@ -1,4 +1,5 @@
 mod camera;
+pub mod material;
 pub mod meshes;
 mod shape_ui;
 pub mod ui;

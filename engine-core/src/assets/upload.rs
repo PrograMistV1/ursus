@@ -22,4 +22,11 @@ pub enum GpuUploadRequest {
         handle: MaterialHandle,
         texture_slots: Vec<(String, TextureHandle)>,
     },
+    /// Packed material bytes ready to be written into GPU-visible storage.
+    /// `bytes.len()` is this material's stride under whichever
+    /// `MaterialLayout` produced them (see `engine_materials::pack::aos`).
+    MaterialData {
+        handle: engine_materials::MaterialHandle,
+        bytes: Vec<u8>,
+    },
 }

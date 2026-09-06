@@ -1,3 +1,4 @@
+use crate::assets::material_registry::MaterialRegistry;
 use crate::assets::mesh::{Aabb, CpuMesh};
 use crate::assets::mesh_handle_allocator::MeshHandleAllocator;
 use crate::assets::text::FontId;
@@ -10,6 +11,7 @@ use crate::components::mesh::{MaterialHandle, MeshHandle};
 use crate::components::transform::Transform;
 use crate::render::gfx::types::Format;
 use crate::render::world::PreparedUiDrawList;
+use engine_materials::{Material, StrategyRegistry};
 use glam::Vec2;
 use std::hash::Hash;
 use std::sync::mpsc::Sender;
@@ -38,25 +40,39 @@ pub struct AssetRegistry {
     textures: TextureStore,
     text: TextService,
     upload_queue: UploadQueue,
+
+    // TODO(asset-registry-refactor): AssetRegistry accumulates unrelated
+    // domains (meshes, textures, text, and now materials) with no clear
+    // ownership boundaries between them - this field pair and the material
+    // methods below are a stopgap, not an endorsement of that shape. A
+    // future refactor should probably split AssetRegistry into narrower,
+    // independently-testable registries (mesh/texture/material/...) with an
+    // explicit, thin composition point, rather than growing this struct
+    // further.
+    materials: MaterialRegistry,
+    material_strategies: StrategyRegistry,
 }
 
 impl AssetRegistry {
     pub(crate) fn new() -> Self {
+        let mut material_strategies = StrategyRegistry::new();
+        material_strategies.register(engine_materials::strategies::PbrStrategy::default());
+        material_strategies.register(engine_materials::strategies::UnlitStrategy::default());
+
         Self {
             meshes: MeshHandleAllocator::new(),
             upload_queue: UploadQueue::new(),
             texture_handles: TextureHandleAllocator::new(),
             textures: TextureStore::new(),
             text: TextService::new(),
+            materials: MaterialRegistry::new(),
+            material_strategies,
         }
     }
 
     // ==================== Public API ====================
     // Intended for `App` implementors, called from the game thread only.
-    /// Registers a CPU-side mesh and queues it for GPU upload.
-    ///
-    /// Game thread only. Synchronous registration; the actual GPU upload happens later on
-    /// the render thread once [`Self::flush_uploads_cpu`] drains `pending_uploads`.
+
     pub fn upload_mesh(&mut self, mesh: CpuMesh) -> MeshHandle {
         let handle = self.meshes.alloc();
         self.upload_queue.push(GpuUploadRequest::Mesh {
@@ -68,26 +84,14 @@ impl AssetRegistry {
         handle
     }
 
-    /// The engine's default UI font, picked at startup from installed system fonts
-    /// (Monospace, falling back to SansSerif).
     pub fn default_font(&self) -> FontId {
         self.text.default_font()
     }
 
-    /// Measures the on-screen size (in pixels) that `text` would occupy at font size `px`,
-    /// using the default font. Game thread only; synchronous, does no GPU work.
     pub fn measure_text(&mut self, text: &str, px: f32) -> Vec2 {
         self.text.measure(text, px)
     }
 
-    /// Registers an RGBA8 texture and queues it for GPU upload.
-    ///
-    /// Game thread only. Identical pixel content is deduplicated - calling this twice with
-    /// the same bytes returns the same [`TextureHandle`] without a second upload.
-    /// `pixels` must be tightly packed RGBA8 (4 bytes per pixel, `width * height * 4` bytes
-    /// total) unless `format` says otherwise.
-    ///
-    /// Pairs with [`Self::register_material`] - see that method's docs for a worked example.
     pub fn upload_texture_rgba8(
         &mut self,
         pixels: Vec<u8>,
@@ -97,6 +101,28 @@ impl AssetRegistry {
         name: impl Into<String>,
     ) -> TextureHandle {
         self.dedup_or_upload_texture(pixels, width, height, format, name.into())
+    }
+
+    /// Registers a new material and queues it for GPU upload on the next
+    /// frame's extract. Game thread only.
+    pub fn insert_material(&mut self, material: Material) -> engine_materials::MaterialHandle {
+        self.materials.insert(material)
+    }
+
+    /// Mutates a material in place, re-queueing it for GPU upload. Returns
+    /// `false` if the handle is unknown. Game thread only.
+    pub fn modify_material(&mut self, handle: engine_materials::MaterialHandle, f: impl FnOnce(&mut Material)) -> bool {
+        self.materials.modify(handle, f)
+    }
+
+    pub fn get_material(&self, handle: engine_materials::MaterialHandle) -> Option<&Material> {
+        self.materials.get(handle)
+    }
+
+    /// Registers an additional custom shading strategy, making it available
+    /// for materials to reference by name via `Material::strategy`.
+    pub fn register_material_strategy(&mut self, strategy: impl engine_materials::ShadingStrategy + 'static) {
+        self.material_strategies.register(strategy);
     }
 
     // ==================== Crate-internal API ====================
@@ -111,9 +137,6 @@ impl AssetRegistry {
         self.text.flush_atlas(&mut self.texture_handles, upload_tx);
     }
 
-    /// Shapes and rasterizes `text` into `out`, using the engine's default font. Used by the
-    /// built-in UI extract system; not part of the public API since it writes directly into
-    /// a [`PreparedUiDrawList`] rather than returning owned data.
     pub(crate) fn prepare_text(
         &mut self,
         text: &str,
@@ -123,6 +146,15 @@ impl AssetRegistry {
         out: &mut PreparedUiDrawList,
     ) {
         self.text.prepare(text, font_size, pos, color, out);
+    }
+
+    /// Drains materials changed since the last call and the strategy
+    /// registry needed to resolve them. Used by
+    /// `render::extract::material::MaterialExtract`.
+    pub(crate) fn drain_dirty_materials(
+        &mut self,
+    ) -> (Vec<(engine_materials::MaterialHandle, Material)>, &StrategyRegistry) {
+        (self.materials.drain_dirty(), &self.material_strategies)
     }
 
     // ==================== Private helpers ====================
