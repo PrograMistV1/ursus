@@ -4,6 +4,7 @@ pub mod gpu_texture_store;
 pub mod loader_registry;
 pub(crate) mod material_handle_allocator;
 pub mod material_registry;
+pub mod material_store;
 pub mod mesh;
 pub(crate) mod mesh_handle_allocator;
 pub mod mesh_store;

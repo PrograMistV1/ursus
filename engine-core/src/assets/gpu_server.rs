@@ -1,3 +1,4 @@
+use crate::assets::material_store::MaterialStore;
 use crate::assets::{GpuTextureStore, MeshStore, ShaderRegistry};
 use crate::render::gfx::descriptor::DescriptorAllocator;
 use crate::render::gfx::sampler::SamplerStore;
@@ -11,6 +12,7 @@ use ash::vk;
 pub struct GpuAssetServer {
     pub meshes: MeshStore,
     pub textures: GpuTextureStore,
+    pub materials: MaterialStore,
 
     pub shaders: ShaderRegistry,
     pub techniques: TechniqueRegistry,
@@ -39,6 +41,7 @@ impl GpuAssetServer {
         let mut descriptors = DescriptorAllocator::new(device.clone());
         let meshes = MeshStore::new(device.clone(), physical_device, instance.clone(), command_pool, queue);
         let samplers = SamplerStore::new(device.clone());
+        let materials = MaterialStore::new(device.clone(), physical_device, instance.clone(), &mut descriptors)?;
 
         let textures = GpuTextureStore::new(
             device.clone(),
@@ -52,6 +55,7 @@ impl GpuAssetServer {
         Ok(Self {
             meshes,
             textures,
+            materials,
             shaders,
             techniques,
             pipeline_cache,
