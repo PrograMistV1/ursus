@@ -211,8 +211,7 @@ fn flush_uploads_gpu(rx: &Receiver<GpuUploadRequest>, gpu: &mut GpuAssetServer) 
                         log::error!("GPU upload texture failed: {e}");
                     }
                 }
-                GpuUploadRequest::Material { handle: _handle, texture_slots: _texture_slots } => {}
-                GpuUploadRequest::MaterialData { handle, bytes } => {
+                GpuUploadRequest::Material { handle, bytes } => {
                     if let Err(e) = gpu.materials.upload(handle, &bytes, &gpu.descriptors) {
                         log::error!("GPU upload material data failed for {:?}: {e}", handle);
                     }

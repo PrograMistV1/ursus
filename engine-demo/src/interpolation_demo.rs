@@ -2,13 +2,14 @@ use engine_core::app::{App, Engine, EngineContext};
 use engine_core::assets::CpuMesh;
 use engine_core::components::camera::{ActiveCamera, CameraComponent};
 use engine_core::components::light::DirectionalLightComponent;
-use engine_core::components::mesh::TechniqueHandle;
 use engine_core::components::transform::Transform;
 use engine_core::components::transform_interpolation::TransformInterpolation;
 use engine_core::ecs::world::Entity;
 use engine_core::render::thread::command::PipelineFactory;
+use engine_materials::strategies::properties::BASE_COLOR;
+use engine_materials::{Material, MaterialValue, PropertyId};
 use engine_pipelines::DefaultPipeline;
-use glam::{Quat, Vec3};
+use glam::{Quat, Vec3, Vec4};
 use std::f32::consts::PI;
 
 mod text_texture;
@@ -45,22 +46,32 @@ impl App for InterpolationDemoApp {
 
         let cube_mesh = ctx.asset_registry.upload_mesh(CpuMesh::cube());
 
+        let red_material = ctx.asset_registry.insert_material(
+            Material::new("interpolated_cube_material", "pbr")
+                .with(BASE_COLOR, MaterialValue::Color(Vec4::new(0.9, 0.2, 0.2, 1.0)))
+                .with(PropertyId::new("metallic"), MaterialValue::Float(0.1))
+                .with(PropertyId::new("roughness"), MaterialValue::Float(0.6)),
+        );
+
+        let blue_material = ctx.asset_registry.insert_material(
+            Material::new("plain_cube_material", "pbr")
+                .with(BASE_COLOR, MaterialValue::Color(Vec4::new(0.2, 0.4, 0.9, 1.0)))
+                .with(PropertyId::new("metallic"), MaterialValue::Float(0.0))
+                .with(PropertyId::new("roughness"), MaterialValue::Float(0.9)),
+        );
+
         let interpolated = ctx
             .world
             .spawn()
             .insert(cube_mesh)
             .insert(Transform::at(-1.5, 2.0, -3.0))
             .insert(TransformInterpolation::default())
+            .insert(red_material)
             .build();
         self.interpolated_cube = Some(interpolated);
 
-        let plain = ctx
-            .world
-            .spawn()
-            .insert(cube_mesh)
-            .insert(Transform::at(1.5, 2.0, -3.0))
-            .insert(TechniqueHandle("unlit".into()))
-            .build();
+        let plain =
+            ctx.world.spawn().insert(cube_mesh).insert(Transform::at(1.5, 2.0, -3.0)).insert(blue_material).build();
         self.plain_cube = Some(plain);
     }
 

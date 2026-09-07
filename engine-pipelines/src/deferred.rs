@@ -1,6 +1,9 @@
+use crate::passes::depth_prepass::DepthPrepass;
 use crate::passes::fsr::FsrPass;
+use crate::passes::geometry::GeometryPass;
 use crate::passes::lighting::LightingPass;
 use crate::passes::post_process::PostProcessPass;
+use crate::passes::shadow::ShadowPass;
 use crate::passes::ui::UiPass;
 use engine_core::assets::gpu_server::GpuAssetServer;
 use engine_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
@@ -58,6 +61,28 @@ impl RenderPipeline for DefaultPipeline {
                 .with_usage(ImageUsage::TRANSFER_SRC),
         );
         let h_swapchain = graph.pool.register_swapchain_external(swapchain.format);
+
+        let shadow_pass = ShadowPass::new(gpu_assets)?;
+        pass("shadow")
+            .write(h_shadow_map, ImageLayout::DepthAttachment)
+            .record(move |enc, rw, gpu| shadow_pass.record(enc, rw, gpu, h_shadow_map))
+            .build(graph, gpu_assets);
+
+        let depth_prepass = DepthPrepass::new(gpu_assets)?;
+        pass("depth_prepass")
+            .write(h_depth, ImageLayout::DepthAttachment)
+            .record(move |enc, rw, gpu| depth_prepass.record(enc, rw, gpu, h_depth))
+            .build(graph, gpu_assets);
+
+        let geometry_pass = GeometryPass::new(gpu_assets, Format::Rgba8Unorm, Format::Rgba16Float)?;
+        pass("geometry")
+            .read_write(h_depth, ImageLayout::DepthAttachment)
+            .write(h_gbuffer_albedo, ImageLayout::ColorAttachment)
+            .write(h_gbuffer_normal, ImageLayout::ColorAttachment)
+            .record(move |enc, rw, gpu| {
+                geometry_pass.record(enc, rw, gpu, h_gbuffer_albedo, h_gbuffer_normal, h_depth, [0.0, 0.0, 0.0, 0.0])
+            })
+            .build(graph, gpu_assets);
 
         let lighting_pass = LightingPass::new(gpu_assets, Format::Rgba16Float)?;
         let post_pass = PostProcessPass::new(gpu_assets, LDR_FORMAT)?;

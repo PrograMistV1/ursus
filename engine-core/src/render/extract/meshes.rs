@@ -1,11 +1,12 @@
 use crate::assets::upload::GpuUploadRequest;
 use crate::assets::AssetRegistry;
-use crate::components::mesh::{MaterialHandle, MeshHandle, TechniqueHandle};
+use crate::components::mesh::{MeshHandle, TechniqueHandle};
 use crate::components::transform::Transform;
 use crate::components::transform_interpolation::TransformInterpolation;
 use crate::render::extract::ExtractSystem;
 use crate::render::world::{ExtractedInstance, ExtractedMeshes, ExtractedRenderSettings, RenderWorld};
 use crate::GameWorld;
+use engine_materials::MaterialHandle;
 use std::sync::mpsc::Sender;
 
 pub struct MeshExtract;

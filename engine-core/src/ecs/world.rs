@@ -29,7 +29,7 @@ impl Default for GameWorld {
     }
 }
 
-pub trait Component: hecs::Component + Default {
+pub trait Component: hecs::Component {
     #[doc(hidden)]
     fn check(component: &mut Self, builder: &hecs::EntityBuilder);
 }

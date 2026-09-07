@@ -36,6 +36,7 @@ pub enum MaterialValue {
     /// is the same shape.
     Color(Vec4),
     Texture(TextureRef),
+    UVec4([u32; 4]),
 }
 
 impl MaterialValue {
@@ -78,6 +79,13 @@ impl MaterialValue {
         }
     }
 
+    pub fn as_uvec4(&self) -> Option<[u32; 4]> {
+        match self {
+            Self::UVec4(v) => Some(*v),
+            _ => None,
+        }
+    }
+
     /// Human-readable type name, for error messages.
     pub fn type_name(&self) -> &'static str {
         match self {
@@ -89,6 +97,7 @@ impl MaterialValue {
             Self::Vec4(_) => "Vec4",
             Self::Color(_) => "Color",
             Self::Texture(_) => "Texture",
+            Self::UVec4(_) => "UVec4",
         }
     }
 }

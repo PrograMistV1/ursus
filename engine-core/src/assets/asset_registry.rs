@@ -7,10 +7,11 @@ use crate::assets::texture_handle_allocator::TextureHandleAllocator;
 use crate::assets::texture_store::{TextureRegistration, TextureStore};
 use crate::assets::upload::GpuUploadRequest;
 use crate::assets::upload_queue::UploadQueue;
-use crate::components::mesh::{MaterialHandle, MeshHandle};
+use crate::components::mesh::MeshHandle;
 use crate::components::transform::Transform;
 use crate::render::gfx::types::Format;
 use crate::render::world::PreparedUiDrawList;
+use engine_materials::MaterialHandle;
 use engine_materials::{Material, StrategyRegistry};
 use glam::Vec2;
 use std::hash::Hash;
@@ -151,9 +152,7 @@ impl AssetRegistry {
     /// Drains materials changed since the last call and the strategy
     /// registry needed to resolve them. Used by
     /// `render::extract::material::MaterialExtract`.
-    pub(crate) fn drain_dirty_materials(
-        &mut self,
-    ) -> (Vec<(engine_materials::MaterialHandle, Material)>, &StrategyRegistry) {
+    pub(crate) fn drain_dirty_materials(&mut self) -> (Vec<(MaterialHandle, Material)>, &StrategyRegistry) {
         (self.materials.drain_dirty(), &self.material_strategies)
     }
 

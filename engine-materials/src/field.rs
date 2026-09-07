@@ -8,6 +8,7 @@ pub enum FieldType {
     Vec2,
     Vec3,
     Vec4,
+    UVec4,
 }
 
 impl FieldType {
@@ -17,7 +18,7 @@ impl FieldType {
             Self::Float | Self::UInt => 4,
             Self::Vec2 => 8,
             Self::Vec3 => 12,
-            Self::Vec4 => 16,
+            Self::Vec4 | Self::UVec4 => 16,
         }
     }
 
@@ -27,7 +28,7 @@ impl FieldType {
         match self {
             Self::Float | Self::UInt => 4,
             Self::Vec2 => 8,
-            Self::Vec3 | Self::Vec4 => 16,
+            Self::Vec3 | Self::Vec4 | Self::UVec4 => 16,
         }
     }
 }
@@ -81,6 +82,13 @@ pub fn write_field_bytes(ty: FieldType, value: &MaterialValue, dst: &mut [u8]) -
             dst[4..8].copy_from_slice(&v.y.to_le_bytes());
             dst[8..12].copy_from_slice(&v.z.to_le_bytes());
             dst[12..16].copy_from_slice(&v.w.to_le_bytes());
+        }
+        FieldType::UVec4 => {
+            let v = value.as_uvec4()?;
+            dst[0..4].copy_from_slice(&v[0].to_le_bytes());
+            dst[4..8].copy_from_slice(&v[1].to_le_bytes());
+            dst[8..12].copy_from_slice(&v[2].to_le_bytes());
+            dst[12..16].copy_from_slice(&v[3].to_le_bytes());
         }
     }
     Some(())

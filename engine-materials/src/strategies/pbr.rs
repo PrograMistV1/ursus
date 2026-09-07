@@ -4,7 +4,7 @@ use crate::material::Material;
 use crate::requirements::Requirements;
 use crate::strategies::properties::*;
 use crate::strategy::ShadingStrategy;
-use crate::value::{MaterialValue, TextureRef};
+use crate::value::{MaterialValue, PropertyId};
 
 /// Field order matches the `MaterialData` struct in mesh.frag /
 /// depth_prepass.frag / shadow.frag: base_color, emissive, metallic,
@@ -14,11 +14,8 @@ const FIELDS: &[FieldDesc] = &[
     FieldDesc::new("emissive", FieldType::Vec4),
     FieldDesc::new("metallic", FieldType::Float),
     FieldDesc::new("roughness", FieldType::Float),
-    FieldDesc::new("diffuse_texture", FieldType::UInt),
-    FieldDesc::new("normal_texture", FieldType::UInt),
-    FieldDesc::new("metallic_roughness_texture", FieldType::UInt),
-    FieldDesc::new("emissive_texture", FieldType::UInt),
-    FieldDesc::new("occlusion_texture", FieldType::UInt),
+    FieldDesc::new("tex_indices0", FieldType::UVec4),
+    FieldDesc::new("tex_indices1", FieldType::UVec4),
 ];
 
 pub struct PbrStrategy {
@@ -39,8 +36,8 @@ impl Default for PbrStrategy {
 impl PbrStrategy {
     /// Texture fields fall back to bindless slot 0 (the white-texture
     /// fallback) when a material has no value for them.
-    fn texture_value(material: &Material, id: crate::value::PropertyId) -> MaterialValue {
-        material.get(id).copied().unwrap_or(MaterialValue::Texture(TextureRef(0)))
+    fn texture_slot(material: &Material, id: PropertyId) -> u32 {
+        material.get(id).and_then(MaterialValue::as_texture).map(|t| t.0).unwrap_or(0)
     }
 }
 
@@ -66,16 +63,21 @@ impl ShadingStrategy for PbrStrategy {
             })
         };
 
+        let tex_indices0 = MaterialValue::UVec4([
+            Self::texture_slot(material, DIFFUSE_TEXTURE),
+            Self::texture_slot(material, NORMAL_TEXTURE),
+            Self::texture_slot(material, METALLIC_ROUGHNESS_TEXTURE),
+            Self::texture_slot(material, EMISSIVE_TEXTURE),
+        ]);
+        let tex_indices1 = MaterialValue::UVec4([Self::texture_slot(material, OCCLUSION_TEXTURE), 0, 0, 0]);
+
         Ok(vec![
             get(BASE_COLOR)?,
             get(EMISSIVE)?,
             get(METALLIC)?,
             get(ROUGHNESS)?,
-            Self::texture_value(material, DIFFUSE_TEXTURE),
-            Self::texture_value(material, NORMAL_TEXTURE),
-            Self::texture_value(material, METALLIC_ROUGHNESS_TEXTURE),
-            Self::texture_value(material, EMISSIVE_TEXTURE),
-            Self::texture_value(material, OCCLUSION_TEXTURE),
+            tex_indices0,
+            tex_indices1,
         ])
     }
 }

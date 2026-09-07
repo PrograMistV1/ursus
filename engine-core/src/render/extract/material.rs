@@ -42,6 +42,6 @@ pub fn extract_dirty_materials(cpu_assets: &mut AssetRegistry, upload_tx: &Sende
             continue;
         };
 
-        upload_tx.send(GpuUploadRequest::MaterialData { handle, bytes }).ok();
+        upload_tx.send(GpuUploadRequest::Material { handle, bytes }).ok();
     }
 }
