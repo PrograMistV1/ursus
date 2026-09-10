@@ -8,7 +8,7 @@ use ursus_core::math::light_frustum::compute_light_view_proj;
 use ursus_core::render::extract::ExtractSystem;
 use ursus_core::render::world::RenderWorld;
 use ursus_ecs::components::light::{DirectionalLightComponent, PointLightComponent};
-use ursus_ecs::GameWorld;
+use ursus_ecs::World;
 
 #[derive(Clone)]
 pub struct ExtractedLights {
@@ -33,12 +33,12 @@ pub struct LightExtract;
 impl ExtractSystem for LightExtract {
     fn extract(
         &self,
-        world: &GameWorld,
+        world: &World,
         rw: &mut RenderWorld,
         _cpu_assets: &mut AssetRegistry,
         _upload_tx: &Sender<GpuUploadRequest>,
     ) {
-        let directional = match world.inner.query::<&DirectionalLightComponent>().iter().next() {
+        let directional = match world.query::<&DirectionalLightComponent>().iter().next() {
             Some(light) => DirectionalLight {
                 direction: [light.direction.x, light.direction.y, light.direction.z, 0.0],
                 color: light.color,
@@ -55,7 +55,7 @@ impl ExtractSystem for LightExtract {
 
         let mut point_lights = [GpuPointLight { position: [0.0; 4], color: [0.0; 4] }; MAX_POINT_LIGHTS];
         let mut point_light_count = 0u32;
-        for light in world.inner.query::<&PointLightComponent>().iter() {
+        for light in world.query::<&PointLightComponent>().iter() {
             if point_light_count as usize >= MAX_POINT_LIGHTS {
                 break;
             }

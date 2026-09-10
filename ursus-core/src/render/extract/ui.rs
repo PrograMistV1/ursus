@@ -7,13 +7,13 @@ use crate::render::world::{
 use glam::Vec2;
 use std::sync::mpsc::Sender;
 use ursus_ecs::components::ui::{UiLayout, UiRect, UiText};
-use ursus_ecs::GameWorld;
+use ursus_ecs::World;
 
 pub struct UiExtract;
 impl ExtractSystem for UiExtract {
     fn extract(
         &self,
-        world: &GameWorld,
+        world: &World,
         rw: &mut RenderWorld,
         _cpu_assets: &mut AssetRegistry,
         _upload_tx: &Sender<GpuUploadRequest>,
@@ -24,7 +24,7 @@ impl ExtractSystem for UiExtract {
         let mut ui_rects = ExtractedUiRects::default();
         let mut ui_texts = ExtractedUiTexts::default();
 
-        for (layout, rect) in world.inner.query::<(&UiLayout, &UiRect)>().iter() {
+        for (layout, rect) in world.query::<(&UiLayout, &UiRect)>().iter() {
             let pos = Vec2::new(
                 layout.anchor.x * screen_w + layout.offset.x - layout.pivot.x * rect.size.x,
                 layout.anchor.y * screen_h + layout.offset.y - layout.pivot.y * rect.size.y,
@@ -32,7 +32,7 @@ impl ExtractSystem for UiExtract {
             ui_rects.rects.push(ExtractedUiRect { pos, size: rect.size, color: rect.color });
         }
 
-        for (layout, text) in world.inner.query::<(&UiLayout, &UiText)>().iter() {
+        for (layout, text) in world.query::<(&UiLayout, &UiText)>().iter() {
             let line_height = text.font_size * 1.2;
             let pos = Vec2::new(
                 layout.anchor.x * screen_w + layout.offset.x,

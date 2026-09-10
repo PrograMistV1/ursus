@@ -6,14 +6,14 @@ use std::sync::mpsc::Sender;
 use ursus_ecs::components::mesh::{MeshHandle, TechniqueHandle};
 use ursus_ecs::components::transform::Transform;
 use ursus_ecs::components::transform_interpolation::TransformInterpolation;
-use ursus_ecs::GameWorld;
+use ursus_ecs::World;
 use ursus_materials::MaterialHandle;
 
 pub struct MeshExtract;
 impl ExtractSystem for MeshExtract {
     fn extract(
         &self,
-        world: &GameWorld,
+        world: &World,
         rw: &mut RenderWorld,
         _cpu_assets: &mut AssetRegistry,
         _upload_tx: &Sender<GpuUploadRequest>,
@@ -23,7 +23,6 @@ impl ExtractSystem for MeshExtract {
         let mut meshes = ExtractedMeshes::default();
 
         for (mesh, transform, interp, mat, technique, aabb) in world
-            .inner
             .query::<(
                 &MeshHandle,
                 &Transform,

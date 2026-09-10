@@ -41,8 +41,8 @@ impl App for InterpolationDemoApp {
     }
 
     fn on_start(&mut self, ctx: &mut EngineContext) {
-        ctx.world.spawn().insert(CameraComponent::default()).insert(ActiveCamera).build();
-        ctx.world.spawn().insert(DirectionalLightComponent::default()).build();
+        ctx.world.spawn((CameraComponent::default(), ActiveCamera));
+        ctx.world.spawn((DirectionalLightComponent::default(),));
 
         let cube_mesh = ctx.asset_registry.upload_mesh(CpuMesh::cube());
 
@@ -60,18 +60,15 @@ impl App for InterpolationDemoApp {
                 .with(PropertyId::new("roughness"), MaterialValue::Float(0.9)),
         );
 
-        let interpolated = ctx
-            .world
-            .spawn()
-            .insert(cube_mesh)
-            .insert(Transform::at(-1.5, 2.0, -3.0))
-            .insert(TransformInterpolation::default())
-            .insert(red_material)
-            .build();
+        let interpolated = ctx.world.spawn((
+            cube_mesh,
+            Transform::at(-1.5, 2.0, -3.0),
+            TransformInterpolation::default(),
+            red_material,
+        ));
         self.interpolated_cube = Some(interpolated);
 
-        let plain =
-            ctx.world.spawn().insert(cube_mesh).insert(Transform::at(1.5, 2.0, -3.0)).insert(blue_material).build();
+        let plain = ctx.world.spawn((cube_mesh, Transform::at(1.5, 2.0, -3.0), blue_material));
         self.plain_cube = Some(plain);
     }
 
@@ -80,17 +77,17 @@ impl App for InterpolationDemoApp {
         let rotation = Quat::from_rotation_y(self.angle);
 
         if let Some(e) = self.interpolated_cube {
-            if let Ok(mut t) = ctx.world.inner.get::<&mut Transform>(e) {
+            if let Ok(mut t) = ctx.world.get::<&mut Transform>(e) {
                 t.rotation = rotation;
             }
         }
         if let Some(e) = self.plain_cube {
-            if let Ok(mut t) = ctx.world.inner.get::<&mut Transform>(e) {
+            if let Ok(mut t) = ctx.world.get::<&mut Transform>(e) {
                 t.rotation = rotation;
             }
         }
 
-        for (cam, _) in ctx.world.inner.query_mut::<(&mut CameraComponent, &ActiveCamera)>() {
+        for (cam, _) in ctx.world.query_mut::<(&mut CameraComponent, &ActiveCamera)>() {
             cam.eye = Vec3::new(0.0, 2.5, -6.0);
             cam.target = Vec3::new(0.0, 1.0, 0.0);
         }

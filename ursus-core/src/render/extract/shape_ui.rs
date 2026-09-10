@@ -3,14 +3,14 @@ use crate::assets::AssetRegistry;
 use crate::render::extract::ExtractSystem;
 use crate::render::world::{ExtractedUiRects, ExtractedUiTexts, PreparedUiDrawList, RenderWorld};
 use std::sync::mpsc::Sender;
-use ursus_ecs::GameWorld;
+use ursus_ecs::World;
 
 pub struct ShapeUiSystem;
 
 impl ExtractSystem for ShapeUiSystem {
     fn extract(
         &self,
-        _world: &GameWorld,
+        _world: &World,
         rw: &mut RenderWorld,
         cpu_assets: &mut AssetRegistry,
         upload_tx: &Sender<GpuUploadRequest>,

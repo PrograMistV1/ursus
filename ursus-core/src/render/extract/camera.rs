@@ -6,19 +6,18 @@ use glam::camera::rh::proj::vulkan::perspective;
 use glam::camera::rh::view::look_at_mat4;
 use std::sync::mpsc::Sender;
 use ursus_ecs::components::camera::{ActiveCamera, CameraComponent};
-use ursus_ecs::GameWorld;
+use ursus_ecs::World;
 
 pub struct CameraExtract;
 impl ExtractSystem for CameraExtract {
     fn extract(
         &self,
-        world: &GameWorld,
+        world: &World,
         rw: &mut RenderWorld,
         _cpu_assets: &mut AssetRegistry,
         _upload_tx: &Sender<GpuUploadRequest>,
     ) {
         let camera = world
-            .inner
             .query::<(&CameraComponent, &ActiveCamera)>()
             .iter()
             .next()

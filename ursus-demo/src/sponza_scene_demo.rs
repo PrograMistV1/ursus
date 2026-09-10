@@ -46,31 +46,28 @@ impl App for MyApp {
                 scale: Vec3::from(prim.node_scale),
             };
 
-            let builder = ctx.world.spawn().insert(mesh_handle).insert(transform);
-            builder.build();
+            ctx.world.spawn((mesh_handle, transform));
         }
 
         log::info!("Sponza spawned");
 
-        ctx.world
-            .spawn()
-            .insert(UiLayout::top_left(Vec2::new(16.0, 16.0)))
-            .insert(UiText::new("FPS: 60").with_size(18.0).with_color([1.0; 4]))
-            .build();
+        ctx.world.spawn((
+            UiLayout::top_left(Vec2::new(16.0, 16.0)),
+            UiText::new("FPS: 60").with_size(18.0).with_color([1.0; 4]),
+        ));
 
-        ctx.world
-            .spawn()
-            .insert(CameraComponent {
+        ctx.world.spawn((
+            CameraComponent {
                 eye: Vec3::new(8.0, 4.0, 0.0),
                 target: Vec3::new(0.0, 4.0, 0.0),
                 z_near: 0.01,
                 z_far: 50.0,
                 ..Default::default()
-            })
-            .insert(ActiveCamera)
-            .build();
+            },
+            ActiveCamera,
+        ));
 
-        ctx.world.spawn().insert(DirectionalLightComponent::default()).build();
+        ctx.world.spawn((DirectionalLightComponent::default(),));
     }
 
     fn on_update(&mut self, ctx: &mut EngineContext, _dt: f32) {
@@ -78,13 +75,13 @@ impl App for MyApp {
 
         if self.tick.is_multiple_of(60) {
             let fps = ctx.frame_stats().current_fps();
-            for text in ctx.world.inner.query_mut::<&mut UiText>() {
+            for text in ctx.world.query_mut::<&mut UiText>() {
                 text.text = format!("FPS: {:.0}", fps);
             }
         }
 
         let t = self.tick as f32 * 0.003;
-        for (cam, _) in ctx.world.inner.query_mut::<(&mut CameraComponent, &ActiveCamera)>() {
+        for (cam, _) in ctx.world.query_mut::<(&mut CameraComponent, &ActiveCamera)>() {
             cam.eye = Vec3::new(t.sin() * 9.0, 2.0, t.cos() * 4.0);
             cam.target = Vec3::new(0.0, 2.0, 0.0);
         }

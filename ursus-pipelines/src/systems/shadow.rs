@@ -7,7 +7,7 @@ use ursus_core::render::world::{ExtractedInstance, ExtractedRenderSettings, Rend
 use ursus_ecs::components::mesh::{MeshHandle, TechniqueHandle};
 use ursus_ecs::components::transform::Transform;
 use ursus_ecs::components::transform_interpolation::TransformInterpolation;
-use ursus_ecs::GameWorld;
+use ursus_ecs::World;
 use ursus_materials::MaterialHandle;
 
 #[derive(Default, Clone)]
@@ -19,7 +19,7 @@ pub struct ShadowExtract;
 impl ExtractSystem for ShadowExtract {
     fn extract(
         &self,
-        world: &GameWorld,
+        world: &World,
         rw: &mut RenderWorld,
         _cpu_assets: &mut AssetRegistry,
         _upload_tx: &Sender<GpuUploadRequest>,
@@ -29,7 +29,6 @@ impl ExtractSystem for ShadowExtract {
         let mut shadow_meshes = ExtractedShadowMeshes::default();
 
         for (mesh, transform, interp, mat, technique, aabb) in world
-            .inner
             .query::<(
                 &MeshHandle,
                 &Transform,

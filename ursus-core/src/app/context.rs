@@ -11,7 +11,7 @@ use crate::render::world::{ExtractedRenderSettings, RenderWorld};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use ursus_ecs::tick::default_tick_schedule;
-use ursus_ecs::{GameWorld, TickSchedule, TickSystem};
+use ursus_ecs::{TickSchedule, TickSystem, World};
 
 #[allow(clippy::enum_variant_names)]
 pub enum WindowCommand {
@@ -21,7 +21,7 @@ pub enum WindowCommand {
 }
 
 pub struct EngineContext {
-    pub world: GameWorld,
+    pub world: World,
     pub asset_registry: AssetRegistry,
     pub extract_schedule: ExtractSchedule,
     pub tick_schedule: TickSchedule,
@@ -44,7 +44,7 @@ impl EngineContext {
         window_cmd_tx: Sender<WindowCommand>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
-            world: GameWorld::new(),
+            world: World::new(),
             asset_registry: AssetRegistry::new(),
             extract_schedule: ExtractSchedule::default(),
             tick_schedule: default_tick_schedule(),

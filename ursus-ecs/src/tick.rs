@@ -1,8 +1,8 @@
-use crate::GameWorld;
 use crate::systems::SyncTransformInterpolation;
+use hecs::World;
 
 pub trait TickSystem: Send + Sync {
-    fn tick(&self, world: &mut GameWorld, dt: f32);
+    fn tick(&self, world: &mut World, dt: f32);
     fn name(&self) -> &'static str;
 }
 
@@ -19,7 +19,7 @@ impl TickSchedule {
         self.systems.push(Box::new(system));
     }
 
-    pub fn run(&self, world: &mut GameWorld, dt: f32) {
+    pub fn run(&self, world: &mut World, dt: f32) {
         for system in &self.systems {
             puffin::profile_scope!("tick_system", system.name());
             system.tick(world, dt);

@@ -12,12 +12,12 @@ use crate::render::extract::shape_ui::ShapeUiSystem;
 use crate::render::extract::ui::UiExtract;
 use crate::render::world::RenderWorld;
 use std::sync::mpsc::Sender;
-use ursus_ecs::GameWorld;
+use ursus_ecs::World;
 
 pub trait ExtractSystem: Send + Sync {
     fn extract(
         &self,
-        world: &GameWorld,
+        world: &World,
         rw: &mut RenderWorld,
         cpu_assets: &mut AssetRegistry,
         upload_tx: &Sender<GpuUploadRequest>,
@@ -36,7 +36,7 @@ impl ExtractSchedule {
 
     pub fn run(
         &self,
-        world: &GameWorld,
+        world: &World,
         dst: &mut RenderWorld,
         cpu_assets: &mut AssetRegistry,
         upload_tx: &Sender<GpuUploadRequest>,
