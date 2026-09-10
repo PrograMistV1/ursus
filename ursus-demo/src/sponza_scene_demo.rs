@@ -1,5 +1,3 @@
-use engine_pipelines::plugins::LightingPlugin;
-use engine_pipelines::DefaultPipeline;
 use glam::{Quat, Vec2, Vec3};
 use ursus_core::app::window_config::WindowConfig;
 use ursus_core::app::{App, Engine, EngineContext};
@@ -7,6 +5,8 @@ use ursus_core::components::camera::{ActiveCamera, CameraComponent};
 use ursus_core::components::light::DirectionalLightComponent;
 use ursus_core::components::ui::{UiLayout, UiText};
 use ursus_core::render::thread::command::PipelineFactory;
+use ursus_pipelines::plugins::LightingPlugin;
+use ursus_pipelines::DefaultPipeline;
 
 struct MyApp {
     tick: u64,

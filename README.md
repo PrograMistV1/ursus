@@ -35,19 +35,19 @@ Two cubes rendered in a single pipeline, showcasing smooth transform interpolati
 
 ```text
 ursus-core/       the engine itself: ECS, asset pipeline, Vulkan abstraction, render graph
-engine-pipelines/    a batteries-included deferred renderer + built-in shaders, built on ursus-core
+ursus-pipelines/    a batteries-included deferred renderer + built-in shaders, built on ursus-core
 ursus-demo/   minimal example application showing how to use the engine
 ```
 
 `ursus-core` has no opinion about *how* you render things - it gives you the plumbing (device/swapchain setup, render
-graph, resource pool, asset loading, ECS). `engine-pipelines` is one opinionated pipeline built on top of that plumbing.
-You could write your own pipeline crate instead and skip `engine-pipelines` entirely.
+graph, resource pool, asset loading, ECS). `ursus-pipelines` is one opinionated pipeline built on top of that plumbing.
+You could write your own pipeline crate instead and skip `ursus-pipelines` entirely.
 
 ## ⭐ Features
 
 - **Render graph** (`ursus-core/src/render/graph.rs`) - passes declare read/write access to resources; the graph
   topologically sorts them and inserts image layout barriers automatically. See [Render graph](#-render-graph) below.
-- **Deferred pipeline** (`engine-pipelines`) - shadow pass -> depth prepass -> GBuffer (albedo/normal) -> lighting ->
+- **Deferred pipeline** (`ursus-pipelines`) - shadow pass -> depth prepass -> GBuffer (albedo/normal) -> lighting ->
   tonemap/post-process -> FSR1 (EASU + RCAS) upscale -> UI overlay.
 - **Bindless textures** - a single descriptor set with `update_after_bind` + `PARTIALLY_BOUND`, indexed via
   `nonuniformEXT` in shaders. No per-draw descriptor churn.
@@ -85,7 +85,7 @@ precomputes the minimal set of `VkImageMemoryBarrier2`s needed between them. Res
 - **Transient** - sized relative to internal or output resolution, allocated/resized by the graph (`ResourcePool`)
 - **External** - swapchain images, whose layout is managed at frame boundaries
 
-Current pipeline order in `engine-pipelines`:
+Current pipeline order in `ursus-pipelines`:
 
 ```text
 shadow ---------+
@@ -102,7 +102,7 @@ it - the graph doesn't currently exploit that, it just orders them consistently.
 ## 🛠️ Building
 
 Requires the **Vulkan SDK** installed with `glslc` on your `PATH` - shaders are compiled to SPIR-V at build time via
-`build.rs` (`engine-pipelines/build.rs`), there's no runtime shader compilation.
+`build.rs` (`ursus-pipelines/build.rs`), there's no runtime shader compilation.
 
 ```bash
 cargo build --release

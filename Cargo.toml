@@ -3,9 +3,10 @@ members = [
     "ursus-core",
     "engine-gltf-loader",
     "engine-obj-loader",
-    "engine-pipelines",
+    "ursus-pipelines",
     "engine-macros",
-    "ursus-demo", "engine-materials",
+    "ursus-demo",
+    "engine-materials",
 ]
 resolver = "2"
 
