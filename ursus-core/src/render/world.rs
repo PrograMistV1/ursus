@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use crate::assets::mesh::Aabb;
 use crate::assets::TextureHandle;
 use crate::components::mesh::MeshHandle;
-use engine_materials::MaterialHandle;
 use glam::{Mat4, Vec2, Vec3};
+use ursus_materials::MaterialHandle;
 
 pub struct RenderWorld {
     resources: HashMap<TypeId, Box<dyn Any + Send>>,

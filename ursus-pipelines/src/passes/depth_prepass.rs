@@ -1,4 +1,3 @@
-use engine_materials::MaterialHandle;
 use std::slice;
 use ursus_core::assets::gpu_server::GpuAssetServer;
 use ursus_core::assets::mesh::Vertex;
@@ -8,6 +7,7 @@ use ursus_core::render::gfx::CommandEncoder;
 use ursus_core::render::resource::ResourceHandle;
 use ursus_core::render::world::{ExtractedCamera, ExtractedMeshes, RenderWorld};
 use ursus_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
+use ursus_materials::MaterialHandle;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]

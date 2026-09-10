@@ -1,5 +1,3 @@
-use engine_materials::strategies::properties::BASE_COLOR;
-use engine_materials::{Material, MaterialValue, PropertyId};
 use glam::{Quat, Vec3, Vec4};
 use std::f32::consts::PI;
 use ursus_core::app::{App, Engine, EngineContext};
@@ -10,6 +8,8 @@ use ursus_core::components::transform::Transform;
 use ursus_core::components::transform_interpolation::TransformInterpolation;
 use ursus_core::ecs::world::Entity;
 use ursus_core::render::thread::command::PipelineFactory;
+use ursus_materials::strategies::properties::BASE_COLOR;
+use ursus_materials::{Material, MaterialValue, PropertyId};
 use ursus_pipelines::DefaultPipeline;
 
 mod text_texture;

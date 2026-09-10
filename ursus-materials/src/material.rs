@@ -2,7 +2,7 @@ use crate::value::{MaterialValue, PropertyId};
 use std::collections::HashMap;
 
 /// Stable handle identifying a material instance. Lives here rather than in
-/// ursus-core so engine-materials stays the single source of truth for
+/// ursus-core so ursus-materials stays the single source of truth for
 /// material identity - ursus-core's ECS just stores this as a component.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MaterialHandle(pub u32);

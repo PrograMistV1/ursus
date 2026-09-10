@@ -1,6 +1,6 @@
 use crate::assets::material_handle_allocator::MaterialHandleAllocator;
-use engine_materials::{Material, MaterialHandle};
 use std::collections::{HashMap, HashSet};
+use ursus_materials::{Material, MaterialHandle};
 
 /// CPU-side storage for materials, with dirty tracking so unchanged
 /// materials aren't re-resolved/re-packed every frame.

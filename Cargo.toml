@@ -6,7 +6,7 @@ members = [
     "ursus-pipelines",
     "engine-macros",
     "ursus-demo",
-    "engine-materials",
+    "ursus-materials",
 ]
 resolver = "2"
 

@@ -14,7 +14,7 @@ path = "src/interpolation_demo.rs"
 [dependencies]
 ursus-core = { path = "../ursus-core" }
 ursus-pipelines = { path = "../ursus-pipelines" }
-engine-materials = { path = "../engine-materials" }
+ursus-materials = { path = "../ursus-materials" }
 engine-gltf-loader = { path = "../engine-gltf-loader" }
 anyhow = "1"
 log = "0.4"

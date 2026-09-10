@@ -13,7 +13,7 @@ use std::sync::Arc;
 /// separate packing module (see `pack::aos`) that consumes both methods.
 ///
 /// Custom strategies are ordinary implementations of this trait, registered
-/// into a `StrategyRegistry` - no changes to engine-materials are needed to
+/// into a `StrategyRegistry` - no changes to ursus-materials are needed to
 /// add one.
 pub trait ShadingStrategy: Send + Sync {
     /// Stable name used for lookup in `StrategyRegistry` and stored on

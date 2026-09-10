@@ -1,4 +1,3 @@
-use engine_materials::MaterialHandle;
 use std::sync::mpsc::Sender;
 use ursus_core::assets::mesh::Aabb;
 use ursus_core::assets::upload::GpuUploadRequest;
@@ -9,6 +8,7 @@ use ursus_core::components::transform_interpolation::TransformInterpolation;
 use ursus_core::render::extract::ExtractSystem;
 use ursus_core::render::world::{ExtractedInstance, ExtractedRenderSettings, RenderWorld};
 use ursus_core::GameWorld;
+use ursus_materials::MaterialHandle;
 
 #[derive(Default, Clone)]
 pub struct ExtractedShadowMeshes {

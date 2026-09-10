@@ -10,7 +10,7 @@ pub(crate) fn derive_gpu_material_impl(input: TokenStream) -> TokenStream {
     let name = &input.ident;
 
     let expanded = quote! {
-        impl ::engine_materials::GpuMaterial for #name {
+        impl ::ursus_materials::GpuMaterial for #name {
             type GpuData = ();
 
             fn pack(&self, _resolve_tex: &dyn Fn(u32) -> u32) -> Self::GpuData {

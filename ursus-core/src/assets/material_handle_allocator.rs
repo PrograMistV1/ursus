@@ -1,4 +1,4 @@
-use engine_materials::MaterialHandle;
+use ursus_materials::MaterialHandle;
 
 /// The only source of `MaterialHandle` in the system.
 #[derive(Default)]

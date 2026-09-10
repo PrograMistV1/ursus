@@ -620,16 +620,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "engine-materials"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "engine-macros",
- "glam",
- "log",
-]
-
-[[package]]
 name = "env_filter"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2578,7 +2568,6 @@ dependencies = [
  "clap",
  "cosmic-text",
  "engine-macros",
- "engine-materials",
  "env_logger",
  "etagere",
  "glam",
@@ -2588,6 +2577,7 @@ dependencies = [
  "puffin",
  "puffin_http",
  "raw-window-handle",
+ "ursus-materials",
  "winit",
 ]
 
@@ -2597,12 +2587,22 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "engine-gltf-loader",
- "engine-materials",
  "glam",
  "log",
  "resvg 0.48.1",
  "ursus-core",
+ "ursus-materials",
  "ursus-pipelines",
+]
+
+[[package]]
+name = "ursus-materials"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine-macros",
+ "glam",
+ "log",
 ]
 
 [[package]]
@@ -2623,11 +2623,11 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "engine-gltf-loader",
- "engine-materials",
  "glam",
  "log",
  "resvg 0.47.0",
  "ursus-core",
+ "ursus-materials",
  "ursus-obj-loader",
 ]
 

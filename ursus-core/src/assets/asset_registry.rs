@@ -11,11 +11,11 @@ use crate::components::mesh::MeshHandle;
 use crate::components::transform::Transform;
 use crate::render::gfx::types::Format;
 use crate::render::world::PreparedUiDrawList;
-use engine_materials::MaterialHandle;
-use engine_materials::{Material, StrategyRegistry};
 use glam::Vec2;
 use std::hash::Hash;
 use std::sync::mpsc::Sender;
+use ursus_materials::{Material, StrategyRegistry};
+use ursus_materials::{MaterialHandle, ShadingStrategy};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextureHandle(pub u32);
@@ -57,8 +57,8 @@ pub struct AssetRegistry {
 impl AssetRegistry {
     pub(crate) fn new() -> Self {
         let mut material_strategies = StrategyRegistry::new();
-        material_strategies.register(engine_materials::strategies::PbrStrategy::default());
-        material_strategies.register(engine_materials::strategies::UnlitStrategy::default());
+        material_strategies.register(ursus_materials::strategies::PbrStrategy::default());
+        material_strategies.register(ursus_materials::strategies::UnlitStrategy::default());
 
         Self {
             meshes: MeshHandleAllocator::new(),
@@ -106,23 +106,23 @@ impl AssetRegistry {
 
     /// Registers a new material and queues it for GPU upload on the next
     /// frame's extract. Game thread only.
-    pub fn insert_material(&mut self, material: Material) -> engine_materials::MaterialHandle {
+    pub fn insert_material(&mut self, material: Material) -> MaterialHandle {
         self.materials.insert(material)
     }
 
     /// Mutates a material in place, re-queueing it for GPU upload. Returns
     /// `false` if the handle is unknown. Game thread only.
-    pub fn modify_material(&mut self, handle: engine_materials::MaterialHandle, f: impl FnOnce(&mut Material)) -> bool {
+    pub fn modify_material(&mut self, handle: MaterialHandle, f: impl FnOnce(&mut Material)) -> bool {
         self.materials.modify(handle, f)
     }
 
-    pub fn get_material(&self, handle: engine_materials::MaterialHandle) -> Option<&Material> {
+    pub fn get_material(&self, handle: MaterialHandle) -> Option<&Material> {
         self.materials.get(handle)
     }
 
     /// Registers an additional custom shading strategy, making it available
     /// for materials to reference by name via `Material::strategy`.
-    pub fn register_material_strategy(&mut self, strategy: impl engine_materials::ShadingStrategy + 'static) {
+    pub fn register_material_strategy(&mut self, strategy: impl ShadingStrategy + 'static) {
         self.material_strategies.register(strategy);
     }
 

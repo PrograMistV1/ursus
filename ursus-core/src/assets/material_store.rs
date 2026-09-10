@@ -2,12 +2,12 @@ use crate::render::gfx::descriptor::{DescriptorAllocator, DescriptorSetDesc};
 use crate::render::gfx::types::{DescriptorSetId, ShaderStage};
 use crate::vulkan::resources::growable_buffer::GrowableBuffer;
 use ash::vk;
-use engine_materials::MaterialHandle;
 use std::collections::HashMap;
+use ursus_materials::MaterialHandle;
 
 /// Render-thread GPU storage for packed material bytes, one `GrowableBuffer`
 /// per stride (materials whose packed size differs get separate buffers -
-/// see `engine_materials::pack::aos::AosLayout`, which this store mirrors
+/// see `ursus_materials::pack::aos::AosLayout`, which this store mirrors
 /// on the GPU side).
 ///
 /// For V1, exactly one stride is expected to be in use at a time (`mesh.frag`

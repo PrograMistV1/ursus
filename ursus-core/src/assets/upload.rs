@@ -2,7 +2,7 @@ use crate::assets::mesh::Vertex;
 use crate::assets::TextureHandle;
 use crate::components::mesh::MeshHandle;
 use crate::render::gfx::types::Format;
-use engine_materials::MaterialHandle;
+use ursus_materials::MaterialHandle;
 
 pub enum GpuUploadRequest {
     Mesh {
@@ -21,6 +21,6 @@ pub enum GpuUploadRequest {
     },
     /// Packed material bytes ready to be written into GPU-visible storage.
     /// `bytes.len()` is this material's stride under whichever
-    /// `MaterialLayout` produced them (see `engine_materials::pack::aos`).
+    /// `MaterialLayout` produced them (see `ursus_materials::pack::aos`).
     Material { handle: MaterialHandle, bytes: Vec<u8> },
 }
