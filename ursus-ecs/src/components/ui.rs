@@ -1,7 +1,6 @@
 use glam::Vec2;
-use ursus_macros::Component;
 
-#[derive(Debug, Clone, Component)]
+#[derive(Debug, Clone)]
 pub struct UiLayout {
     pub anchor: Vec2,
     pub pivot: Vec2,
@@ -26,7 +25,7 @@ impl Default for UiLayout {
     }
 }
 
-#[derive(Debug, Clone, Component)]
+#[derive(Debug, Clone)]
 pub struct UiText {
     pub text: String,
     pub font_size: f32,
@@ -53,7 +52,7 @@ impl Default for UiText {
     }
 }
 
-#[derive(Debug, Clone, Component)]
+#[derive(Debug, Clone)]
 pub struct UiRect {
     pub size: Vec2,
     pub color: [f32; 4],

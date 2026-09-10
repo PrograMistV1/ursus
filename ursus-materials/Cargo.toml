@@ -4,9 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ursus-macros = { path = "../ursus-macros" }
-ursus-ecs = { path = "../ursus-ecs" }
-bytemuck = { version = "1.25.0", features = ["derive"] }
-hecs = "0.11.0"
 glam = "0.33.6"
 log = "0.4.34"

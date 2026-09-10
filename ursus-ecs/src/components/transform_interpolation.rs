@@ -1,9 +1,7 @@
 use crate::components::transform::Transform;
 use glam::{Mat4, Quat, Vec3};
-use ursus_macros::Component;
 
-#[derive(Debug, Clone, Copy, Component)]
-#[requires(Transform)]
+#[derive(Debug, Clone, Copy)]
 pub struct TransformInterpolation {
     prev_position: Vec3,
     prev_rotation: Quat,

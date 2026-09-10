@@ -2550,14 +2550,12 @@ dependencies = [
  "env_logger",
  "etagere",
  "glam",
- "hecs",
  "image",
  "log",
  "puffin",
  "puffin_http",
  "raw-window-handle",
  "ursus-ecs",
- "ursus-macros",
  "ursus-materials",
  "winit",
 ]
@@ -2584,7 +2582,6 @@ dependencies = [
  "glam",
  "hecs",
  "puffin",
- "ursus-macros",
 ]
 
 [[package]]
@@ -2611,12 +2608,8 @@ dependencies = [
 name = "ursus-materials"
 version = "0.1.0"
 dependencies = [
- "bytemuck",
  "glam",
- "hecs",
  "log",
- "ursus-ecs",
- "ursus-macros",
 ]
 
 [[package]]

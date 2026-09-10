@@ -7,7 +7,7 @@ use ursus_ecs::components::camera::{ActiveCamera, CameraComponent};
 use ursus_ecs::components::light::DirectionalLightComponent;
 use ursus_ecs::components::transform::Transform;
 use ursus_ecs::components::transform_interpolation::TransformInterpolation;
-use ursus_ecs::world::Entity;
+use ursus_ecs::Entity;
 use ursus_materials::strategies::properties::BASE_COLOR;
 use ursus_materials::{Material, MaterialValue, PropertyId};
 use ursus_pipelines::DefaultPipeline;

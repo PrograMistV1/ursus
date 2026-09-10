@@ -16,7 +16,6 @@ anyhow = "1"
 log = "0.4"
 env_logger = "0.11"
 glam = "0.33.0"
-hecs = "0.11.0"
 bytemuck = "1.25.0"
 image = { version = "0.25.10", features = ["png", "jpeg"], default-features = false }
 cosmic-text = "0.19.0"
@@ -25,7 +24,6 @@ puffin = "0.20.0"
 puffin_http = "0.17.0"
 clap = { version = "4", features = ["derive"] }
 
-ursus-macros = { path = "../ursus-macros" }
 ursus-materials = { path = "../ursus-materials" }
 ursus-ecs = { path = "../ursus-ecs" }
 

@@ -1,5 +1,4 @@
-pub use hecs::Entity;
-use hecs::World;
+use hecs::{Entity, World};
 
 pub struct GameWorld {
     pub inner: World,
@@ -29,15 +28,6 @@ impl Default for GameWorld {
     }
 }
 
-pub trait Component: hecs::Component {
-    #[doc(hidden)]
-    fn check(component: &mut Self, builder: &hecs::EntityBuilder);
-}
-
-pub trait ComponentInit {
-    fn on_init(_component: &mut Self, _builder: &hecs::EntityBuilder) {}
-}
-
 pub struct EntityBuilder<'w> {
     world: &'w mut GameWorld,
     builder: hecs::EntityBuilder,
@@ -48,8 +38,7 @@ impl<'w> EntityBuilder<'w> {
         Self { world, builder: hecs::EntityBuilder::new() }
     }
 
-    pub fn insert<T: Component>(mut self, mut component: T) -> Self {
-        T::check(&mut component, &self.builder);
+    pub fn insert<T: hecs::Component>(mut self, component: T) -> Self {
         self.builder.add(component);
         self
     }

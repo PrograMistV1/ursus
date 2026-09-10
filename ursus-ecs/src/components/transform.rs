@@ -1,7 +1,6 @@
 use glam::{Mat4, Quat, Vec3};
-use ursus_macros::Component;
 
-#[derive(Debug, Copy, Clone, Component)]
+#[derive(Debug, Copy, Clone)]
 pub struct Transform {
     pub position: Vec3,
     pub rotation: Quat,
