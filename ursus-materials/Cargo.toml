@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-engine-macros = { path = "../engine-macros" }
+ursus-macros = { path = "../ursus-macros" }
 bytemuck = { version = "1.25.0", features = ["derive"] }
 glam = "0.33.6"
 log = "0.4.34"

@@ -25,7 +25,7 @@ puffin = "0.20.0"
 puffin_http = "0.17.0"
 clap = { version = "4", features = ["derive"] }
 
-engine-macros = { path = "../engine-macros" }
+ursus-macros = { path = "../ursus-macros" }
 ursus-materials = { path = "../ursus-materials" }
 
 [build-dependencies]

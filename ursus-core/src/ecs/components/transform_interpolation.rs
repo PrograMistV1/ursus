@@ -1,6 +1,6 @@
 use crate::ecs::components::transform::Transform;
-use engine_macros::Component;
 use glam::{Mat4, Quat, Vec3};
+use ursus_macros::Component;
 
 #[derive(Debug, Clone, Copy, Component)]
 #[requires(Transform)]

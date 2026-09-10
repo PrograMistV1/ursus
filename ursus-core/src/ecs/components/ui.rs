@@ -1,5 +1,5 @@
-use engine_macros::Component;
 use glam::Vec2;
+use ursus_macros::Component;
 
 #[derive(Debug, Clone, Component)]
 pub struct UiLayout {

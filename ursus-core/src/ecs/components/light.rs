@@ -1,5 +1,5 @@
-use engine_macros::Component;
 use glam::Vec3;
+use ursus_macros::Component;
 
 pub const DEFAULT_LIGHT_DIRECTION: Vec3 = Vec3::new(-0.3, -1.0, -0.2);
 pub const DEFAULT_LIGHT_COLOR: [f32; 4] = [1.0, 0.95, 0.85, 2.0];

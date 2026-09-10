@@ -1,7 +1,7 @@
-use engine_macros::Component;
 use glam::camera::rh::proj::vulkan::perspective;
 use glam::camera::rh::view::look_at_mat4;
 use glam::{Mat4, Vec3};
+use ursus_macros::Component;
 
 #[derive(Debug, Clone, Copy, Component)]
 pub struct ActiveCamera; // todo components cannot be added or removed at runtime, move as a field CameraComponent

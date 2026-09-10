@@ -612,14 +612,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "engine-macros"
-version = "0.1.0"
-dependencies = [
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "env_filter"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2567,7 +2559,6 @@ dependencies = [
  "bytemuck",
  "clap",
  "cosmic-text",
- "engine-macros",
  "env_logger",
  "etagere",
  "glam",
@@ -2577,6 +2568,7 @@ dependencies = [
  "puffin",
  "puffin_http",
  "raw-window-handle",
+ "ursus-macros",
  "ursus-materials",
  "winit",
 ]
@@ -2596,13 +2588,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ursus-macros"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "ursus-materials"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "engine-macros",
  "glam",
  "log",
+ "ursus-macros",
 ]
 
 [[package]]

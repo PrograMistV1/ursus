@@ -4,7 +4,7 @@ members = [
     "engine-gltf-loader",
     "ursus-obj-loader",
     "ursus-pipelines",
-    "engine-macros",
+    "ursus-macros",
     "ursus-demo",
     "ursus-materials",
 ]
