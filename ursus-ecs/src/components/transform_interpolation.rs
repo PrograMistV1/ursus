@@ -1,4 +1,4 @@
-use crate::ecs::components::transform::Transform;
+use crate::components::transform::Transform;
 use glam::{Mat4, Quat, Vec3};
 use ursus_macros::Component;
 

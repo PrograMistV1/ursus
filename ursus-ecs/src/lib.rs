@@ -1,3 +1,4 @@
+extern crate self as ursus_ecs;
 pub mod components;
 pub mod systems;
 pub mod tick;

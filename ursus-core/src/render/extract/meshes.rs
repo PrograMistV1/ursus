@@ -1,12 +1,12 @@
 use crate::assets::upload::GpuUploadRequest;
 use crate::assets::AssetRegistry;
-use crate::components::mesh::{MeshHandle, TechniqueHandle};
-use crate::components::transform::Transform;
-use crate::components::transform_interpolation::TransformInterpolation;
 use crate::render::extract::ExtractSystem;
 use crate::render::world::{ExtractedInstance, ExtractedMeshes, ExtractedRenderSettings, RenderWorld};
-use crate::GameWorld;
 use std::sync::mpsc::Sender;
+use ursus_ecs::components::mesh::{MeshHandle, TechniqueHandle};
+use ursus_ecs::components::transform::Transform;
+use ursus_ecs::components::transform_interpolation::TransformInterpolation;
+use ursus_ecs::GameWorld;
 use ursus_materials::MaterialHandle;
 
 pub struct MeshExtract;

@@ -1,12 +1,12 @@
 use crate::assets::upload::GpuUploadRequest;
 use crate::assets::AssetRegistry;
-use crate::components::camera::{ActiveCamera, CameraComponent};
 use crate::render::extract::ExtractSystem;
 use crate::render::world::{ExtractedCamera, ExtractedRenderSettings, RenderWorld};
-use crate::GameWorld;
 use glam::camera::rh::proj::vulkan::perspective;
 use glam::camera::rh::view::look_at_mat4;
 use std::sync::mpsc::Sender;
+use ursus_ecs::components::camera::{ActiveCamera, CameraComponent};
+use ursus_ecs::GameWorld;
 
 pub struct CameraExtract;
 impl ExtractSystem for CameraExtract {

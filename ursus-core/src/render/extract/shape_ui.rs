@@ -2,8 +2,8 @@ use crate::assets::upload::GpuUploadRequest;
 use crate::assets::AssetRegistry;
 use crate::render::extract::ExtractSystem;
 use crate::render::world::{ExtractedUiRects, ExtractedUiTexts, PreparedUiDrawList, RenderWorld};
-use crate::GameWorld;
 use std::sync::mpsc::Sender;
+use ursus_ecs::GameWorld;
 
 pub struct ShapeUiSystem;
 

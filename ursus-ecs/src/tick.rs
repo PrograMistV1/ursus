@@ -1,4 +1,5 @@
 use crate::GameWorld;
+use crate::systems::SyncTransformInterpolation;
 
 pub trait TickSystem: Send + Sync {
     fn tick(&self, world: &mut GameWorld, dt: f32);
@@ -34,6 +35,6 @@ impl Default for TickSchedule {
 
 pub fn default_tick_schedule() -> TickSchedule {
     let mut schedule = TickSchedule::new();
-    schedule.add(crate::ecs::systems::SyncTransformInterpolation);
+    schedule.add(SyncTransformInterpolation);
     schedule
 }

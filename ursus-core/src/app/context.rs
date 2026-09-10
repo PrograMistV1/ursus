@@ -1,8 +1,6 @@
 use crate::app::Plugin;
 use crate::assets::asset_registry::AssetRegistry;
 use crate::assets::upload::GpuUploadRequest;
-use crate::ecs::tick::default_tick_schedule;
-use crate::ecs::{GameWorld, TickSchedule, TickSystem};
 use crate::render::extract::material::extract_dirty_materials;
 use crate::render::extract::{ExtractSchedule, ExtractSystem};
 use crate::render::frame_pipeline::render_pipeline::RenderPipeline;
@@ -12,6 +10,8 @@ use crate::render::triple_buffer::TripleBuffer;
 use crate::render::world::{ExtractedRenderSettings, RenderWorld};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
+use ursus_ecs::tick::default_tick_schedule;
+use ursus_ecs::{GameWorld, TickSchedule, TickSystem};
 
 #[allow(clippy::enum_variant_names)]
 pub enum WindowCommand {

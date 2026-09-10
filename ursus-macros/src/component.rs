@@ -35,22 +35,22 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
 
     let init_impl = match &on_init_fn {
         Some(func) => quote! {
-            impl ::engine_core::ecs::ComponentInit for #name {
+            impl ::ursus_ecs::ComponentInit for #name {
                 fn on_init(component: &mut Self, builder: &hecs::EntityBuilder) {
                     #func(component, builder);
                 }
             }
         },
         None => quote! {
-            impl ::engine_core::ecs::ComponentInit for #name {}
+            impl ::ursus_ecs::ComponentInit for #name {}
         },
     };
 
     let expanded = quote! {
-        impl ::engine_core::ecs::Component for #name {
+        impl ::ursus_ecs::Component for #name {
             fn check(component: &mut Self, builder: &hecs::EntityBuilder) {
                 #(#checks)*
-                <#name as ::engine_core::ecs::ComponentInit>::on_init(component, builder);
+                <#name as ::ursus_ecs::ComponentInit>::on_init(component, builder);
             }
         }
 

@@ -1,0 +1,11 @@
+[package]
+name = "ursus-ecs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hecs = "0.11.0"
+glam = "0.33.0"
+puffin = "0.20.0"
+ursus-macros = { path = "../ursus-macros" }
+ursus-materials = { path = "../ursus-materials" }

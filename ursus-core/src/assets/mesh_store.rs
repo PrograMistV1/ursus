@@ -1,7 +1,7 @@
 use crate::assets::mesh::{CpuMesh, GpuMesh};
-use crate::components::mesh::MeshHandle;
 use ash::vk;
 use std::collections::HashMap;
+use ursus_ecs::components::mesh::MeshHandle;
 
 enum GpuMeshState {
     Ready(Box<GpuMesh>),

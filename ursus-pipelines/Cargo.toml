@@ -8,6 +8,7 @@ ursus-core = { path = "../ursus-core" }
 ursus-materials = { path = "../ursus-materials" }
 ursus-gltf-loader = { path = "../ursus-gltf-loader", optional = true }
 ursus-obj-loader = { path = "../ursus-obj-loader", optional = true }
+ursus-ecs = { path = "../ursus-ecs" }
 anyhow = "1"
 log = "0.4"
 glam = "0.33.0"

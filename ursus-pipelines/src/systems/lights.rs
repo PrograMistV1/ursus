@@ -4,11 +4,11 @@ use glam::Mat4;
 use std::sync::mpsc::Sender;
 use ursus_core::assets::upload::GpuUploadRequest;
 use ursus_core::assets::AssetRegistry;
-use ursus_core::components::light::{DirectionalLightComponent, PointLightComponent};
 use ursus_core::math::light_frustum::compute_light_view_proj;
 use ursus_core::render::extract::ExtractSystem;
 use ursus_core::render::world::RenderWorld;
-use ursus_core::GameWorld;
+use ursus_ecs::components::light::{DirectionalLightComponent, PointLightComponent};
+use ursus_ecs::GameWorld;
 
 #[derive(Clone)]
 pub struct ExtractedLights {

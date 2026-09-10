@@ -1,10 +1,9 @@
 use crate::assets::asset_registry::TextureHandle;
 use crate::render::gfx::descriptor::DescriptorAllocator;
-use crate::vulkan::core::SubmitContext;
+use crate::vulkan::core::{DeviceContext, SubmitContext};
 use crate::vulkan::resources::texture::TextureSource;
 use crate::vulkan::{BindlessSet, GpuTexture};
 use ash::vk;
-use engine_core::vulkan::core::DeviceContext;
 use std::collections::HashMap;
 
 pub const BINDLESS_SLOT_WHITE: u32 = 0;

@@ -1,4 +1,4 @@
-use crate::components::mesh::MeshHandle;
+use ursus_ecs::components::mesh::MeshHandle;
 
 /// The only source of `MeshHandle` in the system.
 #[derive(Default)]

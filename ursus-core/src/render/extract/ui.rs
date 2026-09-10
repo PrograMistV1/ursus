@@ -1,13 +1,13 @@
 use crate::assets::upload::GpuUploadRequest;
 use crate::assets::AssetRegistry;
-use crate::components::ui::{UiLayout, UiRect, UiText};
 use crate::render::extract::ExtractSystem;
 use crate::render::world::{
     ExtractedRenderSettings, ExtractedUiRect, ExtractedUiRects, ExtractedUiText, ExtractedUiTexts, RenderWorld,
 };
-use crate::GameWorld;
 use glam::Vec2;
 use std::sync::mpsc::Sender;
+use ursus_ecs::components::ui::{UiLayout, UiRect, UiText};
+use ursus_ecs::GameWorld;
 
 pub struct UiExtract;
 impl ExtractSystem for UiExtract {

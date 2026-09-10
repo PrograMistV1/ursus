@@ -11,8 +11,8 @@ use crate::render::extract::meshes::MeshExtract;
 use crate::render::extract::shape_ui::ShapeUiSystem;
 use crate::render::extract::ui::UiExtract;
 use crate::render::world::RenderWorld;
-use crate::GameWorld;
 use std::sync::mpsc::Sender;
+use ursus_ecs::GameWorld;
 
 pub trait ExtractSystem: Send + Sync {
     fn extract(

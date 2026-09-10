@@ -3,8 +3,8 @@ use std::collections::HashMap;
 
 use crate::assets::mesh::Aabb;
 use crate::assets::TextureHandle;
-use crate::components::mesh::MeshHandle;
 use glam::{Mat4, Vec2, Vec3};
+use ursus_ecs::components::mesh::MeshHandle;
 use ursus_materials::MaterialHandle;
 
 pub struct RenderWorld {

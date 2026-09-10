@@ -7,13 +7,13 @@ use crate::assets::texture_handle_allocator::TextureHandleAllocator;
 use crate::assets::texture_store::{TextureRegistration, TextureStore};
 use crate::assets::upload::GpuUploadRequest;
 use crate::assets::upload_queue::UploadQueue;
-use crate::components::mesh::MeshHandle;
-use crate::components::transform::Transform;
 use crate::render::gfx::types::Format;
 use crate::render::world::PreparedUiDrawList;
 use glam::Vec2;
 use std::hash::Hash;
 use std::sync::mpsc::Sender;
+use ursus_ecs::components::mesh::MeshHandle;
+use ursus_ecs::components::transform::Transform;
 use ursus_materials::{Material, StrategyRegistry};
 use ursus_materials::{MaterialHandle, ShadingStrategy};
 

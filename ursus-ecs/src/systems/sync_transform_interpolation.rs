@@ -1,7 +1,6 @@
 use crate::components::transform::Transform;
 use crate::components::transform_interpolation::TransformInterpolation;
-use crate::ecs::tick::TickSystem;
-use crate::GameWorld;
+use crate::{GameWorld, TickSystem};
 
 pub struct SyncTransformInterpolation;
 

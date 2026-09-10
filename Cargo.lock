@@ -2556,6 +2556,7 @@ dependencies = [
  "puffin",
  "puffin_http",
  "raw-window-handle",
+ "ursus-ecs",
  "ursus-macros",
  "ursus-materials",
  "winit",
@@ -2570,9 +2571,21 @@ dependencies = [
  "log",
  "resvg 0.48.1",
  "ursus-core",
+ "ursus-ecs",
  "ursus-gltf-loader",
  "ursus-materials",
  "ursus-pipelines",
+]
+
+[[package]]
+name = "ursus-ecs"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "hecs",
+ "puffin",
+ "ursus-macros",
+ "ursus-materials",
 ]
 
 [[package]]
@@ -2626,6 +2639,7 @@ dependencies = [
  "log",
  "resvg 0.47.0",
  "ursus-core",
+ "ursus-ecs",
  "ursus-gltf-loader",
  "ursus-materials",
  "ursus-obj-loader",

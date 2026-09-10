@@ -1,4 +1,4 @@
-use crate::ecs::{Component, ComponentInit};
+use crate::{Component, ComponentInit};
 use ursus_materials::MaterialHandle;
 
 impl Component for MaterialHandle {

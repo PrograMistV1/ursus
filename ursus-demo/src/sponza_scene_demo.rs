@@ -1,10 +1,11 @@
 use glam::{Quat, Vec2, Vec3};
 use ursus_core::app::window_config::WindowConfig;
 use ursus_core::app::{App, Engine, EngineContext};
-use ursus_core::components::camera::{ActiveCamera, CameraComponent};
-use ursus_core::components::light::DirectionalLightComponent;
-use ursus_core::components::ui::{UiLayout, UiText};
 use ursus_core::render::thread::command::PipelineFactory;
+use ursus_ecs::components::camera::{ActiveCamera, CameraComponent};
+use ursus_ecs::components::light::DirectionalLightComponent;
+use ursus_ecs::components::transform::Transform;
+use ursus_ecs::components::ui::{UiLayout, UiText};
 use ursus_pipelines::plugins::LightingPlugin;
 use ursus_pipelines::DefaultPipeline;
 
@@ -39,7 +40,7 @@ impl App for MyApp {
         for prim in primitives {
             let mesh_handle = ctx.asset_registry.upload_mesh(prim.mesh);
 
-            let transform = ursus_core::components::transform::Transform {
+            let transform = Transform {
                 position: Vec3::from(prim.node_translation),
                 rotation: Quat::from_array(prim.node_rotation),
                 scale: Vec3::from(prim.node_scale),

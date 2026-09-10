@@ -16,6 +16,7 @@ ursus-core = { path = "../ursus-core" }
 ursus-pipelines = { path = "../ursus-pipelines" }
 ursus-materials = { path = "../ursus-materials" }
 ursus-gltf-loader = { path = "../ursus-gltf-loader" }
+ursus-ecs = { path = "../ursus-ecs" }
 anyhow = "1"
 log = "0.4"
 glam = "0.33.0"

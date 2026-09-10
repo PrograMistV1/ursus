@@ -1,7 +1,7 @@
 use crate::assets::mesh::Vertex;
 use crate::assets::TextureHandle;
-use crate::components::mesh::MeshHandle;
 use crate::render::gfx::types::Format;
+use ursus_ecs::components::mesh::MeshHandle;
 use ursus_materials::MaterialHandle;
 
 pub enum GpuUploadRequest {

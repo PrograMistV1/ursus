@@ -27,5 +27,6 @@ clap = { version = "4", features = ["derive"] }
 
 ursus-macros = { path = "../ursus-macros" }
 ursus-materials = { path = "../ursus-materials" }
+ursus-ecs = { path = "../ursus-ecs" }
 
 [build-dependencies]

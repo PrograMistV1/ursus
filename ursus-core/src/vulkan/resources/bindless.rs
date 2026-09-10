@@ -1,11 +1,10 @@
 use crate::render::gfx::descriptor::{DescriptorAllocator, DescriptorSetDesc};
 use crate::render::gfx::types::Format;
 use crate::render::gfx::types::{DescriptorSetId, ShaderStage};
-use crate::vulkan::core::{sampler, DeviceContext};
+use crate::vulkan::core::{sampler, DeviceContext, SubmitContext};
 use crate::vulkan::resources::texture::TextureSource;
 use crate::vulkan::GpuTexture;
 use ash::vk;
-use engine_core::vulkan::core::SubmitContext;
 
 pub const MAX_TEXTURES: u32 = 4096;
 
