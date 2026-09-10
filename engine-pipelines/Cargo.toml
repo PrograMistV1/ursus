@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-engine-core = { path = "../engine-core" }
+ursus-core = { path = "../ursus-core" }
 engine-materials = { path = "../engine-materials" }
 engine-gltf-loader = { path = "../engine-gltf-loader", optional = true }
 engine-obj-loader = { path = "../engine-obj-loader", optional = true }

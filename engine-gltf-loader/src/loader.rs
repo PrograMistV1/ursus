@@ -1,9 +1,9 @@
 use crate::tangents::compute_tangents;
-use engine_core::assets::loader_registry::{AssetLoader, LoadedMeshSource, LoadedPrimitive};
-use engine_core::assets::mesh::{CpuMesh, Vertex};
 use glam::{Vec2, Vec3};
 use image::DynamicImage;
 use std::path::Path;
+use ursus_core::assets::loader_registry::{AssetLoader, LoadedMeshSource, LoadedPrimitive};
+use ursus_core::assets::mesh::{CpuMesh, Vertex};
 
 pub struct GltfPrimitive {
     pub mesh: CpuMesh,

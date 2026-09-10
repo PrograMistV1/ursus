@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-engine-core = { path = "../engine-core" }
+ursus-core = { path = "../ursus-core" }
 gltf = { version = "1.4.1", features = ["image", "KHR_materials_unlit"] }
 image = { version = "0.25.10", features = ["png", "jpeg"], default-features = false }
 anyhow = "1"

@@ -127,7 +127,7 @@ impl AssetRegistry {
     }
 
     // ==================== Crate-internal API ====================
-    // Used by other engine-core modules (extract systems, EngineContext, etc.), never by
+    // Used by other ursus-core modules (extract systems, EngineContext, etc.), never by
     // App implementors directly.
 
     pub(crate) fn flush_uploads_cpu(&mut self, tx: &Sender<GpuUploadRequest>) {

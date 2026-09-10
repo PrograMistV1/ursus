@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "engine-core",
+    "ursus-core",
     "engine-gltf-loader",
     "engine-obj-loader",
     "engine-pipelines",

@@ -1,7 +1,7 @@
-use engine_core::assets::loader_registry::{AssetLoader, LoadedMeshSource, LoadedPrimitive};
-use engine_core::assets::mesh::{CpuMesh, Vertex};
 use glam::{Vec2, Vec3};
 use std::path::Path;
+use ursus_core::assets::loader_registry::{AssetLoader, LoadedMeshSource, LoadedPrimitive};
+use ursus_core::assets::mesh::{CpuMesh, Vertex};
 
 pub fn load_obj(path: &Path) -> anyhow::Result<CpuMesh> {
     let (models, _materials) =

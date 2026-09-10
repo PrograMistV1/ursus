@@ -8,9 +8,8 @@ Lights are shown here, they are not part of the model.
 
 ## Model notes
 
-Tangents have been computed using MikkTSpace, as the original OBJ model did not have them.
-I have manually inspected the normals, and it looks correct to me.
-
+Tangents have been computed using MikkTSpace, as the original OBJ model did not have them. I have manually inspected the
+normals, and it looks correct to me.
 
 ## Sources
 
@@ -22,12 +21,11 @@ I have manually inspected the normals, and it looks correct to me.
 
 - www.alexandre-pestana.com/downloads/SponzaPBR_Textures.rar
 
-I needed to resize some of the alpha mask textures to the 1024x1024 resolution used by the new texture pack,
-and merge in diffuse with alpha.
-I also repacked the separate metallic/roughness textures into the glTF layout (G - roughness, B - metallic).
-The images are also re-encoded as PNG instead of TGA.
-All the materials also had a constant diffuse factor of about 0.58. I assume it was supposed to be there, so I kept it.
-I also ran the vertices and indices through a mesh optimizer.
+I needed to resize some of the alpha mask textures to the 1024x1024 resolution used by the new texture pack, and merge
+in diffuse with alpha. I also repacked the separate metallic/roughness textures into the glTF layout (G - roughness, B -
+metallic). The images are also re-encoded as PNG instead of TGA. All the materials also had a constant diffuse factor of
+about 0.58. I assume it was supposed to be there, so I kept it. I also ran the vertices and indices through a mesh
+optimizer.
 
 ## Licensing notes
 

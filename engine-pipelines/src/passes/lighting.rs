@@ -1,17 +1,17 @@
 use crate::passes::light_buffer::{LightBuffer, LightingUbo};
 use crate::systems::ExtractedLights;
-use engine_core::assets::gpu_server::GpuAssetServer;
-use engine_core::render::gfx::descriptor::DescriptorSetDesc;
-use engine_core::render::gfx::sampler::SamplerDesc;
-use engine_core::render::gfx::types::format::Format;
-use engine_core::render::gfx::types::{
+use std::slice;
+use ursus_core::assets::gpu_server::GpuAssetServer;
+use ursus_core::render::gfx::descriptor::DescriptorSetDesc;
+use ursus_core::render::gfx::sampler::SamplerDesc;
+use ursus_core::render::gfx::types::format::Format;
+use ursus_core::render::gfx::types::{
     CompareOp, DescriptorSetId, PipelineId, PushConstantRange, SamplerId, ShaderStage, VertexLayout,
 };
-use engine_core::render::gfx::CommandEncoder;
-use engine_core::render::resource::ResourceHandle;
-use engine_core::render::world::{ExtractedCamera, RenderWorld};
-use engine_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
-use std::slice;
+use ursus_core::render::gfx::CommandEncoder;
+use ursus_core::render::resource::ResourceHandle;
+use ursus_core::render::world::{ExtractedCamera, RenderWorld};
+use ursus_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]

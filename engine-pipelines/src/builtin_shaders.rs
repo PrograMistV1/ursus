@@ -1,4 +1,4 @@
-use engine_core::assets::{ShaderDef, ShaderRegistry};
+use ursus_core::assets::{ShaderDef, ShaderRegistry};
 
 pub fn register_builtin(reg: &mut ShaderRegistry) {
     reg.register_if_absent(ShaderDef::from_bytes(

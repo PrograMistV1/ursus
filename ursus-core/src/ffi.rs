@@ -41,7 +41,7 @@ unsafe impl Sync for AppCallbacksOwned {}
 #[unsafe(no_mangle)]
 pub extern "C" fn engine_create() -> *mut EngineHandle {
     Box::into_raw(Box::new(EngineHandle {
-        title: "engine-core".to_string(),
+        title: "ursus-core".to_string(),
         width: 1280,
         height: 720,
         validation: cfg!(debug_assertions),
@@ -117,7 +117,7 @@ pub unsafe extern "C" fn engine_run(handle: *mut EngineHandle, callbacks: *const
     match crate::app::Engine::run(app) {
         Ok(_) => 0,
         Err(e) => {
-            eprintln!("[engine-core] engine_run failed: {e}");
+            eprintln!("[ursus-core] engine_run failed: {e}");
             -1
         }
     }
@@ -235,7 +235,7 @@ fn ctx_mut(handle: *mut EngineHandle) -> *mut EngineContext {
     }
     let ctx = unsafe { (*handle).ctx };
     if ctx.is_null() {
-        eprintln!("[engine-core] API called outside of on_start/on_update");
+        eprintln!("[ursus-core] API called outside of on_start/on_update");
     }
     ctx
 }

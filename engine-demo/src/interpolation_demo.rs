@@ -1,16 +1,16 @@
-use engine_core::app::{App, Engine, EngineContext};
-use engine_core::assets::CpuMesh;
-use engine_core::components::camera::{ActiveCamera, CameraComponent};
-use engine_core::components::light::DirectionalLightComponent;
-use engine_core::components::transform::Transform;
-use engine_core::components::transform_interpolation::TransformInterpolation;
-use engine_core::ecs::world::Entity;
-use engine_core::render::thread::command::PipelineFactory;
 use engine_materials::strategies::properties::BASE_COLOR;
 use engine_materials::{Material, MaterialValue, PropertyId};
 use engine_pipelines::DefaultPipeline;
 use glam::{Quat, Vec3, Vec4};
 use std::f32::consts::PI;
+use ursus_core::app::{App, Engine, EngineContext};
+use ursus_core::assets::CpuMesh;
+use ursus_core::components::camera::{ActiveCamera, CameraComponent};
+use ursus_core::components::light::DirectionalLightComponent;
+use ursus_core::components::transform::Transform;
+use ursus_core::components::transform_interpolation::TransformInterpolation;
+use ursus_core::ecs::world::Entity;
+use ursus_core::render::thread::command::PipelineFactory;
 
 mod text_texture;
 

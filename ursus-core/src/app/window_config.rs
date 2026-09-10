@@ -22,7 +22,7 @@ pub struct WindowConfig {
 impl Default for WindowConfig {
     fn default() -> Self {
         Self {
-            title: "engine-core".to_string(),
+            title: "ursus-core".to_string(),
             width: 1280,
             height: 720,
             resizable: true,

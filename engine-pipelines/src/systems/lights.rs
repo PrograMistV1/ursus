@@ -1,14 +1,14 @@
 use crate::passes::light_buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
 use crate::systems::ExtractedShadowMeshes;
-use engine_core::assets::upload::GpuUploadRequest;
-use engine_core::assets::AssetRegistry;
-use engine_core::components::light::{DirectionalLightComponent, PointLightComponent};
-use engine_core::math::light_frustum::compute_light_view_proj;
-use engine_core::render::extract::ExtractSystem;
-use engine_core::render::world::RenderWorld;
-use engine_core::GameWorld;
 use glam::Mat4;
 use std::sync::mpsc::Sender;
+use ursus_core::assets::upload::GpuUploadRequest;
+use ursus_core::assets::AssetRegistry;
+use ursus_core::components::light::{DirectionalLightComponent, PointLightComponent};
+use ursus_core::math::light_frustum::compute_light_view_proj;
+use ursus_core::render::extract::ExtractSystem;
+use ursus_core::render::world::RenderWorld;
+use ursus_core::GameWorld;
 
 #[derive(Clone)]
 pub struct ExtractedLights {
@@ -89,7 +89,7 @@ fn compute_scene_bounds(rw: &RenderWorld) -> (glam::Vec3, f32) {
 
     for inst in &meshes.instances {
         let Some(local_aabb) = &inst.aabb else { continue };
-        let world_aabb = engine_core::math::frustum::transform_aabb(local_aabb, inst.model);
+        let world_aabb = ursus_core::math::frustum::transform_aabb(local_aabb, inst.model);
         min = min.min(world_aabb.min);
         max = max.max(world_aabb.max);
         any = true;

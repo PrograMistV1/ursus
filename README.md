@@ -20,7 +20,7 @@
 
 ---
 
-## 📦 engine-core
+## 📦 ursus-core
 
 A custom Vulkan game engine written in Rust, built around a render-graph architecture with automatic barrier tracking, a
 deferred rendering pipeline, and a threaded game/render split.
@@ -34,18 +34,18 @@ Two cubes rendered in a single pipeline, showcasing smooth transform interpolati
 ## 📁 Workspace layout
 
 ```text
-engine-core/       the engine itself: ECS, asset pipeline, Vulkan abstraction, render graph
-engine-pipelines/    a batteries-included deferred renderer + built-in shaders, built on engine-core
+ursus-core/       the engine itself: ECS, asset pipeline, Vulkan abstraction, render graph
+engine-pipelines/    a batteries-included deferred renderer + built-in shaders, built on ursus-core
 engine-demo/   minimal example application showing how to use the engine
 ```
 
-`engine-core` has no opinion about *how* you render things - it gives you the plumbing (device/swapchain setup, render
+`ursus-core` has no opinion about *how* you render things - it gives you the plumbing (device/swapchain setup, render
 graph, resource pool, asset loading, ECS). `engine-pipelines` is one opinionated pipeline built on top of that plumbing.
 You could write your own pipeline crate instead and skip `engine-pipelines` entirely.
 
 ## ⭐ Features
 
-- **Render graph** (`engine-core/src/render/graph.rs`) - passes declare read/write access to resources; the graph
+- **Render graph** (`ursus-core/src/render/graph.rs`) - passes declare read/write access to resources; the graph
   topologically sorts them and inserts image layout barriers automatically. See [Render graph](#-render-graph) below.
 - **Deferred pipeline** (`engine-pipelines`) - shadow pass -> depth prepass -> GBuffer (albedo/normal) -> lighting ->
   tonemap/post-process -> FSR1 (EASU + RCAS) upscale -> UI overlay.

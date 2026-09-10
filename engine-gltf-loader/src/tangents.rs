@@ -1,5 +1,5 @@
-use engine_core::assets::mesh::Vertex;
 use glam::{Vec2, Vec3};
+use ursus_core::assets::mesh::Vertex;
 
 pub fn compute_tangents(positions: &[Vec3], normals: &[Vec3], uvs: &[Vec2], indices: &[u32]) -> Vec<[f32; 4]> {
     let n = positions.len();

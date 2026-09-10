@@ -1,6 +1,6 @@
-use engine_core::assets::gpu_server::GpuAssetServer;
-use engine_core::render::gfx::types::BufferUsage;
-use engine_core::vulkan::MappedGpuBuffer;
+use ursus_core::assets::gpu_server::GpuAssetServer;
+use ursus_core::render::gfx::types::BufferUsage;
+use ursus_core::vulkan::MappedGpuBuffer;
 
 pub const MAX_POINT_LIGHTS: usize = 16;
 

@@ -5,14 +5,14 @@ use crate::passes::lighting::LightingPass;
 use crate::passes::post_process::PostProcessPass;
 use crate::passes::shadow::ShadowPass;
 use crate::passes::ui::UiPass;
-use engine_core::assets::gpu_server::GpuAssetServer;
-use engine_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
-use engine_core::render::gfx::descriptor::ImageUsage;
-use engine_core::render::gfx::types::{Format, ImageLayout};
-use engine_core::render::graph::{pass, RenderGraph};
-use engine_core::render::resource::{ResourceDesc, ResourceExtent};
-use engine_core::vulkan::VulkanContext;
 use std::sync::Arc;
+use ursus_core::assets::gpu_server::GpuAssetServer;
+use ursus_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
+use ursus_core::render::gfx::descriptor::ImageUsage;
+use ursus_core::render::gfx::types::{Format, ImageLayout};
+use ursus_core::render::graph::{pass, RenderGraph};
+use ursus_core::render::resource::{ResourceDesc, ResourceExtent};
+use ursus_core::vulkan::VulkanContext;
 
 const LDR_FORMAT: Format = Format::Rgba8Unorm;
 

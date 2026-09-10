@@ -1,5 +1,5 @@
 use crate::systems::{LightExtract, ShadowExtract};
-use engine_core::app::{EngineContext, Plugin};
+use ursus_core::app::{EngineContext, Plugin};
 
 pub struct LightingPlugin;
 
