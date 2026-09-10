@@ -36,7 +36,7 @@ Two cubes rendered in a single pipeline, showcasing smooth transform interpolati
 ```text
 ursus-core/       the engine itself: ECS, asset pipeline, Vulkan abstraction, render graph
 engine-pipelines/    a batteries-included deferred renderer + built-in shaders, built on ursus-core
-engine-demo/   minimal example application showing how to use the engine
+ursus-demo/   minimal example application showing how to use the engine
 ```
 
 `ursus-core` has no opinion about *how* you render things - it gives you the plumbing (device/swapchain setup, render
@@ -106,14 +106,14 @@ Requires the **Vulkan SDK** installed with `glslc` on your `PATH` - shaders are 
 
 ```bash
 cargo build --release
-cargo run -p engine-demo
+cargo run -p ursus-demo
 ```
 
 If `glslc` isn't found, the build fails immediately with a clear panic rather than silently skipping shader compilation.
 
 ## 🎮 Example usage
 
-See `engine-demo/src/main.rs` for a full example. Minimal shape:
+See `ursus-demo/src/main.rs` for a full example. Minimal shape:
 
 ```rust
 struct MyApp;

@@ -5,7 +5,7 @@ members = [
     "engine-obj-loader",
     "engine-pipelines",
     "engine-macros",
-    "engine-demo", "engine-materials",
+    "ursus-demo", "engine-materials",
 ]
 resolver = "2"
 
