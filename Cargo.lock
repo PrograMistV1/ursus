@@ -2585,7 +2585,6 @@ dependencies = [
  "hecs",
  "puffin",
  "ursus-macros",
- "ursus-materials",
 ]
 
 [[package]]
@@ -2614,7 +2613,9 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam",
+ "hecs",
  "log",
+ "ursus-ecs",
  "ursus-macros",
 ]
 
