@@ -2,7 +2,7 @@
 members = [
     "ursus-core",
     "engine-gltf-loader",
-    "engine-obj-loader",
+    "ursus-obj-loader",
     "ursus-pipelines",
     "engine-macros",
     "ursus-demo",

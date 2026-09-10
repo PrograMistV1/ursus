@@ -630,17 +630,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "engine-obj-loader"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "glam",
- "log",
- "tobj",
- "ursus-core",
-]
-
-[[package]]
 name = "env_filter"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2617,6 +2606,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ursus-obj-loader"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "glam",
+ "log",
+ "tobj",
+ "ursus-core",
+]
+
+[[package]]
 name = "ursus-pipelines"
 version = "0.1.0"
 dependencies = [
@@ -2624,11 +2624,11 @@ dependencies = [
  "bytemuck",
  "engine-gltf-loader",
  "engine-materials",
- "engine-obj-loader",
  "glam",
  "log",
  "resvg 0.47.0",
  "ursus-core",
+ "ursus-obj-loader",
 ]
 
 [[package]]

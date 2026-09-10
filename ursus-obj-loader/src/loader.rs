@@ -69,6 +69,6 @@ impl AssetLoader for ObjLoader {
     }
 
     fn name(&self) -> &str {
-        "obj (engine-obj-loader)"
+        "obj (ursus-obj-loader)"
     }
 }
