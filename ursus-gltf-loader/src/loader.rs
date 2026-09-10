@@ -205,6 +205,6 @@ impl AssetLoader for GltfLoader {
     }
 
     fn name(&self) -> &str {
-        "gltf (engine-gltf-loader)"
+        "gltf (ursus-gltf-loader)"
     }
 }

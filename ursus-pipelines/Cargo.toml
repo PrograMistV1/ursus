@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 ursus-core = { path = "../ursus-core" }
 ursus-materials = { path = "../ursus-materials" }
-engine-gltf-loader = { path = "../engine-gltf-loader", optional = true }
+ursus-gltf-loader = { path = "../ursus-gltf-loader", optional = true }
 ursus-obj-loader = { path = "../ursus-obj-loader", optional = true }
 anyhow = "1"
 log = "0.4"
@@ -16,5 +16,5 @@ bytemuck = "1.25.0"
 
 [features]
 default = ["gltf-loader", "obj-loader"]
-gltf-loader = ["dep:engine-gltf-loader"]
+gltf-loader = ["dep:ursus-gltf-loader"]
 obj-loader = ["dep:ursus-obj-loader"]

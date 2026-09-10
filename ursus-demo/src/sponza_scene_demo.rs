@@ -34,7 +34,7 @@ impl App for MyApp {
         ctx.add_plugin(LightingPlugin);
 
         let sponza_path = assets_dir().join("sponza/glTF/Sponza.gltf");
-        let primitives = engine_gltf_loader::load_gltf(&sponza_path).expect("failed to load Sponza");
+        let primitives = ursus_gltf_loader::load_gltf(&sponza_path).expect("failed to load Sponza");
 
         for prim in primitives {
             let mesh_handle = ctx.asset_registry.upload_mesh(prim.mesh);
