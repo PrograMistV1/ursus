@@ -6,5 +6,5 @@ pub mod upload;
 pub(crate) mod upload_queue;
 
 pub use loader_registry::{AssetLoader, LoadedMeshSource, LoadedPrimitive, LoadedTexture, LoaderRegistry};
-pub use mesh::{CpuMesh, GpuMesh, Vertex};
+pub use mesh::{CpuMesh, Vertex};
 pub use storage::shader::{ShaderDef, ShaderHandle, ShaderRegistry};

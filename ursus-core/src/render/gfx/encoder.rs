@@ -1,5 +1,5 @@
 use super::pipeline_cache::PipelineCache;
-use crate::assets::mesh::GpuMesh;
+use crate::assets::storage::mesh::GpuMesh;
 use crate::assets::storage::GpuAssetServer;
 use crate::render::gfx::types::handles::{PipelineId, ShaderStage};
 use crate::render::gfx::types::DescriptorSetId;

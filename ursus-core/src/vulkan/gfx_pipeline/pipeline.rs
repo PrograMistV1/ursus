@@ -1,7 +1,7 @@
 use crate::render::gfx::types::{BlendState, CompareOp, CullMode, Format, PushConstantRange, VertexLayout};
 use ash::vk;
 
-/// Descriptor for building a graphics pipeline via [`PipelineCache::create_graphics_pipeline`].
+/// Descriptor for building a graphics pipeline via [`ursus_core::render::gfx::PipelineCache::create_graphics_pipeline`].
 pub struct PipelineDesc<'a> {
     pub(crate) vert_spv: &'a [u8],
     pub(crate) frag_spv: &'a [u8],
