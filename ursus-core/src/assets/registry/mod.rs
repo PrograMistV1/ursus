@@ -1,8 +1,9 @@
-pub mod material_asset;
+pub mod material;
 pub mod mesh;
 pub mod texture;
 
-pub use material_asset::MaterialAssetRegistry;
+pub use material::MaterialAssetRegistry;
+pub use material::MaterialRegistry;
 pub use mesh::MeshRegistry;
 pub use texture::{TextureHandle, TextureRegistry};
 
@@ -17,7 +18,11 @@ pub struct AssetRegistry {
 
 impl AssetRegistry {
     pub(crate) fn new() -> Self {
-        Self { meshes: MeshRegistry::new(), textures: TextureRegistry::new(), materials: MaterialAssetRegistry::new() }
+        Self {
+            meshes: MeshRegistry::new(),
+            textures: TextureRegistry::default(),
+            materials: MaterialAssetRegistry::new(),
+        }
     }
 
     pub(crate) fn flush_uploads(&mut self, tx: &Sender<GpuUploadRequest>) {

@@ -1,8 +1,20 @@
 use crate::assets::mesh::CpuMesh;
-use crate::assets::mesh_handle_allocator::MeshHandleAllocator;
 use crate::assets::upload::GpuUploadRequest;
 use crate::assets::upload_queue::UploadQueue;
 use ursus_ecs::components::mesh::MeshHandle;
+
+#[derive(Default)]
+struct MeshHandleAllocator {
+    next: u32,
+}
+
+impl MeshHandleAllocator {
+    fn alloc(&mut self) -> MeshHandle {
+        let id = self.next;
+        self.next += 1;
+        MeshHandle(id)
+    }
+}
 
 /// CPU-side mesh registration. Assigns stable handles and queues meshes
 /// for GPU upload; never touches Vulkan directly.
@@ -13,7 +25,7 @@ pub struct MeshRegistry {
 
 impl MeshRegistry {
     pub(crate) fn new() -> Self {
-        Self { handles: MeshHandleAllocator::new(), upload_queue: UploadQueue::new() }
+        Self { handles: MeshHandleAllocator::default(), upload_queue: UploadQueue::new() }
     }
 
     pub fn upload(&mut self, mesh: CpuMesh) -> MeshHandle {

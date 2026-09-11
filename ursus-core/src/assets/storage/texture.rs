@@ -1,62 +1,76 @@
 use crate::assets::registry::TextureHandle;
-use crate::assets::texture_handle_allocator::TextureHandleAllocator;
-use crate::render::gfx::types::Format;
+use crate::render::gfx::descriptor::DescriptorAllocator;
+use crate::vulkan::core::{DeviceContext, SubmitContext};
+use crate::vulkan::resources::texture::TextureSource;
+use crate::vulkan::{BindlessSet, GpuTexture};
+use ash::vk;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 
-const TEXTURE_HASH_SAMPLE_COUNT: usize = 64;
+pub const BINDLESS_SLOT_WHITE: u32 = 0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct TextureContentKey(u64, usize, u32, u32, Format);
+/// Owns loaded GPU textures and their bindless slots.
+/// TextureHandle (stable, assigned by AssetRegistry on the CPU side) -> bindless slot -> GpuTexture.
+pub struct GpuTextureStore {
+    slots: HashMap<TextureHandle, u32>,
+    textures: HashMap<u32, GpuTexture>,
+    bindless: BindlessSet,
+    device: ash::Device,
+    physical_device: vk::PhysicalDevice,
+    instance: ash::Instance,
+    command_pool: vk::CommandPool,
+    queue: vk::Queue,
+}
 
-fn hash_texture(pixels: &[u8], width: u32, height: u32, format: Format) -> TextureContentKey {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    let len = pixels.len();
-    if len <= TEXTURE_HASH_SAMPLE_COUNT * 2 {
-        pixels.hash(&mut hasher);
-    } else {
-        let step = len / TEXTURE_HASH_SAMPLE_COUNT;
-        let mut i = 0;
-        while i < len {
-            hasher.write_u8(pixels[i]);
-            i += step;
-        }
-        hasher.write(&pixels[..32.min(len)]);
-        hasher.write(&pixels[len - 32.min(len)..]);
+impl GpuTextureStore {
+    pub fn new(
+        device: ash::Device,
+        physical_device: vk::PhysicalDevice,
+        instance: ash::Instance,
+        command_pool: vk::CommandPool,
+        descriptors: &mut DescriptorAllocator,
+        queue: vk::Queue,
+    ) -> anyhow::Result<Self> {
+        let bindless = BindlessSet::new(&device, physical_device, &instance, descriptors, command_pool, queue)?;
+        assert_eq!(bindless.next_slot(), 1, "slot 0 must be white fallback");
+
+        Ok(Self {
+            slots: HashMap::new(),
+            textures: HashMap::new(),
+            bindless,
+            device,
+            physical_device,
+            instance,
+            command_pool,
+            queue,
+        })
     }
-    TextureContentKey(hasher.finish(), len, width, height, format)
-}
 
-pub(crate) enum TextureRegistration {
-    Existing(TextureHandle),
-    New(TextureHandle),
-}
-
-/// Texture deduplication by content + handle output.
-#[derive(Default)]
-pub(crate) struct TextureStore {
-    dedup: HashMap<TextureContentKey, TextureHandle>,
-}
-
-impl TextureStore {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
-    pub(crate) fn register(
+    pub fn upload(
         &mut self,
-        pixels: &[u8],
-        width: u32,
-        height: u32,
-        format: Format,
-        handles: &mut TextureHandleAllocator,
-    ) -> TextureRegistration {
-        let key = hash_texture(pixels, width, height, format);
-        if let Some(&handle) = self.dedup.get(&key) {
-            return TextureRegistration::Existing(handle);
-        }
-        let handle = handles.alloc();
-        self.dedup.insert(key, handle);
-        TextureRegistration::New(handle)
+        descriptors: &DescriptorAllocator,
+        handle: TextureHandle,
+        upload: TextureSource,
+    ) -> anyhow::Result<()> {
+        let tex = GpuTexture::upload(
+            DeviceContext { device: &self.device, physical_device: self.physical_device, instance: &self.instance },
+            SubmitContext { command_pool: self.command_pool, queue: self.queue },
+            upload,
+        )?;
+        let slot = self.bindless.alloc_slot(descriptors, tex.view);
+        self.slots.insert(handle, slot);
+        self.textures.insert(slot, tex);
+        Ok(())
+    }
+
+    pub fn slot(&self, handle: TextureHandle) -> u32 {
+        self.slots.get(&handle).copied().unwrap_or(BINDLESS_SLOT_WHITE)
+    }
+
+    pub fn bindless(&self) -> &BindlessSet {
+        &self.bindless
+    }
+
+    pub fn bindless_mut(&mut self) -> &mut BindlessSet {
+        &mut self.bindless
     }
 }
