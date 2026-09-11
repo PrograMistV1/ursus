@@ -1,6 +1,6 @@
 use std::slice;
-use ursus_core::assets::gpu_server::GpuAssetServer;
 use ursus_core::assets::mesh::Vertex;
+use ursus_core::assets::storage::GpuAssetServer;
 use ursus_core::render::gfx::types::format::Format;
 use ursus_core::render::gfx::types::{CompareOp, CullMode, PipelineId, PushConstantRange, ShaderStage, VertexFormat};
 use ursus_core::render::gfx::CommandEncoder;

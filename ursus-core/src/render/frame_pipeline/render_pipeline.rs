@@ -1,4 +1,4 @@
-use crate::assets::gpu_server::GpuAssetServer;
+use crate::assets::storage::GpuAssetServer;
 use crate::render::gfx::types::format::ImageLayout;
 use crate::render::gfx::CommandEncoder;
 use crate::render::graph::{pass, RenderGraph};

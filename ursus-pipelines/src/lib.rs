@@ -6,4 +6,3 @@ pub mod plugins;
 mod systems;
 
 pub use deferred::DefaultPipeline;
-pub use loading::LoadingPipeline;

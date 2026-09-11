@@ -1,4 +1,4 @@
-use crate::assets::gpu_server::GpuAssetServer;
+use crate::assets::storage::GpuAssetServer;
 use crate::render::gfx::types::{DescriptorSetId, SamplerId};
 use crate::render::resource::desc::ResourceHandle;
 use crate::render::resource::pool::ResourcePool;

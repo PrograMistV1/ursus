@@ -1,24 +1,17 @@
-pub mod asset_registry;
-pub mod gpu_server;
 pub mod gpu_texture_store;
 pub mod loader_registry;
 pub(crate) mod material_handle_allocator;
 pub mod material_registry;
-pub mod material_store;
 pub mod mesh;
 pub(crate) mod mesh_handle_allocator;
-pub mod mesh_store;
 pub mod registry;
-pub mod shader_registry;
+pub mod storage;
 pub(crate) mod texture_handle_allocator;
-pub(crate) mod texture_store;
 pub mod upload;
 pub(crate) mod upload_queue;
 
-pub use asset_registry::{AssetRegistry, TextureHandle};
 pub use gpu_texture_store::GpuTextureStore;
 pub use loader_registry::{AssetLoader, LoadedMeshSource, LoadedPrimitive, LoadedTexture, LoaderRegistry};
 pub use material_registry::MaterialRegistry;
 pub use mesh::{CpuMesh, GpuMesh, Vertex};
-pub use mesh_store::MeshStore;
-pub use shader_registry::{ShaderDef, ShaderHandle, ShaderRegistry};
+pub use storage::shader::{ShaderDef, ShaderHandle, ShaderRegistry};

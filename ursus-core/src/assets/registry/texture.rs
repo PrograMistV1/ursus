@@ -1,9 +1,11 @@
-use crate::assets::asset_registry::TextureHandle;
+use crate::assets::storage::texture::{TextureRegistration, TextureStore};
 use crate::assets::texture_handle_allocator::TextureHandleAllocator;
-use crate::assets::texture_store::{TextureRegistration, TextureStore};
 use crate::assets::upload::GpuUploadRequest;
 use crate::assets::upload_queue::UploadQueue;
 use crate::render::gfx::types::Format;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TextureHandle(pub u32);
 
 /// CPU-side texture registration with content-based deduplication.
 pub struct TextureRegistry {

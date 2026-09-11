@@ -4,9 +4,8 @@ use crate::passes::geometry::GeometryPass;
 use crate::passes::lighting::LightingPass;
 use crate::passes::post_process::PostProcessPass;
 use crate::passes::shadow::ShadowPass;
-use crate::passes::ui::UiPass;
 use std::sync::Arc;
-use ursus_core::assets::gpu_server::GpuAssetServer;
+use ursus_core::assets::storage::GpuAssetServer;
 use ursus_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use ursus_core::render::gfx::descriptor::ImageUsage;
 use ursus_core::render::gfx::types::{Format, ImageLayout};
@@ -126,7 +125,7 @@ impl RenderPipeline for DefaultPipeline {
             .record(move |enc, rw, gpu| fsr_rcas.record_rcas_pass(enc, rw, gpu, h_fsr_rcas))
             .build(graph, gpu_assets);
 
-        let blit_handle = pass("blit_to_swapchain")
+        pass("blit_to_swapchain")
             .read(h_fsr_rcas, ImageLayout::TransferSrc)
             .write(h_swapchain, ImageLayout::TransferDst)
             .record(move |enc, _rw, _gpu| {
@@ -135,13 +134,13 @@ impl RenderPipeline for DefaultPipeline {
             })
             .build(graph, gpu_assets);
 
-        let ui_pass = UiPass::new(gpu_assets, swapchain.format)?;
+        /*let ui_pass = UiPass::new(gpu_assets, swapchain.format)?;
 
         pass("ui")
             .after(blit_handle)
             .read_write(h_swapchain, ImageLayout::ColorAttachment)
             .record(move |enc, rw, gpu| ui_pass.record(enc, rw, gpu, h_swapchain))
-            .build(graph, gpu_assets);
+            .build(graph, gpu_assets);*/
 
         Ok(PipelineHandles { swapchain: h_swapchain })
     }

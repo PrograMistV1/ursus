@@ -6,7 +6,7 @@
 
 #define FSR_EASU_F 1
 
-layout(set = 0, binding = 0) uniform sampler2D InputTexture;
+layout (set = 0, binding = 0) uniform sampler2D InputTexture;
 
 AF4 FsrEasuRF(AF2 p) { return AF4(textureGather(InputTexture, p, 0)); }
 AF4 FsrEasuGF(AF2 p) { return AF4(textureGather(InputTexture, p, 1)); }
@@ -14,14 +14,14 @@ AF4 FsrEasuBF(AF2 p) { return AF4(textureGather(InputTexture, p, 2)); }
 
 #include "ffx_fsr1.h"
 
-layout(push_constant) uniform PC {
+layout (push_constant) uniform PC {
     uvec4 con0;
     uvec4 con1;
     uvec4 con2;
     uvec4 con3;
 } pc;
 
-layout(location = 0) out vec4 outColor;
+layout (location = 0) out vec4 outColor;
 
 void main() {
     AU2 gxy = AU2(gl_FragCoord.xy);

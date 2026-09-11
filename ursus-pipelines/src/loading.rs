@@ -1,15 +1,11 @@
-use crate::passes::ui::UiPass;
-use glam::Vec2;
-use std::cell::RefCell;
+/*use std::cell::RefCell;
 use std::slice;
-use std::sync::Arc;
 use ursus_core::assets::gpu_server::GpuAssetServer;
 use ursus_core::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use ursus_core::render::gfx::types::format::{Format, ImageLayout};
 use ursus_core::render::gfx::types::{CompareOp, PushConstantRange, ShaderStage, VertexLayout};
 use ursus_core::render::gfx::CommandEncoder;
 use ursus_core::render::graph::{pass, RenderGraph};
-use ursus_core::render::world::{PreparedUiDrawList, UiPrimitive};
 use ursus_core::vulkan::core::{DeviceContext, SubmitContext};
 use ursus_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use ursus_core::vulkan::resources::texture::TextureSource;
@@ -201,3 +197,4 @@ impl RenderPipeline for LoadingPipeline {
         Ok(())
     }
 }
+*/

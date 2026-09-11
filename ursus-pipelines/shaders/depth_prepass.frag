@@ -1,26 +1,26 @@
 #version 450
-#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_nonuniform_qualifier: require
 
-layout(location = 0) in vec2 fragUV;
+layout (location = 0) in vec2 fragUV;
 
-layout(set = 0, binding = 0) uniform sampler   samp;
-layout(set = 0, binding = 1) uniform texture2D textures[];
+layout (set = 0, binding = 0) uniform sampler samp;
+layout (set = 0, binding = 1) uniform texture2D textures[];
 
 struct MaterialData {
-    vec4  base_color;
-    vec4  emissive;
+    vec4 base_color;
+    vec4 emissive;
     float metallic;
     float roughness;
-    vec2  _pad;
+    vec2 _pad;
     uvec4 tex_indices0;
     uvec4 tex_indices1;
 };
 
-layout(set = 1, binding = 0) readonly buffer MaterialBuffer {
+layout (set = 1, binding = 0) readonly buffer MaterialBuffer {
     MaterialData materials[];
 };
 
-layout(push_constant) uniform PC {
+layout (push_constant) uniform PC {
     mat4 mvp;
     uint material_id;
 } pc;

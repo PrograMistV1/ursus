@@ -1,5 +1,5 @@
 use crate::app::Plugin;
-use crate::assets::asset_registry::AssetRegistry;
+use crate::assets::registry::AssetRegistry;
 use crate::assets::upload::GpuUploadRequest;
 use crate::render::extract::{ExtractSchedule, ExtractSystem};
 use crate::render::frame_pipeline::render_pipeline::RenderPipeline;

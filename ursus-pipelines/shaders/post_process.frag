@@ -1,13 +1,13 @@
 #version 450
 
-layout(location = 0) out vec4 outColor;
+layout (location = 0) out vec4 outColor;
 
-layout(set = 0, binding = 0) uniform sampler2D hdrInput;
+layout (set = 0, binding = 0) uniform sampler2D hdrInput;
 
-layout(push_constant) uniform PC {
-    vec2  texel_size;
+layout (push_constant) uniform PC {
+    vec2 texel_size;
     float exposure;
-    uint  flags;
+    uint flags;
 } pc;
 
 vec3 aces(vec3 x) {

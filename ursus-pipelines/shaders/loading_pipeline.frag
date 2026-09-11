@@ -1,8 +1,8 @@
 #version 450
 
-layout(location = 0) out vec4 outColor;
+layout (location = 0) out vec4 outColor;
 
-layout(push_constant) uniform PC {
+layout (push_constant) uniform PC {
     float time;
     float progress;
     float width;

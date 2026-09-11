@@ -1,5 +1,13 @@
-use crate::assets::material_store::MaterialStore;
-use crate::assets::{GpuTextureStore, MeshStore, ShaderRegistry};
+pub mod material;
+pub mod mesh;
+pub mod shader;
+pub(crate) mod texture;
+
+pub use material::MaterialStore;
+pub use mesh::MeshStore;
+pub use shader::{ShaderDef, ShaderHandle, ShaderRegistry, ShaderSource};
+
+use crate::assets::GpuTextureStore;
 use crate::render::gfx::descriptor::DescriptorAllocator;
 use crate::render::gfx::sampler::SamplerStore;
 use crate::render::gfx::types::{BufferUsage, DescriptorSetId, PipelineId, SamplerId};

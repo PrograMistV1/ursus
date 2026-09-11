@@ -1,4 +1,4 @@
-use crate::assets::asset_registry::TextureHandle;
+use crate::assets::registry::TextureHandle;
 use crate::render::gfx::descriptor::DescriptorAllocator;
 use crate::vulkan::core::{DeviceContext, SubmitContext};
 use crate::vulkan::resources::texture::TextureSource;

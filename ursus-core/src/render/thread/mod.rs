@@ -4,10 +4,8 @@ use std::sync::mpsc::Receiver;
 use std::sync::{mpsc, Arc};
 use std::time::Instant;
 
-use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
-
 use self::command::{PipelineFactory, RenderCommand};
-use crate::assets::gpu_server::GpuAssetServer;
+use crate::assets::storage::GpuAssetServer;
 use crate::assets::upload::GpuUploadRequest;
 use crate::render::frame_stats::FrameStats;
 use crate::render::triple_buffer::TripleBuffer;
@@ -15,6 +13,7 @@ use crate::render::world::RWorld;
 use crate::vulkan::resources::texture::TextureSource;
 use crate::vulkan::{DynRenderer, VulkanContext};
 use crate::EngineFlags;
+use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 pub struct WindowHandles {
     pub display: RawDisplayHandle,

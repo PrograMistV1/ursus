@@ -1,4 +1,4 @@
-use ursus_core::assets::gpu_server::GpuAssetServer;
+use ursus_core::assets::storage::GpuAssetServer;
 use ursus_core::render::gfx::types::BufferUsage;
 use ursus_core::vulkan::MappedGpuBuffer;
 

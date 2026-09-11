@@ -1,7 +1,7 @@
 use crate::passes::light_buffer::{LightBuffer, LightingUbo};
 use crate::systems::ExtractedLights;
 use std::slice;
-use ursus_core::assets::gpu_server::GpuAssetServer;
+use ursus_core::assets::storage::GpuAssetServer;
 use ursus_core::render::gfx::descriptor::DescriptorSetDesc;
 use ursus_core::render::gfx::sampler::SamplerDesc;
 use ursus_core::render::gfx::types::format::Format;

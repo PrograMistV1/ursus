@@ -2,8 +2,7 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 
 use crate::assets::mesh::Aabb;
-use crate::assets::TextureHandle;
-use glam::{Mat4, Vec2, Vec3};
+use glam::{Mat4, Vec3};
 use ursus_ecs::components::mesh::MeshHandle;
 use ursus_materials::MaterialHandle;
 
@@ -65,73 +64,6 @@ impl Default for ExtractedCamera {
     fn default() -> Self {
         Self { eye: Vec3::ZERO, view: Mat4::IDENTITY, proj: Mat4::IDENTITY, view_proj: Mat4::IDENTITY }
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum UiPrimitive {
-    Rect {
-        pos: Vec2,
-        size: Vec2,
-        color: [f32; 4],
-        border_radius: f32,
-    },
-    TexturedRect {
-        pos: Vec2,
-        size: Vec2,
-        color: [f32; 4],
-        bindless_slot: u32,
-        uv: [f32; 4],
-    },
-    GlyphRect {
-        pos: Vec2,
-        size: Vec2,
-        color: [f32; 4],
-        texture_handle: TextureHandle,
-        uv: [f32; 4],
-    },
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct PreparedUiDrawList {
-    pub primitives: Vec<UiPrimitive>,
-}
-
-impl PreparedUiDrawList {
-    pub fn push_rect(&mut self, pos: Vec2, size: Vec2, color: [f32; 4], border_radius: f32) {
-        self.primitives.push(UiPrimitive::Rect { pos, size, color, border_radius });
-    }
-    pub fn push_textured_rect(&mut self, pos: Vec2, size: Vec2, color: [f32; 4], bindless_slot: u32, uv: [f32; 4]) {
-        self.primitives.push(UiPrimitive::TexturedRect { pos, size, color, bindless_slot, uv });
-    }
-
-    pub fn push_glyph(&mut self, pos: Vec2, size: Vec2, color: [f32; 4], texture_handle: TextureHandle, uv: [f32; 4]) {
-        self.primitives.push(UiPrimitive::GlyphRect { pos, size, color, texture_handle, uv });
-    }
-}
-
-#[derive(Default, Clone)]
-pub struct ExtractedUiRects {
-    pub rects: Vec<ExtractedUiRect>,
-}
-
-#[derive(Clone)]
-pub struct ExtractedUiRect {
-    pub pos: Vec2,
-    pub size: Vec2,
-    pub color: [f32; 4],
-}
-
-#[derive(Default, Clone)]
-pub struct ExtractedUiTexts {
-    pub texts: Vec<ExtractedUiText>,
-}
-
-#[derive(Clone)]
-pub struct ExtractedUiText {
-    pub pos: Vec2,
-    pub text: String,
-    pub font_size: f32,
-    pub color: [f32; 4],
 }
 
 #[derive(Clone)]

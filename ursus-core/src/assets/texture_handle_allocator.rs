@@ -1,4 +1,4 @@
-use crate::assets::asset_registry::TextureHandle;
+use crate::assets::registry::TextureHandle;
 
 /// The only source of TextureHandle in the system.
 #[derive(Default)]

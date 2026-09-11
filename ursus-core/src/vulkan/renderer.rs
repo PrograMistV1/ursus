@@ -1,4 +1,4 @@
-use crate::assets::gpu_server::GpuAssetServer;
+use crate::assets::storage::GpuAssetServer;
 use crate::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use crate::render::graph::RenderGraph;
 use crate::render::resource::ResourcePool;

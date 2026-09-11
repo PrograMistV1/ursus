@@ -1,4 +1,4 @@
-use crate::assets::gpu_server::GpuAssetServer;
+use crate::assets::storage::GpuAssetServer;
 use crate::render::frame_pipeline::render_pipeline::{NoopPipeline, RenderPipeline};
 use crate::vulkan::renderer::{build_dyn_renderer, DynRenderer};
 use crate::vulkan::VulkanContext;

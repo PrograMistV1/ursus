@@ -1,10 +1,8 @@
 mod camera;
 pub mod meshes;
-pub mod ui;
 
 use crate::render::extract::camera::CameraExtract;
 use crate::render::extract::meshes::MeshExtract;
-use crate::render::extract::ui::UiExtract;
 use crate::render::world::RWorld;
 use ursus_ecs::World;
 
@@ -35,7 +33,6 @@ impl Default for ExtractSchedule {
         let mut schedule = ExtractSchedule { systems: Vec::new() };
         schedule.add(CameraExtract);
         schedule.add(MeshExtract);
-        schedule.add(UiExtract);
         schedule
     }
 }

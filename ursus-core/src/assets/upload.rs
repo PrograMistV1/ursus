@@ -1,5 +1,5 @@
 use crate::assets::mesh::Vertex;
-use crate::assets::TextureHandle;
+use crate::assets::registry::TextureHandle;
 use crate::render::gfx::types::Format;
 use ursus_ecs::components::mesh::MeshHandle;
 use ursus_materials::MaterialHandle;
