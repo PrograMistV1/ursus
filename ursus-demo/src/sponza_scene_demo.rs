@@ -38,7 +38,7 @@ impl App for MyApp {
         let primitives = ursus_gltf_loader::load_gltf(&sponza_path).expect("failed to load Sponza");
 
         for prim in primitives {
-            let mesh_handle = ctx.asset_registry.upload_mesh(prim.mesh);
+            let mesh_handle = ctx.asset_registry.meshes.upload(prim.mesh);
 
             let transform = Transform {
                 position: Vec3::from(prim.node_translation),

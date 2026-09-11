@@ -1,12 +1,9 @@
 use crate::passes::light_buffer::{DirectionalLight, GpuPointLight, MAX_POINT_LIGHTS};
 use crate::systems::ExtractedShadowMeshes;
 use glam::Mat4;
-use std::sync::mpsc::Sender;
-use ursus_core::assets::upload::GpuUploadRequest;
-use ursus_core::assets::AssetRegistry;
 use ursus_core::math::light_frustum::compute_light_view_proj;
 use ursus_core::render::extract::ExtractSystem;
-use ursus_core::render::world::RenderWorld;
+use ursus_core::render::world::RWorld;
 use ursus_ecs::components::light::{DirectionalLightComponent, PointLightComponent};
 use ursus_ecs::World;
 
@@ -31,13 +28,7 @@ impl Default for ExtractedLights {
 
 pub struct LightExtract;
 impl ExtractSystem for LightExtract {
-    fn extract(
-        &self,
-        world: &World,
-        rw: &mut RenderWorld,
-        _cpu_assets: &mut AssetRegistry,
-        _upload_tx: &Sender<GpuUploadRequest>,
-    ) {
+    fn extract(&self, world: &World, r_world: &mut RWorld) {
         let directional = match world.query::<&DirectionalLightComponent>().iter().next() {
             Some(light) => DirectionalLight {
                 direction: [light.direction.x, light.direction.y, light.direction.z, 0.0],
@@ -66,19 +57,19 @@ impl ExtractSystem for LightExtract {
             point_light_count += 1;
         }
 
-        let (scene_center, scene_radius) = compute_scene_bounds(rw); //todo: scene_radius must be transmitted via push constant
+        let (scene_center, scene_radius) = compute_scene_bounds(r_world); //todo: scene_radius must be transmitted via push constant
 
         let light_dir = glam::Vec3::new(directional.direction[0], directional.direction[1], directional.direction[2]);
         let light_view_proj = compute_light_view_proj(light_dir.into(), scene_center, scene_radius);
 
-        rw.insert(ExtractedLights { directional, point_lights, point_light_count, light_view_proj });
+        r_world.insert(ExtractedLights { directional, point_lights, point_light_count, light_view_proj });
     }
     fn name(&self) -> &'static str {
         "extract_lights"
     }
 }
 
-fn compute_scene_bounds(rw: &RenderWorld) -> (glam::Vec3, f32) {
+fn compute_scene_bounds(rw: &RWorld) -> (glam::Vec3, f32) {
     let Some(meshes) = rw.get::<ExtractedShadowMeshes>() else {
         return (glam::Vec3::new(0.0, 2.0, 0.0), 20.0); // fallback
     };

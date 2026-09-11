@@ -2,7 +2,7 @@ use crate::assets::gpu_server::GpuAssetServer;
 use crate::render::frame_pipeline::render_pipeline::{PipelineHandles, RenderPipeline};
 use crate::render::graph::RenderGraph;
 use crate::render::resource::ResourcePool;
-use crate::render::world::RenderWorld;
+use crate::render::world::RWorld;
 use crate::vulkan::core::commands::Commands;
 use crate::vulkan::core::sync::FrameSync;
 use crate::vulkan::core::DeviceContext;
@@ -17,7 +17,7 @@ pub trait DynRenderer: Send {
     fn draw_frame(
         &mut self,
         ctx: &VulkanContext,
-        render_world: &RenderWorld,
+        render_world: &RWorld,
         gpu_assets: &mut GpuAssetServer,
     ) -> anyhow::Result<bool>;
 
@@ -54,7 +54,7 @@ impl<P: RenderPipeline> Renderer<P> {
     pub fn draw_frame(
         &mut self,
         ctx: &VulkanContext,
-        render_world: &RenderWorld,
+        render_world: &RWorld,
         gpu_assets: &mut GpuAssetServer,
     ) -> anyhow::Result<bool> {
         puffin::profile_function!();
@@ -165,7 +165,7 @@ impl<P: RenderPipeline> DynRenderer for Renderer<P> {
     fn draw_frame(
         &mut self,
         ctx: &VulkanContext,
-        render_world: &RenderWorld,
+        render_world: &RWorld,
         gpu_assets: &mut GpuAssetServer,
     ) -> anyhow::Result<bool> {
         self.draw_frame(ctx, render_world, gpu_assets)

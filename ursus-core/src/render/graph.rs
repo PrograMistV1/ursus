@@ -7,7 +7,7 @@ use crate::render::resource::{
     DescriptorBinding, DescriptorBindingRegistry, DescriptorImageType, FlushReason, LayoutTracker, ResourceHandle,
     ResourcePool,
 };
-use crate::render::world::RenderWorld;
+use crate::render::world::RWorld;
 use crate::vulkan::core::debug::{cmd_begin_label, cmd_end_label};
 use crate::vulkan::core::DeviceContext;
 use crate::vulkan::timestamps::{GpuFrameTimes, GpuTimestampPool};
@@ -43,7 +43,7 @@ impl PassAccess {
         Self { handle, access: AccessType::ReadWrite, layout }
     }
 }
-pub type RecordFn = Box<dyn FnMut(&mut CommandEncoder<'_>, &RenderWorld, &GpuAssetServer) -> anyhow::Result<()> + Send>;
+pub type RecordFn = Box<dyn FnMut(&mut CommandEncoder<'_>, &RWorld, &GpuAssetServer) -> anyhow::Result<()> + Send>;
 
 pub struct PassNode {
     pub name: String,
@@ -267,7 +267,7 @@ impl RenderGraph {
         &mut self,
         device: &ash::Device,
         cmd: vk::CommandBuffer,
-        rw: &RenderWorld,
+        rw: &RWorld,
         gpu_assets: &GpuAssetServer,
     ) -> anyhow::Result<()> {
         assert!(self.compiled, "RenderGraph::compile() не был вызван");
@@ -515,7 +515,7 @@ impl PassBuilder {
 
     pub fn record<F>(self, f: F) -> PassNodeReady
     where
-        F: FnMut(&mut CommandEncoder<'_>, &RenderWorld, &GpuAssetServer) -> anyhow::Result<()> + Send + 'static,
+        F: FnMut(&mut CommandEncoder<'_>, &RWorld, &GpuAssetServer) -> anyhow::Result<()> + Send + 'static,
     {
         PassNodeReady {
             node: PassNode { depends_on: self.explicit_deps, ..PassNode::new(self.name, self.accesses, Box::new(f)) },

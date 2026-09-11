@@ -11,7 +11,7 @@ use crate::assets::gpu_server::GpuAssetServer;
 use crate::assets::upload::GpuUploadRequest;
 use crate::render::frame_stats::FrameStats;
 use crate::render::triple_buffer::TripleBuffer;
-use crate::render::world::RenderWorld;
+use crate::render::world::RWorld;
 use crate::vulkan::resources::texture::TextureSource;
 use crate::vulkan::{DynRenderer, VulkanContext};
 use crate::EngineFlags;
@@ -29,7 +29,7 @@ pub fn render_thread_main(
     handles: WindowHandles,
     flags: EngineFlags,
     initial_pipeline: PipelineFactory,
-    triple_buf: Arc<TripleBuffer<RenderWorld>>,
+    triple_buf: Arc<TripleBuffer<RWorld>>,
     frame_stats: FrameStats,
     cmd_rx: Receiver<RenderCommand>,
     upload_rx: Receiver<GpuUploadRequest>,
@@ -47,7 +47,7 @@ fn render_loop(
     handles: WindowHandles,
     flags: EngineFlags,
     initial_pipeline: PipelineFactory,
-    triple_buf: Arc<TripleBuffer<RenderWorld>>,
+    triple_buf: Arc<TripleBuffer<RWorld>>,
     frame_stats: FrameStats,
     cmd_rx: Receiver<RenderCommand>,
     upload_rx: Receiver<GpuUploadRequest>,

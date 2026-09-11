@@ -1,25 +1,16 @@
-use crate::assets::upload::GpuUploadRequest;
-use crate::assets::AssetRegistry;
 use crate::render::extract::ExtractSystem;
 use crate::render::world::{
-    ExtractedRenderSettings, ExtractedUiRect, ExtractedUiRects, ExtractedUiText, ExtractedUiTexts, RenderWorld,
+    ExtractedRenderSettings, ExtractedUiRect, ExtractedUiRects, ExtractedUiText, ExtractedUiTexts, RWorld,
 };
 use glam::Vec2;
-use std::sync::mpsc::Sender;
 use ursus_ecs::components::ui::{UiLayout, UiRect, UiText};
 use ursus_ecs::World;
 
 pub struct UiExtract;
 impl ExtractSystem for UiExtract {
-    fn extract(
-        &self,
-        world: &World,
-        rw: &mut RenderWorld,
-        _cpu_assets: &mut AssetRegistry,
-        _upload_tx: &Sender<GpuUploadRequest>,
-    ) {
+    fn extract(&self, world: &World, r_world: &mut RWorld) {
         let (screen_w, screen_h) =
-            rw.get::<ExtractedRenderSettings>().map(|s| s.output_size).unwrap_or((1280.0, 720.0));
+            r_world.get::<ExtractedRenderSettings>().map(|s| s.output_size).unwrap_or((1280.0, 720.0));
 
         let mut ui_rects = ExtractedUiRects::default();
         let mut ui_texts = ExtractedUiTexts::default();
@@ -46,8 +37,8 @@ impl ExtractSystem for UiExtract {
             });
         }
 
-        rw.insert(ui_rects);
-        rw.insert(ui_texts);
+        r_world.insert(ui_rects);
+        r_world.insert(ui_texts);
     }
     fn name(&self) -> &'static str {
         "extract_ui"

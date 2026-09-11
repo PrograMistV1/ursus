@@ -8,7 +8,7 @@ use ursus_core::render::gfx::types::{
 };
 use ursus_core::render::gfx::CommandEncoder;
 use ursus_core::render::resource::ResourceHandle;
-use ursus_core::render::world::{ExtractedRenderSettings, RenderWorld};
+use ursus_core::render::world::{ExtractedRenderSettings, RWorld};
 use ursus_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 
 #[repr(C)]
@@ -59,7 +59,7 @@ impl PostProcessPass {
     pub fn record(
         &self,
         enc: &mut CommandEncoder,
-        rw: &RenderWorld,
+        rw: &RWorld,
         _gpu: &GpuAssetServer,
         ldr: ResourceHandle,
     ) -> anyhow::Result<()> {

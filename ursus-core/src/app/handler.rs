@@ -13,7 +13,7 @@ use crate::render::frame_stats::FrameStats;
 use crate::render::thread::command::{PipelineFactory, RenderCommand};
 use crate::render::thread::{render_thread_main, WindowHandles};
 use crate::render::triple_buffer::TripleBuffer;
-use crate::render::world::RenderWorld;
+use crate::render::world::RWorld;
 use crate::EngineFlags;
 
 struct RenderLoopState {
@@ -115,7 +115,7 @@ impl ApplicationHandler for EngineHandler {
         let (upload_tx, upload_rx) = mpsc::channel::<GpuUploadRequest>();
         let (ready_tx, ready_rx) = mpsc::sync_channel::<()>(1);
 
-        let triple_buf = Arc::new(TripleBuffer::<RenderWorld>::new());
+        let triple_buf = Arc::new(TripleBuffer::<RWorld>::new());
         let triple_buf_render = Arc::clone(&triple_buf);
 
         let frame_stats = FrameStats::new();

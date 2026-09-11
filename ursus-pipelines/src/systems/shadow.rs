@@ -1,9 +1,6 @@
-use std::sync::mpsc::Sender;
 use ursus_core::assets::mesh::Aabb;
-use ursus_core::assets::upload::GpuUploadRequest;
-use ursus_core::assets::AssetRegistry;
 use ursus_core::render::extract::ExtractSystem;
-use ursus_core::render::world::{ExtractedInstance, ExtractedRenderSettings, RenderWorld};
+use ursus_core::render::world::{ExtractedInstance, ExtractedRenderSettings, RWorld};
 use ursus_ecs::components::mesh::{MeshHandle, TechniqueHandle};
 use ursus_ecs::components::transform::Transform;
 use ursus_ecs::components::transform_interpolation::TransformInterpolation;
@@ -17,14 +14,8 @@ pub struct ExtractedShadowMeshes {
 
 pub struct ShadowExtract;
 impl ExtractSystem for ShadowExtract {
-    fn extract(
-        &self,
-        world: &World,
-        rw: &mut RenderWorld,
-        _cpu_assets: &mut AssetRegistry,
-        _upload_tx: &Sender<GpuUploadRequest>,
-    ) {
-        let alpha = rw.get::<ExtractedRenderSettings>().map(|s| s.interpolation_alpha).unwrap_or(1.0);
+    fn extract(&self, world: &World, r_world: &mut RWorld) {
+        let alpha = r_world.get::<ExtractedRenderSettings>().map(|s| s.interpolation_alpha).unwrap_or(1.0);
 
         let mut shadow_meshes = ExtractedShadowMeshes::default();
 
@@ -53,7 +44,7 @@ impl ExtractSystem for ShadowExtract {
             });
         }
 
-        rw.insert(shadow_meshes);
+        r_world.insert(shadow_meshes);
     }
     fn name(&self) -> &'static str {
         "extract_shadow_meshes"

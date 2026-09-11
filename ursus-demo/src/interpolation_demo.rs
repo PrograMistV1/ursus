@@ -44,16 +44,16 @@ impl App for InterpolationDemoApp {
         ctx.world.spawn((CameraComponent::default(), ActiveCamera));
         ctx.world.spawn((DirectionalLightComponent::default(),));
 
-        let cube_mesh = ctx.asset_registry.upload_mesh(CpuMesh::cube());
+        let cube_mesh = ctx.asset_registry.meshes.upload(CpuMesh::cube());
 
-        let red_material = ctx.asset_registry.insert_material(
+        let red_material = ctx.asset_registry.materials.insert(
             Material::new("interpolated_cube_material", "pbr")
                 .with(BASE_COLOR, MaterialValue::Color(Vec4::new(0.9, 0.2, 0.2, 1.0)))
                 .with(PropertyId::new("metallic"), MaterialValue::Float(0.1))
                 .with(PropertyId::new("roughness"), MaterialValue::Float(0.6)),
         );
 
-        let blue_material = ctx.asset_registry.insert_material(
+        let blue_material = ctx.asset_registry.materials.insert(
             Material::new("plain_cube_material", "pbr")
                 .with(BASE_COLOR, MaterialValue::Color(Vec4::new(0.2, 0.4, 0.9, 1.0)))
                 .with(PropertyId::new("metallic"), MaterialValue::Float(0.0))

@@ -18,10 +18,6 @@ pub struct MaterialRegistry {
 }
 
 impl MaterialRegistry {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
     /// Registers a new material and marks it dirty so it gets packed and
     /// uploaded on the next extract.
     pub fn insert(&mut self, material: Material) -> MaterialHandle {

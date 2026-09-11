@@ -5,7 +5,7 @@ use ursus_core::render::gfx::types::format::Format;
 use ursus_core::render::gfx::types::{BlendState, CompareOp, PipelineId, PushConstantRange, ShaderStage, VertexLayout};
 use ursus_core::render::gfx::CommandEncoder;
 use ursus_core::render::resource::ResourceHandle;
-use ursus_core::render::world::{PreparedUiDrawList, RenderWorld, UiPrimitive};
+use ursus_core::render::world::{PreparedUiDrawList, RWorld, UiPrimitive};
 use ursus_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 
 #[repr(C)]
@@ -60,7 +60,7 @@ impl UiPass {
     pub fn record(
         &self,
         enc: &mut CommandEncoder,
-        rw: &RenderWorld,
+        rw: &RWorld,
         gpu: &GpuAssetServer,
         swapchain: ResourceHandle,
     ) -> anyhow::Result<()> {

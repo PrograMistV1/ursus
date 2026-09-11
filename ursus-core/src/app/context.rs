@@ -1,13 +1,12 @@
 use crate::app::Plugin;
 use crate::assets::asset_registry::AssetRegistry;
 use crate::assets::upload::GpuUploadRequest;
-use crate::render::extract::material::extract_dirty_materials;
 use crate::render::extract::{ExtractSchedule, ExtractSystem};
 use crate::render::frame_pipeline::render_pipeline::RenderPipeline;
 use crate::render::frame_stats::FrameStats;
 use crate::render::thread::command::{PipelineFactory, RenderCommand};
 use crate::render::triple_buffer::TripleBuffer;
-use crate::render::world::{ExtractedRenderSettings, RenderWorld};
+use crate::render::world::{ExtractedRenderSettings, RWorld};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use ursus_ecs::tick::default_tick_schedule;
@@ -28,7 +27,7 @@ pub struct EngineContext {
 
     pub(crate) cmd_tx: Sender<RenderCommand>,
     upload_tx: Sender<GpuUploadRequest>,
-    triple_buf: Arc<TripleBuffer<RenderWorld>>,
+    triple_buf: Arc<TripleBuffer<RWorld>>,
     pub(crate) output_size: (f32, f32),
     frame_stats: FrameStats,
     pub(crate) window_cmd_tx: Sender<WindowCommand>,
@@ -38,7 +37,7 @@ impl EngineContext {
     pub(crate) fn new(
         cmd_tx: Sender<RenderCommand>,
         upload_tx: Sender<GpuUploadRequest>,
-        triple_buf: Arc<TripleBuffer<RenderWorld>>,
+        triple_buf: Arc<TripleBuffer<RWorld>>,
         output_size: (f32, f32),
         frame_stats: FrameStats,
         window_cmd_tx: Sender<WindowCommand>,
@@ -73,7 +72,7 @@ impl EngineContext {
     }
 
     pub fn poll_assets(&mut self) {
-        self.asset_registry.flush_uploads_cpu(&self.upload_tx);
+        self.asset_registry.flush_uploads(&self.upload_tx)
     }
 
     pub(crate) fn publish_frame(&mut self, clear_color: [f32; 4], interpolation_alpha: f32) {
@@ -86,8 +85,8 @@ impl EngineContext {
             exposure: 0.5,
             interpolation_alpha,
         });
-        self.extract_schedule.run(&self.world, write, &mut self.asset_registry, &self.upload_tx);
-        extract_dirty_materials(&mut self.asset_registry, &self.upload_tx);
+        self.extract_schedule.run(&self.world, write);
+        self.asset_registry.flush_uploads(&self.upload_tx);
         self.triple_buf.publish();
     }
 

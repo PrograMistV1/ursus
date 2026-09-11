@@ -3,11 +3,11 @@ use crate::render::gfx::types::format::ImageLayout;
 use crate::render::gfx::CommandEncoder;
 use crate::render::graph::{pass, RenderGraph};
 use crate::render::resource::ResourceHandle;
-use crate::render::world::RenderWorld;
+use crate::render::world::RWorld;
 use crate::vulkan::VulkanContext;
 
 pub struct FrameInput<'a> {
-    pub render_world: &'a RenderWorld,
+    pub render_world: &'a RWorld,
     pub gpu_assets: &'a mut GpuAssetServer,
 }
 

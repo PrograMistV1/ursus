@@ -7,11 +7,11 @@ use glam::{Mat4, Vec2, Vec3};
 use ursus_ecs::components::mesh::MeshHandle;
 use ursus_materials::MaterialHandle;
 
-pub struct RenderWorld {
+pub struct RWorld {
     resources: HashMap<TypeId, Box<dyn Any + Send>>,
 }
 
-impl RenderWorld {
+impl RWorld {
     pub fn new() -> Self {
         Self { resources: HashMap::new() }
     }
@@ -33,7 +33,7 @@ impl RenderWorld {
     }
 }
 
-impl Default for RenderWorld {
+impl Default for RWorld {
     fn default() -> Self {
         Self::new()
     }
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn insert_and_get() {
-        let mut rw = RenderWorld::new();
+        let mut rw = RWorld::new();
         rw.insert(ExtractedMeshes { instances: vec![] });
         assert!(rw.get::<ExtractedMeshes>().is_some());
         assert!(rw.get::<ExtractedCamera>().is_none());
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn clear_removes_resources() {
-        let mut rw = RenderWorld::new();
+        let mut rw = RWorld::new();
         rw.insert(42u32);
         rw.clear();
         assert!(rw.get::<u32>().is_none());
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn insert_replaces() {
-        let mut rw = RenderWorld::new();
+        let mut rw = RWorld::new();
         rw.insert(1u32);
         rw.insert(2u32);
         assert_eq!(*rw.get::<u32>().unwrap(), 2);

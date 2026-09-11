@@ -5,7 +5,7 @@ use ursus_core::render::gfx::types::format::Format;
 use ursus_core::render::gfx::types::{CompareOp, CullMode, PipelineId, PushConstantRange, ShaderStage, VertexFormat};
 use ursus_core::render::gfx::CommandEncoder;
 use ursus_core::render::resource::ResourceHandle;
-use ursus_core::render::world::{ExtractedCamera, ExtractedMeshes, RenderWorld};
+use ursus_core::render::world::{ExtractedCamera, ExtractedMeshes, RWorld};
 use ursus_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use ursus_materials::MaterialHandle;
 
@@ -53,7 +53,7 @@ impl GeometryPass {
     pub fn record(
         &self,
         enc: &mut CommandEncoder,
-        rw: &RenderWorld,
+        rw: &RWorld,
         gpu: &GpuAssetServer,
         albedo: ResourceHandle,
         normal: ResourceHandle,

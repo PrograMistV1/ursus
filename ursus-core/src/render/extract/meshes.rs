@@ -1,8 +1,5 @@
-use crate::assets::upload::GpuUploadRequest;
-use crate::assets::AssetRegistry;
 use crate::render::extract::ExtractSystem;
-use crate::render::world::{ExtractedInstance, ExtractedMeshes, ExtractedRenderSettings, RenderWorld};
-use std::sync::mpsc::Sender;
+use crate::render::world::{ExtractedInstance, ExtractedMeshes, ExtractedRenderSettings, RWorld};
 use ursus_ecs::components::mesh::{MeshHandle, TechniqueHandle};
 use ursus_ecs::components::transform::Transform;
 use ursus_ecs::components::transform_interpolation::TransformInterpolation;
@@ -11,14 +8,8 @@ use ursus_materials::MaterialHandle;
 
 pub struct MeshExtract;
 impl ExtractSystem for MeshExtract {
-    fn extract(
-        &self,
-        world: &World,
-        rw: &mut RenderWorld,
-        _cpu_assets: &mut AssetRegistry,
-        _upload_tx: &Sender<GpuUploadRequest>,
-    ) {
-        let alpha = rw.get::<ExtractedRenderSettings>().map(|s| s.interpolation_alpha).unwrap_or(1.0);
+    fn extract(&self, world: &World, r_world: &mut RWorld) {
+        let alpha = r_world.get::<ExtractedRenderSettings>().map(|s| s.interpolation_alpha).unwrap_or(1.0);
 
         let mut meshes = ExtractedMeshes::default();
 
@@ -47,7 +38,7 @@ impl ExtractSystem for MeshExtract {
             });
         }
 
-        rw.insert(meshes);
+        r_world.insert(meshes);
     }
     fn name(&self) -> &'static str {
         "extract_meshes"

@@ -136,8 +136,8 @@ fn main() -> anyhow::Result<()> {
 }
 ```
 
-Entities are plain `hecs` ECS entities (`GameWorld` wraps `hecs::World`). Each fixed tick, an `ExtractSchedule` copies
-relevant ECS state into a `RenderWorld` snapshot, which is published to the render thread via the triple buffer.
+Entities are plain `hecs` ECS entities. Each fixed tick, an `ExtractSchedule` copies
+relevant ECS state into a `RWorld` snapshot, which is published to the render thread via the triple buffer.
 
 ## 🚧 Status / known rough edges
 

@@ -10,7 +10,7 @@ use ursus_core::render::gfx::types::{
 };
 use ursus_core::render::gfx::CommandEncoder;
 use ursus_core::render::resource::ResourceHandle;
-use ursus_core::render::world::{ExtractedCamera, RenderWorld};
+use ursus_core::render::world::{ExtractedCamera, RWorld};
 use ursus_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 
 #[repr(C)]
@@ -82,7 +82,7 @@ impl LightingPass {
     pub fn record(
         &self,
         enc: &mut CommandEncoder,
-        rw: &RenderWorld,
+        rw: &RWorld,
         _gpu: &GpuAssetServer,
         hdr: ResourceHandle,
     ) -> anyhow::Result<()> {

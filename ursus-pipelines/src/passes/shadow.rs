@@ -7,7 +7,7 @@ use ursus_core::render::gfx::types::format::Format;
 use ursus_core::render::gfx::types::{PipelineId, PushConstantRange, ShaderStage, VertexFormat};
 use ursus_core::render::gfx::CommandEncoder;
 use ursus_core::render::resource::ResourceHandle;
-use ursus_core::render::world::RenderWorld;
+use ursus_core::render::world::RWorld;
 use ursus_core::vulkan::gfx_pipeline::pipeline::PipelineDesc;
 use ursus_materials::MaterialHandle;
 
@@ -51,7 +51,7 @@ impl ShadowPass {
     pub fn record(
         &self,
         enc: &mut CommandEncoder,
-        rw: &RenderWorld,
+        rw: &RWorld,
         gpu: &GpuAssetServer,
         shadow_map: ResourceHandle,
     ) -> anyhow::Result<()> {

@@ -7,10 +7,6 @@ pub(crate) struct MaterialHandleAllocator {
 }
 
 impl MaterialHandleAllocator {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
     pub(crate) fn alloc(&mut self) -> MaterialHandle {
         let id = self.next;
         self.next += 1;
