@@ -50,18 +50,20 @@ impl GeometryPass {
         Ok(Self { pipeline })
     }
 
+    //todo: this function has too many arguments (8/7)
+    #[allow(clippy::too_many_arguments)]
     pub fn record(
         &self,
         enc: &mut CommandEncoder,
-        rw: &RWorld,
+        r_world: &RWorld,
         gpu: &GpuAssetServer,
         albedo: ResourceHandle,
         normal: ResourceHandle,
         depth: ResourceHandle,
         clear_color: [f32; 4],
     ) -> anyhow::Result<()> {
-        let camera = rw.get::<ExtractedCamera>().cloned().unwrap_or_default();
-        let meshes = rw.get::<ExtractedMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
+        let camera = r_world.get::<ExtractedCamera>().cloned().unwrap_or_default();
+        let meshes = r_world.get::<ExtractedMeshes>().map(|m| m.instances.as_slice()).unwrap_or(&[]);
 
         enc.begin_rendering_gbuffer(albedo, normal, depth, clear_color);
         enc.bind_pipeline(self.pipeline);
