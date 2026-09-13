@@ -44,7 +44,7 @@ impl EngineContext {
     ) -> anyhow::Result<Self> {
         Ok(Self {
             world: World::new(),
-            asset_registry: AssetRegistry::new(),
+            asset_registry: AssetRegistry::default(),
             extract_schedule: ExtractSchedule::default(),
             tick_schedule: default_tick_schedule(),
             cmd_tx,

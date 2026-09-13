@@ -10,6 +10,7 @@ pub use texture::{TextureHandle, TextureRegistry};
 use crate::assets::upload::GpuUploadRequest;
 use std::sync::mpsc::Sender;
 
+#[derive(Default)]
 pub struct AssetRegistry {
     pub meshes: MeshRegistry,
     pub textures: TextureRegistry,
@@ -17,14 +18,6 @@ pub struct AssetRegistry {
 }
 
 impl AssetRegistry {
-    pub(crate) fn new() -> Self {
-        Self {
-            meshes: MeshRegistry::default(),
-            textures: TextureRegistry::default(),
-            materials: MaterialAssetRegistry::new(),
-        }
-    }
-
     pub(crate) fn flush_uploads(&mut self, tx: &Sender<GpuUploadRequest>) {
         self.meshes.flush_uploads(tx);
         self.textures.flush_uploads(tx);

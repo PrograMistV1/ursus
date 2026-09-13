@@ -13,10 +13,6 @@ pub(crate) struct UploadQueue {
 }
 
 impl UploadQueue {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
     pub(crate) fn push(&mut self, req: GpuUploadRequest) {
         self.pending.push(req);
     }

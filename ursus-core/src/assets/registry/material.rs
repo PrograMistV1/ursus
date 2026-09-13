@@ -2,7 +2,6 @@ use crate::assets::upload::GpuUploadRequest;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::Sender;
 use ursus_materials::pack::aos::pack;
-use ursus_materials::strategies::{PbrStrategy, UnlitStrategy};
 use ursus_materials::{Material, MaterialHandle, ShadingStrategy, StrategyRegistry};
 
 /// The only source of `MaterialHandle` in the system.
@@ -68,20 +67,13 @@ impl MaterialRegistry {
 }
 
 /// CPU-side material registration + strategy resolution + GPU packing.
+#[derive(Default)]
 pub struct MaterialAssetRegistry {
     materials: MaterialRegistry,
     strategies: StrategyRegistry,
 }
 
 impl MaterialAssetRegistry {
-    //todo:
-    pub(crate) fn new() -> Self {
-        let mut strategies = StrategyRegistry::default();
-        strategies.register(PbrStrategy::default());
-        strategies.register(UnlitStrategy::default());
-        Self { materials: MaterialRegistry::default(), strategies }
-    }
-
     pub fn insert(&mut self, material: Material) -> MaterialHandle {
         self.materials.insert(material)
     }
