@@ -71,10 +71,6 @@ impl EngineContext {
         self.send_render_cmd(RenderCommand::SetPipeline(PipelineFactory::of::<P>()));
     }
 
-    pub fn poll_assets(&mut self) {
-        self.asset_registry.flush_uploads(&self.upload_tx)
-    }
-
     pub(crate) fn publish_frame(&mut self, clear_color: [f32; 4], interpolation_alpha: f32) {
         let write = self.triple_buf.write_slot();
         write.clear();

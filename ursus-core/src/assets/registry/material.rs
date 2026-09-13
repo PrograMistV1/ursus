@@ -75,6 +75,13 @@ pub struct MaterialAssetRegistry {
 
 impl MaterialAssetRegistry {
     pub fn insert(&mut self, material: Material) -> MaterialHandle {
+        if self.strategies.by_name(material.strategy).is_none() {
+            panic!(
+                "MaterialAssetRegistry::insert: material '{}' references unknown strategy '{}' - \
+             register it via register_strategy() before creating materials that use it",
+                material.name, material.strategy
+            );
+        }
         self.materials.insert(material)
     }
 

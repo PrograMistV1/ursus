@@ -195,8 +195,6 @@ impl ApplicationHandler for EngineHandler {
             }
 
             WindowEvent::RedrawRequested => {
-                state.ctx.poll_assets();
-
                 let now = Instant::now();
                 let dt = now.duration_since(rl.last).as_secs_f32().min(0.1);
                 rl.last = now;
