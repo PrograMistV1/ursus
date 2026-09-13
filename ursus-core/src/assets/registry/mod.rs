@@ -19,7 +19,7 @@ pub struct AssetRegistry {
 impl AssetRegistry {
     pub(crate) fn new() -> Self {
         Self {
-            meshes: MeshRegistry::new(),
+            meshes: MeshRegistry::default(),
             textures: TextureRegistry::default(),
             materials: MaterialAssetRegistry::new(),
         }

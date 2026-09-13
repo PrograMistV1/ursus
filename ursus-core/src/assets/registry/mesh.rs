@@ -18,16 +18,13 @@ impl MeshHandleAllocator {
 
 /// CPU-side mesh registration. Assigns stable handles and queues meshes
 /// for GPU upload; never touches Vulkan directly.
+#[derive(Default)]
 pub struct MeshRegistry {
     handles: MeshHandleAllocator,
     upload_queue: UploadQueue,
 }
 
 impl MeshRegistry {
-    pub(crate) fn new() -> Self {
-        Self { handles: MeshHandleAllocator::default(), upload_queue: UploadQueue::new() }
-    }
-
     pub fn upload(&mut self, mesh: CpuMesh) -> MeshHandle {
         let handle = self.handles.alloc();
         self.upload_queue.push(GpuUploadRequest::Mesh {

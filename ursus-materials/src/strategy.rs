@@ -44,10 +44,6 @@ pub struct StrategyRegistry {
 }
 
 impl StrategyRegistry {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn register(&mut self, strategy: impl ShadingStrategy + 'static) {
         let name = strategy.name();
         if self.by_name.insert(name, Arc::new(strategy)).is_some() {

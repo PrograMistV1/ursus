@@ -74,8 +74,9 @@ pub struct MaterialAssetRegistry {
 }
 
 impl MaterialAssetRegistry {
+    //todo:
     pub(crate) fn new() -> Self {
-        let mut strategies = StrategyRegistry::new();
+        let mut strategies = StrategyRegistry::default();
         strategies.register(PbrStrategy::default());
         strategies.register(UnlitStrategy::default());
         Self { materials: MaterialRegistry::default(), strategies }
