@@ -9,6 +9,7 @@ use ursus_ecs::components::transform::Transform;
 use ursus_ecs::components::transform_interpolation::TransformInterpolation;
 use ursus_ecs::Entity;
 use ursus_materials::strategies::properties::BASE_COLOR;
+use ursus_materials::strategies::{PbrStrategy, UnlitStrategy};
 use ursus_materials::{Material, MaterialValue, PropertyId};
 use ursus_pipelines::DefaultPipeline;
 
@@ -41,6 +42,9 @@ impl App for InterpolationDemoApp {
     }
 
     fn on_start(&mut self, ctx: &mut EngineContext) {
+        ctx.asset_registry.materials.register_strategy(PbrStrategy::default());
+        ctx.asset_registry.materials.register_strategy(UnlitStrategy::default());
+
         ctx.world.spawn((CameraComponent::default(), ActiveCamera));
         ctx.world.spawn((DirectionalLightComponent::default(),));
 
