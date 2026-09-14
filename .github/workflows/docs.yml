@@ -30,6 +30,22 @@ jobs:
       - name: Build documentation
         run: cargo doc -p ursus-core -p ursus-gltf-loader --no-deps
 
+      - name: Create documentation index
+        run: |
+          cat > target/doc/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <meta http-equiv="refresh" content="0; url=ursus_core/">
+              <title>ursus documentation</title>
+            </head>
+            <body>
+              <a href="ursus_core/">ursus-core documentation</a>
+            </body>
+          </html>
+          EOF
+
       - name: Prepare Pages
         uses: actions/upload-pages-artifact@v3
         with:
