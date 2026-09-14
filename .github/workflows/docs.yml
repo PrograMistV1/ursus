@@ -28,7 +28,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build documentation
-        run: cargo doc -p ursus-core -p ursus-gltf-loader --no-deps
+        run: cargo doc --workspace --exclude ursus-demo --exclude ursus-pipelines --no-deps
 
       - name: Create documentation index
         run: |
