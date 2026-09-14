@@ -24,8 +24,11 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
       - name: Build documentation
-        run: cargo doc --no-deps
+        run: cargo doc -p ursus-core -p ursus-gltf-loader --no-deps
 
       - name: Prepare Pages
         uses: actions/upload-pages-artifact@v3
