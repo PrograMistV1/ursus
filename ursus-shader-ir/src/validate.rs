@@ -194,7 +194,7 @@ fn vec_of(scalar: Type, n: u32) -> Type {
     }
 }
 
-/// Result type of a binary op, or `None` if `lhs_ty`/`rhs_ty` aren't
+/// Result type of binary op, or `None` if `lhs_ty`/`rhs_ty` aren't
 /// compatible. Matches GLSL's component-wise + scalar-broadcast rules:
 /// same type on both sides, or a vector paired with its own scalar type
 /// (e.g. `Vec3 * Float`, either order).
