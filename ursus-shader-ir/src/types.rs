@@ -44,7 +44,7 @@ impl Type {
         matches!(self, Type::Sampler2D | Type::SamplerCube | Type::Sampler2DShadow)
     }
 
-    /// Scalar component type of a vector type, or `self` for scalars.
+    /// Scalar component type of vector type, or `self` for scalars.
     /// Panics for opaque types (samplers have no component type).
     pub fn scalar(self) -> Type {
         match self {
