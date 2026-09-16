@@ -81,8 +81,8 @@ fn vec_construct_splat_form_is_accepted() {
     let splat = Expr::VecConstruct { ty: Type::Vec3, components: vec![Expr::Constant(1.0)] };
 
     let shader = shader_with_output(splat);
-    let result_ty = validate(&shader).expect("vec3(scalar) splat form should type-check");
-    assert_eq!(result_ty, Type::Vec3);
+    let result = validate(&shader).expect("vec3(scalar) splat form should type-check");
+    assert_eq!(result.ty, Type::Vec3);
 }
 
 #[test]

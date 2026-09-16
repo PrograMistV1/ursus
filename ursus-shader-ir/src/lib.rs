@@ -1,4 +1,5 @@
 pub mod expr;
+pub mod lower;
 pub mod shader;
 pub mod types;
 pub mod validate;

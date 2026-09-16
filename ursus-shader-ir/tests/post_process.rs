@@ -60,5 +60,5 @@ fn build_post_process() -> FragmentShader {
 fn post_process_type_checks_to_vec4() {
     let shader = build_post_process();
     let result_ty = validate(&shader).expect("post_process.frag IR tree should type-check");
-    assert_eq!(result_ty, Type::Vec4);
+    assert_eq!(result_ty.ty, Type::Vec4);
 }

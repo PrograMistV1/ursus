@@ -1,4 +1,4 @@
-use crate::expr::{BinOp, Expr, IntrinsicFn};
+use crate::expr::{BinOp, BuiltinVar, Expr, IntrinsicFn};
 use crate::shader::FragmentShader;
 use crate::types::Type;
 
@@ -19,7 +19,7 @@ pub enum ValidationError {
 
     /// `Sample2D`'s `texture` operand did not resolve to a sampler-kind
     /// binding, or `uv` was not a `Vec2`.
-    InvalidSample2D { texture_ty: Option<Type>, uv_ty: Type },
+    InvalidSample2D { texture_ty: Type, uv_ty: Type },
 
     /// `VecConstruct`'s components did not sum to `ty`'s component count,
     /// under GLSL construction rules (N scalars, a single scalar splat, or
@@ -55,21 +55,56 @@ pub enum ValidationError {
     NoPushConstantBlock,
 }
 
-/// Type-checks `shader.output` (and, transitively, every sub-expression),
-/// returning the output's type on success.
-///
-/// This does not perform SPIR-V lowering - it only verifies the tree is
-/// internally consistent (every node's inputs have types compatible with
-/// what that node expects) before codegen is attempted.
-pub fn validate(shader: &FragmentShader) -> Result<Type, ValidationError> {
+/// An `Expr` tree where every node has been annotated with its resolved
+/// `Type`. Produced by `validate`, consumed by `lower` - lowering never
+/// re-infers types, it just reads `ty` off each node.
+#[derive(Debug, Clone)]
+pub struct TypedExpr {
+    pub ty: Type,
+    pub kind: TypedExprKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypedExprKind {
+    Constant(f32),
+    Builtin(BuiltinVar),
+    BindingRef(&'static str),
+    PushConstantField {
+        offset: u32,
+    },
+    Swizzle {
+        base: Box<TypedExpr>,
+        pattern: &'static str,
+    },
+    Binary {
+        op: BinOp,
+        lhs: Box<TypedExpr>,
+        rhs: Box<TypedExpr>,
+    },
+    Sample2D {
+        texture: Box<TypedExpr>,
+        uv: Box<TypedExpr>,
+    },
+    VecConstruct {
+        components: Vec<TypedExpr>,
+    },
+    Intrinsic {
+        func: IntrinsicFn,
+        args: Vec<TypedExpr>,
+    },
+}
+
+/// Type-checks `shader.output` and, on success, returns the fully
+/// type-annotated tree ready for `lower::lower`.
+pub fn validate(shader: &FragmentShader) -> Result<TypedExpr, ValidationError> {
     infer(shader, &shader.output)
 }
 
-fn infer(shader: &FragmentShader, expr: &Expr) -> Result<Type, ValidationError> {
+fn infer(shader: &FragmentShader, expr: &Expr) -> Result<TypedExpr, ValidationError> {
     match expr {
-        Expr::Constant(_) => Ok(Type::Float),
+        Expr::Constant(v) => Ok(TypedExpr { ty: Type::Float, kind: TypedExprKind::Constant(*v) }),
 
-        Expr::Builtin(b) => Ok(b.ty()),
+        Expr::Builtin(b) => Ok(TypedExpr { ty: b.ty(), kind: TypedExprKind::Builtin(*b) }),
 
         Expr::BindingRef(name) => {
             let binding = shader
@@ -78,60 +113,74 @@ fn infer(shader: &FragmentShader, expr: &Expr) -> Result<Type, ValidationError> 
                 .find(|(n, _)| n == name)
                 .map(|(_, b)| b)
                 .ok_or(ValidationError::UnknownBinding { name })?;
-            Ok(binding_type(binding.kind))
+            Ok(TypedExpr { ty: binding_type(binding.kind), kind: TypedExprKind::BindingRef(name) })
         }
 
         Expr::PushConstantField { offset, ty } => {
             let pc = shader.push_constant.as_ref().ok_or(ValidationError::NoPushConstantBlock)?;
             let found = pc.fields.iter().any(|f| f.offset == *offset && f.ty == *ty);
-            if found {
-                Ok(*ty)
-            } else {
-                Err(ValidationError::UnknownPushConstantField { offset: *offset })
+            if !found {
+                return Err(ValidationError::UnknownPushConstantField { offset: *offset });
             }
+            Ok(TypedExpr { ty: *ty, kind: TypedExprKind::PushConstantField { offset: *offset } })
         }
 
         Expr::Swizzle { base, pattern } => {
-            let base_ty = infer(shader, base)?;
-            swizzle_result_type(base_ty, pattern).ok_or(ValidationError::InvalidSwizzle { base_ty, pattern })
+            let base_typed = infer(shader, base)?;
+            let result_ty = swizzle_result_type(base_typed.ty, pattern)
+                .ok_or(ValidationError::InvalidSwizzle { base_ty: base_typed.ty, pattern })?;
+            Ok(TypedExpr { ty: result_ty, kind: TypedExprKind::Swizzle { base: Box::new(base_typed), pattern } })
         }
 
         Expr::Binary { op, lhs, rhs } => {
-            let lhs_ty = infer(shader, lhs)?;
-            let rhs_ty = infer(shader, rhs)?;
-            binary_result_type(lhs_ty, rhs_ty).ok_or(ValidationError::BinaryTypeMismatch { op: *op, lhs_ty, rhs_ty })
+            let lhs_typed = infer(shader, lhs)?;
+            let rhs_typed = infer(shader, rhs)?;
+            let result_ty = binary_result_type(lhs_typed.ty, rhs_typed.ty)
+                .ok_or(ValidationError::BinaryTypeMismatch { op: *op, lhs_ty: lhs_typed.ty, rhs_ty: rhs_typed.ty })?;
+            Ok(TypedExpr {
+                ty: result_ty,
+                kind: TypedExprKind::Binary { op: *op, lhs: Box::new(lhs_typed), rhs: Box::new(rhs_typed) },
+            })
         }
 
         Expr::Sample2D { texture, uv } => {
-            let texture_ty = infer(shader, texture)?;
-            let uv_ty = infer(shader, uv)?;
-            if texture_ty != Type::Sampler2D || uv_ty != Type::Vec2 {
-                return Err(ValidationError::InvalidSample2D { texture_ty: Some(texture_ty), uv_ty });
+            let texture_typed = infer(shader, texture)?;
+            let uv_typed = infer(shader, uv)?;
+            if texture_typed.ty != Type::Sampler2D || uv_typed.ty != Type::Vec2 {
+                return Err(ValidationError::InvalidSample2D { texture_ty: texture_typed.ty, uv_ty: uv_typed.ty });
             }
-            Ok(Type::Vec4)
+            Ok(TypedExpr {
+                ty: Type::Vec4,
+                kind: TypedExprKind::Sample2D { texture: Box::new(texture_typed), uv: Box::new(uv_typed) },
+            })
         }
 
         Expr::VecConstruct { ty, components } => {
+            let components_typed: Vec<TypedExpr> =
+                components.iter().map(|c| infer(shader, c)).collect::<Result<_, _>>()?;
+
             let mut total = 0u32;
-            for c in components {
-                let c_ty = infer(shader, c)?;
-                if c_ty.is_opaque() {
-                    return Err(ValidationError::VecConstructInvalidComponent { ty: *ty, component_ty: c_ty });
+            for c in &components_typed {
+                if c.ty.is_opaque() {
+                    return Err(ValidationError::VecConstructInvalidComponent { ty: *ty, component_ty: c.ty });
                 }
-                total += c_ty.component_count();
+                total += c.ty.component_count();
             }
 
             let target = ty.component_count();
-            let is_splat = components.len() == 1 && total == 1 && target > 1;
+            let is_splat = components_typed.len() == 1 && total == 1 && target > 1;
             if total != target && !is_splat {
                 return Err(ValidationError::VecConstructArity { ty: *ty, provided_components: total });
             }
-            Ok(*ty)
+
+            Ok(TypedExpr { ty: *ty, kind: TypedExprKind::VecConstruct { components: components_typed } })
         }
 
         Expr::Intrinsic { func, args } => {
-            let arg_types: Vec<Type> = args.iter().map(|a| infer(shader, a)).collect::<Result<_, _>>()?;
-            intrinsic_result_type(*func, &arg_types)
+            let args_typed: Vec<TypedExpr> = args.iter().map(|a| infer(shader, a)).collect::<Result<_, _>>()?;
+            let arg_types: Vec<Type> = args_typed.iter().map(|a| a.ty).collect();
+            let result_ty = intrinsic_result_type(*func, &arg_types)?;
+            Ok(TypedExpr { ty: result_ty, kind: TypedExprKind::Intrinsic { func: *func, args: args_typed } })
         }
     }
 }
@@ -142,11 +191,6 @@ fn binding_type(kind: crate::shader::BindingKind) -> Type {
     }
 }
 
-/// Resolves a swizzle pattern (e.g. "xy", "rgb", "xxxx") against `base_ty`.
-/// Accepts both positional (`xyzw`) and color (`rgba`) component names, but
-/// not a mix of the two within one pattern (matches GLSL). Returns `None`
-/// for empty patterns, patterns longer than 4 characters, out-of-range
-/// component indices for `base_ty`, or mixed component-name sets.
 fn swizzle_result_type(base_ty: Type, pattern: &str) -> Option<Type> {
     if !base_ty.is_vector() || pattern.is_empty() || pattern.len() > 4 {
         return None;
@@ -194,10 +238,6 @@ fn vec_of(scalar: Type, n: u32) -> Type {
     }
 }
 
-/// Result type of binary op, or `None` if `lhs_ty`/`rhs_ty` aren't
-/// compatible. Matches GLSL's component-wise + scalar-broadcast rules:
-/// same type on both sides, or a vector paired with its own scalar type
-/// (e.g. `Vec3 * Float`, either order).
 fn binary_result_type(lhs_ty: Type, rhs_ty: Type) -> Option<Type> {
     if lhs_ty == rhs_ty {
         return Some(lhs_ty);
@@ -220,7 +260,7 @@ fn intrinsic_result_type(func: IntrinsicFn, arg_types: &[Type]) -> Result<Type, 
             let [x, lo, hi] = arg_types else {
                 return Err(arity_err(3));
             };
-            if x.is_opaque() || *lo != x.scalar() && *lo != *x || *hi != x.scalar() && *hi != *x {
+            if x.is_opaque() || (*lo != x.scalar() && *lo != *x) || (*hi != x.scalar() && *hi != *x) {
                 return Err(type_err(0, *x));
             }
             Ok(*x)
