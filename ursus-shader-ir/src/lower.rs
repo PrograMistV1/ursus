@@ -4,6 +4,7 @@ use crate::types::Type;
 use crate::validate::{TypedExpr, TypedExprKind};
 use rspirv::dr::{Builder, Module, Operand};
 use rspirv::spirv;
+use rspirv::spirv::GlslStd450Op;
 use std::collections::HashMap;
 
 struct LoweringContext {
@@ -288,20 +289,111 @@ impl LoweringContext {
     fn lower_intrinsic(&mut self, func: IntrinsicFn, args: &[TypedExpr], result_ty: Type) -> spirv::Word {
         let arg_vals: Vec<spirv::Word> = args.iter().map(|a| self.lower_expr(a)).collect();
         let spirv_result_ty = self.spirv_type(result_ty);
+        let operands = arg_vals.iter().map(|val| Operand::IdRef(*val));
 
-        if func == IntrinsicFn::Dot {
-            // OpDot is a core SPIR-V instruction, not a GLSL.std.450 ext instruction.
-            return self
+        match func {
+            IntrinsicFn::Clamp => {
+                let instruction = match args[0].ty.scalar() {
+                    Type::Int => GlslStd450Op::SClamp,
+                    Type::UInt => GlslStd450Op::UClamp,
+                    Type::Float => GlslStd450Op::FClamp,
+                    _ => panic!(
+                        "lower_intrinsic: Clamp got scalar type {:?}, validate should allow only float, int or uint",
+                        args[0].ty
+                    ),
+                } as u32;
+                self.builder
+                    .ext_inst(spirv_result_ty, None, self.glsl_ext, instruction, operands)
+                    .expect("clamp should not fail: operand types are pre-validated")
+            }
+            IntrinsicFn::Pow => self
                 .builder
-                .dot(spirv_result_ty, None, arg_vals[0], arg_vals[1])
-                .expect("dot should not fail: operand types are pre-validated");
+                .ext_inst(spirv_result_ty, None, self.glsl_ext, GlslStd450Op::Pow as u32, operands)
+                .expect("pow should not fail: operand types are pre-validated"),
+            IntrinsicFn::Min => {
+                let instruction = match args[0].ty.scalar() {
+                    Type::Int => GlslStd450Op::SMin,
+                    Type::UInt => GlslStd450Op::UMin,
+                    Type::Float => GlslStd450Op::FMin,
+                    _ => panic!(
+                        "lower_intrinsic: Min got scalar type {:?}, validate should allow only float, int or uint",
+                        args[0].ty
+                    ),
+                } as u32;
+                self.builder
+                    .ext_inst(spirv_result_ty, None, self.glsl_ext, instruction, operands)
+                    .expect("min should not fail: operand types are pre-validated")
+            }
+            IntrinsicFn::Max => {
+                let instruction = match args[0].ty.scalar() {
+                    Type::Int => GlslStd450Op::SMax,
+                    Type::UInt => GlslStd450Op::UMax,
+                    Type::Float => GlslStd450Op::FMax,
+                    _ => panic!(
+                        "lower_intrinsic: Max got scalar type {:?}, validate should allow only float, int or uint",
+                        args[0].ty
+                    ),
+                } as u32;
+                self.builder
+                    .ext_inst(spirv_result_ty, None, self.glsl_ext, instruction, operands)
+                    .expect("max should not fail: operand types are pre-validated")
+            }
+            IntrinsicFn::Mix => {
+                let instruction = match args[0].ty.scalar() {
+                    // TODO: IMix requires bool selector; add when int mix is needed (see validate for Mix)
+                    Type::Float => GlslStd450Op::FMix,
+                    _ => panic!(
+                        "lower_intrinsic: Mix got scalar type {:?}, validate should allow only float",
+                        args[0].ty
+                    ),
+                } as u32;
+                self.builder
+                    .ext_inst(spirv_result_ty, None, self.glsl_ext, instruction, operands)
+                    .expect("mix should not fail: operand types are pre-validated")
+            }
+            IntrinsicFn::Normalize => self
+                .builder
+                .ext_inst(spirv_result_ty, None, self.glsl_ext, GlslStd450Op::Normalize as u32, operands)
+                .expect("normalize should not fail: operand types are pre-validated"),
+            IntrinsicFn::Dot => {
+                // OpDot is a core SPIR-V instruction, not a GLSL.std.450 ext instruction.
+                self.builder
+                    .dot(spirv_result_ty, None, arg_vals[0], arg_vals[1])
+                    .expect("dot should not fail: operand types are pre-validated")
+            }
+            IntrinsicFn::Cross => self
+                .builder
+                .ext_inst(spirv_result_ty, None, self.glsl_ext, GlslStd450Op::Cross as u32, operands)
+                .expect("cross should not fail: operand types are pre-validated"),
+            IntrinsicFn::Length => self
+                .builder
+                .ext_inst(spirv_result_ty, None, self.glsl_ext, GlslStd450Op::Length as u32, operands)
+                .expect("length should not fail: operand types are pre-validated"),
+            IntrinsicFn::Sqrt => self
+                .builder
+                .ext_inst(spirv_result_ty, None, self.glsl_ext, GlslStd450Op::Sqrt as u32, operands)
+                .expect("sqrt should not fail: operand types are pre-validated"),
+            IntrinsicFn::Abs => {
+                let instruction = match args[0].ty.scalar() {
+                    Type::Int => GlslStd450Op::SAbs,
+                    Type::Float => GlslStd450Op::FAbs,
+                    _ => panic!(
+                        "lower_intrinsic: Abs got scalar type {:?}, validate should allow only float or int",
+                        args[0].ty
+                    ),
+                } as u32;
+                self.builder
+                    .ext_inst(spirv_result_ty, None, self.glsl_ext, instruction, operands)
+                    .expect("abs should not fail: operand types are pre-validated")
+            }
+            IntrinsicFn::Floor => self
+                .builder
+                .ext_inst(spirv_result_ty, None, self.glsl_ext, GlslStd450Op::Floor as u32, operands)
+                .expect("floor should not fail: operand types are pre-validated"),
+            IntrinsicFn::Fract => self
+                .builder
+                .ext_inst(spirv_result_ty, None, self.glsl_ext, GlslStd450Op::Fract as u32, operands)
+                .expect("fract should not fail: operand types are pre-validated"),
         }
-
-        // TODO: GLSL.std.450 extended-instruction opcode - confirmed import
-        // path/type pending (rspirv 0.13's GLOp/GLSLstd450 enum location is
-        // not yet verified against this project's actual dependency tree;
-        // see open question about `spirv::GLSLstd450` vs `rspirv::sr::glsl`).
-        let _ = (func, self.glsl_ext, arg_vals, spirv_result_ty);
-        todo!("lower_intrinsic: GLSL.std.450 ext instruction opcode import not resolved yet")
     }
 }
