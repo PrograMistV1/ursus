@@ -279,10 +279,13 @@ fn intrinsic_result_type(func: IntrinsicFn, arg_types: &[Type]) -> Result<Type, 
             }
             Ok(*x)
         }
-        IntrinsicFn::Normalize | IntrinsicFn::Sqrt | IntrinsicFn::Abs | IntrinsicFn::Floor | IntrinsicFn::Fract => {
+        IntrinsicFn::Normalize | IntrinsicFn::Sqrt | IntrinsicFn::Length | IntrinsicFn::Floor | IntrinsicFn::Fract => {
             let [x] = arg_types else { return Err(arity_err(1)) };
-            if x.is_opaque() {
+            if x.is_opaque() || x.scalar() != Type::Float {
                 return Err(type_err(0, *x));
+            }
+            if func == IntrinsicFn::Length {
+                return Ok(Type::Float);
             }
             Ok(*x)
         }
@@ -300,7 +303,7 @@ fn intrinsic_result_type(func: IntrinsicFn, arg_types: &[Type]) -> Result<Type, 
             }
             Ok(Type::Vec3)
         }
-        IntrinsicFn::Length => {
+        IntrinsicFn::Abs => {
             let [x] = arg_types else { return Err(arity_err(1)) };
             if !x.is_vector() && *x != Type::Float {
                 return Err(type_err(0, *x));
