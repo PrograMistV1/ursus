@@ -256,6 +256,32 @@ fn intrinsic_result_type(func: IntrinsicFn, arg_types: &[Type]) -> Result<Type, 
     let type_err = |i: usize, ty: Type| ValidationError::IntrinsicTypeMismatch { func, arg_index: i, ty };
 
     match func {
+        IntrinsicFn::Normalize | IntrinsicFn::Sqrt | IntrinsicFn::Length | IntrinsicFn::Floor | IntrinsicFn::Fract => {
+            let [x] = arg_types else { return Err(arity_err(1)) };
+            if x.is_opaque() || x.scalar() != Type::Float {
+                return Err(type_err(0, *x));
+            }
+            if func == IntrinsicFn::Length {
+                return Ok(Type::Float);
+            }
+            Ok(*x)
+        }
+        IntrinsicFn::Min | IntrinsicFn::Max => {
+            let [x, y] = arg_types else { return Err(arity_err(2)) };
+            if x != y {
+                return Err(type_err(1, *y));
+            }
+            if x.is_opaque() {
+                return Err(type_err(0, *x));
+            }
+            if !matches!(x.scalar(), Type::Float | Type::Int | Type::UInt) {
+                return Err(type_err(0, *x));
+            }
+            if !matches!(y.scalar(), Type::Float | Type::Int | Type::UInt) {
+                return Err(type_err(1, *y));
+            }
+            Ok(*x)
+        }
         IntrinsicFn::Clamp => {
             let [x, lo, hi] = arg_types else {
                 return Err(arity_err(3));
@@ -265,7 +291,7 @@ fn intrinsic_result_type(func: IntrinsicFn, arg_types: &[Type]) -> Result<Type, 
             }
             Ok(*x)
         }
-        IntrinsicFn::Pow | IntrinsicFn::Min | IntrinsicFn::Max => {
+        IntrinsicFn::Pow => {
             let [x, y] = arg_types else { return Err(arity_err(2)) };
             if x != y || x.is_opaque() {
                 return Err(type_err(1, *y));
@@ -276,16 +302,6 @@ fn intrinsic_result_type(func: IntrinsicFn, arg_types: &[Type]) -> Result<Type, 
             let [x, y, a] = arg_types else { return Err(arity_err(3)) };
             if x != y || x.is_opaque() || (*a != *x && *a != x.scalar()) {
                 return Err(type_err(2, *a));
-            }
-            Ok(*x)
-        }
-        IntrinsicFn::Normalize | IntrinsicFn::Sqrt | IntrinsicFn::Length | IntrinsicFn::Floor | IntrinsicFn::Fract => {
-            let [x] = arg_types else { return Err(arity_err(1)) };
-            if x.is_opaque() || x.scalar() != Type::Float {
-                return Err(type_err(0, *x));
-            }
-            if func == IntrinsicFn::Length {
-                return Ok(Type::Float);
             }
             Ok(*x)
         }
