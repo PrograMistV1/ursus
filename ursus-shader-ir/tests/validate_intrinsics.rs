@@ -1,5 +1,5 @@
 use Type::{IVec2, IVec3, IVec4, Int};
-use ursus_shader_ir::IntrinsicFn::{Floor, Fract, Length, Max, Min, Sqrt};
+use ursus_shader_ir::IntrinsicFn::{Floor, Fract, Length, Max, Min, Mix, Sqrt};
 use ursus_shader_ir::Type::{Bool, Float, UInt, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
 use ursus_shader_ir::validate::{ValidationError, validate};
 use ursus_shader_ir::{Expr, FragmentShader, IntrinsicFn, PushConstantDesc, PushConstantFieldDesc, Type};
@@ -53,6 +53,7 @@ func_rejected! {
     fract_on_bool_is_rejected => (Fract, [Bool], 0),
     min_on_bool_is_rejected => (Min, [Bool, Bool], 0),
     max_on_bool_is_rejected => (Min, [Bool, Bool], 0),
+    mix_on_bool_is_rejected => (Mix, [Bool, Bool, Bool], 0),
 
     // signed int
     sqrt_on_int_is_rejected => (Sqrt, [Int], 0),
@@ -75,6 +76,11 @@ func_rejected! {
     fract_on_ivec3_is_rejected => (Fract, [IVec3], 0),
     fract_on_ivec4_is_rejected => (Fract, [IVec4], 0),
 
+    mix_on_int_is_rejected => (Mix, [Int, Int, Int], 0),
+    mix_on_ivec2_is_rejected => (Mix, [IVec2, IVec2, IVec2], 0),
+    mix_on_ivec3_is_rejected => (Mix, [IVec3, IVec3, IVec3], 0),
+    mix_on_ivec4_is_rejected => (Mix, [IVec4, IVec4, IVec4], 0),
+
     // unsigned int
     sqrt_on_uint_is_rejected => (Sqrt, [UInt], 0),
     sqrt_on_uvec2_is_rejected => (Sqrt, [UVec2], 0),
@@ -95,6 +101,11 @@ func_rejected! {
     fract_on_uvec2_is_rejected => (Fract, [UVec2], 0),
     fract_on_uvec3_is_rejected => (Fract, [UVec3], 0),
     fract_on_uvec4_is_rejected => (Fract, [UVec4], 0),
+
+    mix_on_uint_is_rejected => (Mix, [UInt, UInt, UInt], 0),
+    mix_on_uvec2_is_rejected => (Mix, [UVec2, UVec2, UVec2], 0),
+    mix_on_uvec3_is_rejected => (Mix, [UVec3, UVec3, UVec3], 0),
+    mix_on_uvec4_is_rejected => (Mix, [UVec4, UVec4, UVec4], 0),
 
     // opaque
     /*sqrt_on_sampler2d_is_rejected => (Sqrt, [Sampler2D], 0),
@@ -179,4 +190,10 @@ func_accepted! {
     max_on_vec2_is_accepted => (Max, [Vec2, Vec2], Vec2),
     max_on_vec3_is_accepted => (Max, [Vec3, Vec3], Vec3),
     max_on_vec4_is_accepted => (Max, [Vec4, Vec4], Vec4),
+
+    //  Mix: float scalar and vectors
+    mix_on_float_is_accepted => (Mix, [Float, Float, Float], Float),
+    mix_on_vec2_is_accepted => (Mix, [Vec2, Vec2, Vec2], Vec2),
+    mix_on_vec3_is_accepted => (Mix, [Vec3, Vec3, Vec3], Vec3),
+    mix_on_vec4_is_accepted => (Mix, [Vec4, Vec4, Vec4], Vec4),
 }

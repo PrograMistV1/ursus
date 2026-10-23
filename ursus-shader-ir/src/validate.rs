@@ -277,8 +277,21 @@ fn intrinsic_result_type(func: IntrinsicFn, arg_types: &[Type]) -> Result<Type, 
             if !matches!(x.scalar(), Type::Float | Type::Int | Type::UInt) {
                 return Err(type_err(0, *x));
             }
-            if !matches!(y.scalar(), Type::Float | Type::Int | Type::UInt) {
+            Ok(*x)
+        }
+        IntrinsicFn::Mix => {
+            let [x, y, a] = arg_types else { return Err(arity_err(3)) };
+            if x != y || x.is_opaque() || (*a != *x && *a != x.scalar()) {
+                return Err(type_err(2, *a));
+            }
+            if x != y {
                 return Err(type_err(1, *y));
+            }
+            if x != a {
+                return Err(type_err(2, *a));
+            }
+            if x.is_opaque() || x.scalar() != Type::Float {
+                return Err(type_err(0, *x));
             }
             Ok(*x)
         }
@@ -295,13 +308,6 @@ fn intrinsic_result_type(func: IntrinsicFn, arg_types: &[Type]) -> Result<Type, 
             let [x, y] = arg_types else { return Err(arity_err(2)) };
             if x != y || x.is_opaque() {
                 return Err(type_err(1, *y));
-            }
-            Ok(*x)
-        }
-        IntrinsicFn::Mix => {
-            let [x, y, a] = arg_types else { return Err(arity_err(3)) };
-            if x != y || x.is_opaque() || (*a != *x && *a != x.scalar()) {
-                return Err(type_err(2, *a));
             }
             Ok(*x)
         }
