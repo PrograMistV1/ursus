@@ -1,5 +1,6 @@
+use IntrinsicFn::Pow;
 use Type::{IVec2, IVec3, IVec4, Int};
-use ursus_shader_ir::IntrinsicFn::{Floor, Fract, Length, Max, Min, Mix, Sqrt};
+use ursus_shader_ir::IntrinsicFn::{Clamp, Floor, Fract, Length, Max, Min, Mix, Sqrt};
 use ursus_shader_ir::Type::{Bool, Float, UInt, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
 use ursus_shader_ir::validate::{ValidationError, validate};
 use ursus_shader_ir::{Expr, FragmentShader, IntrinsicFn, PushConstantDesc, PushConstantFieldDesc, Type};
@@ -54,6 +55,8 @@ func_rejected! {
     min_on_bool_is_rejected => (Min, [Bool, Bool], 0),
     max_on_bool_is_rejected => (Min, [Bool, Bool], 0),
     mix_on_bool_is_rejected => (Mix, [Bool, Bool, Bool], 0),
+    clamp_on_bool_is_rejected => (Mix, [Bool, Bool, Bool], 0),
+    pow_on_bool_is_rejected => (Pow, [Bool, Bool], 0),
 
     // signed int
     sqrt_on_int_is_rejected => (Sqrt, [Int], 0),
@@ -81,6 +84,11 @@ func_rejected! {
     mix_on_ivec3_is_rejected => (Mix, [IVec3, IVec3, IVec3], 0),
     mix_on_ivec4_is_rejected => (Mix, [IVec4, IVec4, IVec4], 0),
 
+    pow_on_int_is_rejected => (Pow, [Int, Int], 0),
+    pow_on_ivec2_is_rejected => (Pow, [IVec2, IVec2], 0),
+    pow_on_ivec3_is_rejected => (Pow, [IVec3, IVec3], 0),
+    pow_on_ivec4_is_rejected => (Pow, [IVec4, IVec4], 0),
+
     // unsigned int
     sqrt_on_uint_is_rejected => (Sqrt, [UInt], 0),
     sqrt_on_uvec2_is_rejected => (Sqrt, [UVec2], 0),
@@ -106,6 +114,11 @@ func_rejected! {
     mix_on_uvec2_is_rejected => (Mix, [UVec2, UVec2, UVec2], 0),
     mix_on_uvec3_is_rejected => (Mix, [UVec3, UVec3, UVec3], 0),
     mix_on_uvec4_is_rejected => (Mix, [UVec4, UVec4, UVec4], 0),
+
+    pow_on_uint_is_rejected => (Pow, [UInt, UInt], 0),
+    pow_on_uvec2_is_rejected => (Pow, [UVec2, UVec2], 0),
+    pow_on_uvec3_is_rejected => (Pow, [UVec3, UVec3], 0),
+    pow_on_uvec4_is_rejected => (Pow, [UVec4, UVec4], 0),
 
     // opaque
     /*sqrt_on_sampler2d_is_rejected => (Sqrt, [Sampler2D], 0),
@@ -135,6 +148,9 @@ func_rejected! {
     // same_type
     min_y_int_with_float_x_is_rejected => (Min, [Float, Int], 1),
     max_y_int_with_float_x_is_rejected => (Max, [Float, Int], 1),
+    mix_y_int_with_float_x_is_rejected => (Mix, [Float, Int, Float], 1),
+    clamp_y_int_with_float_x_is_rejected => (Clamp, [Float, Int, Float], 1),
+    pow_y_int_with_float_x_is_rejected => (Pow, [Float, Int], 1),
 }
 
 macro_rules! func_accepted {
@@ -179,21 +195,63 @@ func_accepted! {
     fract_on_vec3_is_accepted => (Fract, [Vec3], Vec3),
     fract_on_vec4_is_accepted => (Fract, [Vec4], Vec4),
 
-    // Min: float scalar and vectors
+    // Min: float, int, uint scalar and vectors
     min_on_float_is_accepted => (Min, [Float, Float], Float),
     min_on_vec2_is_accepted => (Min, [Vec2, Vec2], Vec2),
     min_on_vec3_is_accepted => (Min, [Vec3, Vec3], Vec3),
     min_on_vec4_is_accepted => (Min, [Vec4, Vec4], Vec4),
 
-    // Max: float scalar and vectors
+    min_on_int_is_accepted => (Min, [Int, Int], Int),
+    min_on_ivec2_is_accepted => (Min, [IVec2, IVec2], IVec2),
+    min_on_ivec3_is_accepted => (Min, [IVec3, IVec3], IVec3),
+    min_on_ivec4_is_accepted => (Min, [IVec4, IVec4], IVec4),
+
+    min_on_uint_is_accepted => (Min, [UInt, UInt], UInt),
+    min_on_uvec2_is_accepted => (Min, [UVec2, UVec2], UVec2),
+    min_on_uvec3_is_accepted => (Min, [UVec3, UVec3], UVec3),
+    min_on_uvec4_is_accepted => (Min, [UVec4, UVec4], UVec4),
+
+    // Max: float, int, uint scalar and vectors
     max_on_float_is_accepted => (Max, [Float, Float], Float),
     max_on_vec2_is_accepted => (Max, [Vec2, Vec2], Vec2),
     max_on_vec3_is_accepted => (Max, [Vec3, Vec3], Vec3),
     max_on_vec4_is_accepted => (Max, [Vec4, Vec4], Vec4),
 
-    //  Mix: float scalar and vectors
+    max_on_int_is_accepted => (Max, [Int, Int], Int),
+    max_on_ivec2_is_accepted => (Max, [IVec2, IVec2], IVec2),
+    max_on_ivec3_is_accepted => (Max, [IVec3, IVec3], IVec3),
+    max_on_ivec4_is_accepted => (Max, [IVec4, IVec4], IVec4),
+
+    max_on_uint_is_accepted => (Max, [UInt, UInt], UInt),
+    max_on_uvec2_is_accepted => (Max, [UVec2, UVec2], UVec2),
+    max_on_uvec3_is_accepted => (Max, [UVec3, UVec3], UVec3),
+    max_on_uvec4_is_accepted => (Max, [UVec4, UVec4], UVec4),
+
+    // Mix: float scalar and vectors
     mix_on_float_is_accepted => (Mix, [Float, Float, Float], Float),
     mix_on_vec2_is_accepted => (Mix, [Vec2, Vec2, Vec2], Vec2),
     mix_on_vec3_is_accepted => (Mix, [Vec3, Vec3, Vec3], Vec3),
     mix_on_vec4_is_accepted => (Mix, [Vec4, Vec4, Vec4], Vec4),
+
+    // Clamp: float, int, uint scalar and vectors
+    clamp_on_float_is_accepted => (Clamp, [Float, Float, Float], Float),
+    clamp_on_vec2_is_accepted => (Clamp, [Vec2, Vec2, Vec2], Vec2),
+    clamp_on_vec3_is_accepted => (Clamp, [Vec3, Vec3, Vec3], Vec3),
+    clamp_on_vec4_is_accepted => (Clamp, [Vec4, Vec4, Vec4], Vec4),
+
+    clamp_on_int_is_accepted => (Clamp, [Int, Int, Int], Int),
+    clamp_on_ivec2_is_accepted => (Clamp, [IVec2, IVec2, IVec2], IVec2),
+    clamp_on_ivec3_is_accepted => (Clamp, [IVec3, IVec3, IVec3], IVec3),
+    clamp_on_ivec4_is_accepted => (Clamp, [IVec4, IVec4, IVec4], IVec4),
+
+    clamp_on_uint_is_accepted => (Clamp, [UInt, UInt, UInt], UInt),
+    clamp_on_uvec2_is_accepted => (Clamp, [UVec2, UVec2, UVec2], UVec2),
+    clamp_on_uvec3_is_accepted => (Clamp, [UVec3, UVec3, UVec3], UVec3),
+    clamp_on_uvec4_is_accepted => (Clamp, [UVec4, UVec4, UVec4], UVec4),
+
+    // Pow: float scalar and vectors
+    pow_on_float_is_accepted => (Pow, [Float, Float], Float),
+    pow_on_vec2_is_accepted => (Pow, [Vec2, Vec2], Vec2),
+    pow_on_vec3_is_accepted => (Pow, [Vec3, Vec3], Vec3),
+    pow_on_vec4_is_accepted => (Pow, [Vec4, Vec4], Vec4),
 }
