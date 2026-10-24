@@ -1,7 +1,7 @@
 use crate::types::Type;
 
 /// Built-in shader-stage input/output variables.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BuiltinVar {
     FragCoord,     // gl_FragCoord, Vec4
     VertexIndex,   // gl_VertexIndex, Int

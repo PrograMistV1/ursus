@@ -11,6 +11,7 @@ struct LoweringContext {
     builder: Builder,
     type_cache: HashMap<Type, spirv::Word>,
     glsl_ext: spirv::Word,
+    builtin: HashMap<BuiltinVar, spirv::Word>,
     bindings: HashMap<&'static str, spirv::Word>,
     push_constant_var: Option<spirv::Word>,
 }
@@ -24,6 +25,7 @@ struct LoweringContext {
 pub fn lower(shader: &FragmentShader, typed_output: &TypedExpr) -> Module {
     let mut ctx = LoweringContext::new();
 
+    ctx.declare_builtin(typed_output);
     ctx.declare_bindings(shader);
     ctx.declare_push_constant(shader);
 
@@ -48,6 +50,7 @@ pub fn lower(shader: &FragmentShader, typed_output: &TypedExpr) -> Module {
     ctx.builder.end_function().expect("end_function should not fail immediately after ret");
 
     let mut interface = vec![out_color];
+    interface.extend(ctx.builtin.values().copied());
     interface.extend(ctx.bindings.values().copied());
     ctx.builder.entry_point(spirv::ExecutionModel::Fragment, main_fn, "main", interface);
     ctx.builder.execution_mode(main_fn, spirv::ExecutionMode::OriginUpperLeft, vec![]);
@@ -65,7 +68,14 @@ impl LoweringContext {
         let glsl_ext = builder.ext_inst_import("GLSL.std.450");
         builder.memory_model(spirv::AddressingModel::Logical, spirv::MemoryModel::GLSL450);
 
-        Self { builder, type_cache: HashMap::new(), glsl_ext, bindings: HashMap::new(), push_constant_var: None }
+        Self {
+            builder,
+            type_cache: HashMap::new(),
+            glsl_ext,
+            builtin: HashMap::new(),
+            bindings: HashMap::new(),
+            push_constant_var: None,
+        }
     }
 
     fn spirv_type(&mut self, ty: Type) -> spirv::Word {
@@ -149,6 +159,44 @@ impl LoweringContext {
         self.push_constant_var = Some(var);
     }
 
+    fn declare_builtin(&mut self, typed_expr: &TypedExpr) {
+        match &typed_expr.kind {
+            TypedExprKind::Builtin(builtin) => {
+                if !self.builtin.contains_key(builtin) {
+                    let builtin_ty = self.spirv_type(builtin.ty());
+                    let ptr_ty = self.builder.type_pointer(None, spirv::StorageClass::Input, builtin_ty);
+                    let var = self.builder.variable(ptr_ty, None, spirv::StorageClass::Input, None);
+
+                    let builtin_kind = match builtin {
+                        BuiltinVar::FragCoord => spirv::BuiltIn::FragCoord,
+                        BuiltinVar::VertexIndex => spirv::BuiltIn::VertexIndex,
+                        BuiltinVar::InstanceIndex => spirv::BuiltIn::InstanceIndex,
+                    };
+                    self.builder.decorate(var, spirv::Decoration::BuiltIn, vec![Operand::BuiltIn(builtin_kind)]);
+                    self.builtin.insert(*builtin, var);
+                }
+            }
+            TypedExprKind::Swizzle { base, .. } => {
+                self.declare_builtin(base);
+            }
+            TypedExprKind::Binary { lhs, rhs, .. } => {
+                self.declare_builtin(lhs);
+                self.declare_builtin(rhs);
+            }
+            TypedExprKind::Sample2D { texture, uv } => {
+                self.declare_builtin(texture);
+                self.declare_builtin(uv);
+            }
+            TypedExprKind::VecConstruct { components } => {
+                components.iter().for_each(|component| self.declare_builtin(component));
+            }
+            TypedExprKind::Intrinsic { args, .. } => {
+                args.iter().for_each(|arg| self.declare_builtin(arg));
+            }
+            _ => {}
+        }
+    }
+
     /// Lowers one type-annotated node to a SPIR-V value id. `node.ty` is
     /// trusted as-is - never recomputed.
     fn lower_expr(&mut self, node: &TypedExpr) -> spirv::Word {
@@ -199,16 +247,7 @@ impl LoweringContext {
 
     fn lower_builtin(&mut self, builtin: BuiltinVar) -> spirv::Word {
         let ty = self.spirv_type(builtin.ty());
-        let (storage_class, builtin_kind) = match builtin {
-            BuiltinVar::FragCoord => (spirv::StorageClass::Input, spirv::BuiltIn::FragCoord),
-            BuiltinVar::VertexIndex => (spirv::StorageClass::Input, spirv::BuiltIn::VertexIndex),
-            BuiltinVar::InstanceIndex => (spirv::StorageClass::Input, spirv::BuiltIn::InstanceIndex),
-        };
-
-        let ptr_ty = self.builder.type_pointer(None, storage_class, ty);
-        let var = self.builder.variable(ptr_ty, None, storage_class, None);
-        self.builder.decorate(var, spirv::Decoration::BuiltIn, vec![Operand::BuiltIn(builtin_kind)]);
-
+        let var = *self.builtin.get(&builtin).unwrap_or_else(|| panic!("lower_builtin: {builtin:?} not declared"));
         self.builder.load(ty, None, var, None, vec![]).expect("load should not fail for a builtin input variable")
     }
 
