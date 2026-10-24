@@ -144,6 +144,13 @@ fn infer(shader: &FragmentShader, expr: &Expr) -> Result<TypedExpr, ValidationEr
         Expr::Binary { op, lhs, rhs } => {
             let lhs_typed = infer(shader, lhs)?;
             let rhs_typed = infer(shader, rhs)?;
+            if lhs_typed.ty != rhs_typed.ty {
+                return Err(ValidationError::BinaryTypeMismatch {
+                    op: *op,
+                    lhs_ty: lhs_typed.ty,
+                    rhs_ty: rhs_typed.ty,
+                });
+            }
             let result_ty = binary_result_type(lhs_typed.ty, rhs_typed.ty)
                 .ok_or(ValidationError::BinaryTypeMismatch { op: *op, lhs_ty: lhs_typed.ty, rhs_ty: rhs_typed.ty })?;
             Ok(TypedExpr {
