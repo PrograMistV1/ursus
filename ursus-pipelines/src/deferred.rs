@@ -29,7 +29,7 @@ impl RenderPipeline for DefaultPipeline {
         gpu_assets: &mut GpuAssetServer,
         graph: &mut RenderGraph,
     ) -> anyhow::Result<PipelineHandles> {
-        crate::builtin_shaders::register_builtin(&mut gpu_assets.shaders);
+        crate::builtin_shaders::register_builtin(&mut gpu_assets.shaders)?;
 
         let swapchain = ctx.swapchain.as_ref().unwrap();
 

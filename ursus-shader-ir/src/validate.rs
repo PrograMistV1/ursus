@@ -1,6 +1,8 @@
 use crate::expr::{BinOp, BuiltinVar, Expr, IntrinsicFn};
 use crate::shader::FragmentShader;
 use crate::types::Type;
+use std::error::Error;
+use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidationError {
@@ -54,6 +56,13 @@ pub enum ValidationError {
     /// constant block declared at all.
     NoPushConstantBlock,
 }
+
+impl Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+impl Error for ValidationError {}
 
 /// An `Expr` tree where every node has been annotated with its resolved
 /// `Type`. Produced by `validate`, consumed by `lower` - lowering never

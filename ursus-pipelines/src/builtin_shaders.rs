@@ -1,6 +1,7 @@
+use crate::ir_shaders::post_process;
 use ursus_core::assets::{ShaderDef, ShaderRegistry};
 
-pub fn register_builtin(reg: &mut ShaderRegistry) {
+pub fn register_builtin(reg: &mut ShaderRegistry) -> anyhow::Result<()> {
     reg.register_if_absent(ShaderDef::from_bytes(
         "diffuse",
         include_bytes!(concat!(env!("OUT_DIR"), "/mesh.vert.spv")).to_vec(),
@@ -31,11 +32,9 @@ pub fn register_builtin(reg: &mut ShaderRegistry) {
         include_bytes!(concat!(env!("OUT_DIR"), "/lighting.frag.spv")).to_vec(),
     ));
 
-    reg.register_if_absent(ShaderDef::from_bytes(
-        "post_process",
-        include_bytes!(concat!(env!("OUT_DIR"), "/post_process.vert.spv")).to_vec(),
-        include_bytes!(concat!(env!("OUT_DIR"), "/post_process.frag.spv")).to_vec(),
-    ));
+    let post_vert = include_bytes!(concat!(env!("OUT_DIR"), "/post_process.vert.spv")).to_vec();
+    let post_frag = post_process::compile()?;
+    reg.register_if_absent(ShaderDef::from_bytes("post_process", post_vert, post_frag));
 
     reg.register_if_absent(ShaderDef::from_bytes(
         "fsr_easu",
@@ -60,4 +59,5 @@ pub fn register_builtin(reg: &mut ShaderRegistry) {
         include_bytes!(concat!(env!("OUT_DIR"), "/ui.vert.spv")).to_vec(),
         include_bytes!(concat!(env!("OUT_DIR"), "/ui.frag.spv")).to_vec(),
     ));
+    Ok(())
 }

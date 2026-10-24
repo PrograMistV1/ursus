@@ -2662,6 +2662,7 @@ dependencies = [
  "ursus-gltf-loader",
  "ursus-materials",
  "ursus-obj-loader",
+ "ursus-shader-ir",
 ]
 
 [[package]]

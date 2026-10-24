@@ -1,5 +1,6 @@
 pub mod builtin_shaders;
 pub mod deferred;
+pub mod ir_shaders;
 pub mod loading;
 pub mod passes;
 pub mod plugins;

@@ -56,6 +56,10 @@ impl PushConstantDesc {
             .unwrap_or_else(|| panic!("PushConstantDesc::field: no field named '{name}' in push constant block"));
         Expr::PushConstantField { offset: field.offset, ty: field.ty }
     }
+
+    pub fn size(&self) -> u32 {
+        self.fields.last().map_or(0, |f| f.offset + f.ty.component_byte_size() * f.ty.component_count())
+    }
 }
 
 /// A full fragment shader: its resource bindings, optional push constant

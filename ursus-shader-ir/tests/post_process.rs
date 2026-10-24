@@ -47,7 +47,7 @@ fn build_post_process() -> FragmentShader {
 
     let uv = mul(swizzle(Expr::Builtin(BuiltinVar::FragCoord), "xy"), push_constant.field("texel_size"));
     let hdr = swizzle(Expr::Sample2D { texture: Box::new(Expr::BindingRef("hdrInput")), uv: Box::new(uv) }, "rgb");
-    let tonemapped = aces_inline(mul(hdr, push_constant.field("exposure")));
+    let tonemapped = aces_inline(mul(hdr, vec3_splat(push_constant.field("exposure"))));
 
     let gamma_corrected = Expr::Intrinsic {
         func: IntrinsicFn::Pow,

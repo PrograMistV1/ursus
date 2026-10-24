@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 ursus-core = { path = "../ursus-core" }
 ursus-materials = { path = "../ursus-materials" }
+ursus-shader-ir = { path = "../ursus-shader-ir" }
 ursus-gltf-loader = { path = "../ursus-gltf-loader", optional = true }
 ursus-obj-loader = { path = "../ursus-obj-loader", optional = true }
 ursus-ecs = { path = "../ursus-ecs" }
