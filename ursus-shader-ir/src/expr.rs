@@ -1,4 +1,6 @@
+use crate::dsl;
 use crate::types::Type;
+use std::ops::{Add, Div, Mul, Sub};
 
 /// Built-in shader-stage input/output variables.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -105,4 +107,36 @@ pub enum Expr {
         func: IntrinsicFn,
         args: Vec<Expr>,
     },
+}
+
+impl Add for Expr {
+    type Output = Expr;
+
+    fn add(self, rhs: Expr) -> Expr {
+        dsl::add(self, rhs)
+    }
+}
+
+impl Sub for Expr {
+    type Output = Expr;
+
+    fn sub(self, rhs: Expr) -> Expr {
+        dsl::sub(self, rhs)
+    }
+}
+
+impl Mul for Expr {
+    type Output = Expr;
+
+    fn mul(self, rhs: Expr) -> Expr {
+        dsl::mul(self, rhs)
+    }
+}
+
+impl Div for Expr {
+    type Output = Expr;
+
+    fn div(self, rhs: Expr) -> Expr {
+        dsl::div(self, rhs)
+    }
 }

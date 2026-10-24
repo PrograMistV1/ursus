@@ -5,41 +5,22 @@ use std::io::Write;
 use std::process::Command;
 use ursus_shader_ir::lower::lower;
 use ursus_shader_ir::{
-    BinOp, Binding, BindingKind, BuiltinVar, Expr, FragmentShader, IntrinsicFn, PushConstantDesc, Type,
+    Binding, BindingKind, BuiltinVar, Expr, FragmentShader, PushConstantDesc, Type, clamp, pow, sampler2d,
     validate::validate,
 };
 
-fn mul(lhs: Expr, rhs: Expr) -> Expr {
-    Expr::Binary { op: BinOp::Mul, lhs: Box::new(lhs), rhs: Box::new(rhs) }
-}
-fn div(lhs: Expr, rhs: Expr) -> Expr {
-    Expr::Binary { op: BinOp::Div, lhs: Box::new(lhs), rhs: Box::new(rhs) }
-}
-fn add(lhs: Expr, rhs: Expr) -> Expr {
-    Expr::Binary { op: BinOp::Add, lhs: Box::new(lhs), rhs: Box::new(rhs) }
-}
-fn swizzle(base: Expr, pattern: &'static str) -> Expr {
-    Expr::Swizzle { base: Box::new(base), pattern }
-}
-fn vec3_splat(x: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::Vec3, components: vec![x.clone(), x.clone(), x] }
-}
-
 fn aces_inline(x: Expr) -> Expr {
-    let a = vec3_splat(Expr::Constant(2.51));
-    let b = vec3_splat(Expr::Constant(0.03));
-    let c = vec3_splat(Expr::Constant(2.43));
-    let d = vec3_splat(Expr::Constant(0.59));
-    let e = vec3_splat(Expr::Constant(0.14));
+    let a = ursus_shader_ir::vec3_splat(Expr::Constant(2.51));
+    let b = ursus_shader_ir::vec3_splat(Expr::Constant(0.03));
+    let c = ursus_shader_ir::vec3_splat(Expr::Constant(2.43));
+    let d = ursus_shader_ir::vec3_splat(Expr::Constant(0.59));
+    let e = ursus_shader_ir::vec3_splat(Expr::Constant(0.14));
 
-    let numerator = mul(x.clone(), add(mul(a, x.clone()), b));
-    let denominator = add(mul(x.clone(), add(mul(c, x), d)), e);
-    let ratio = div(numerator, denominator);
+    let numerator = x.clone() * ((a * x.clone()) + b);
+    let denominator = (x.clone() * ((c * x) + d)) + e;
+    let ratio = numerator / denominator;
 
-    Expr::Intrinsic {
-        func: IntrinsicFn::Clamp,
-        args: vec![ratio, vec3_splat(Expr::Constant(0.0)), vec3_splat(Expr::Constant(1.0))],
-    }
+    clamp(ratio, ursus_shader_ir::vec3_splat(Expr::Constant(0.0)), ursus_shader_ir::vec3_splat(Expr::Constant(1.0)))
 }
 
 fn build_post_process() -> FragmentShader {
@@ -51,17 +32,11 @@ fn build_post_process() -> FragmentShader {
 
     let hdr_input_binding = ("hdrInput", Binding { set: 0, binding: 0, kind: BindingKind::CombinedImageSampler2D });
 
-    let uv = mul(swizzle(Expr::Builtin(BuiltinVar::FragCoord), "xy"), push_constant.field("texel_size"));
-    let hdr = swizzle(Expr::Sample2D { texture: Box::new(Expr::BindingRef("hdrInput")), uv: Box::new(uv) }, "rgb");
-    let tonemapped = aces_inline(mul(hdr, vec3_splat(push_constant.field("exposure"))));
+    let uv = Expr::Builtin(BuiltinVar::FragCoord).xy() * push_constant.field("texel_size");
+    let hdr = sampler2d(Expr::BindingRef("hdrInput"), uv).rgb();
+    let tonemapped = aces_inline(hdr * ursus_shader_ir::vec3_splat(push_constant.field("exposure")));
 
-    let gamma_corrected = Expr::Intrinsic {
-        func: IntrinsicFn::Pow,
-        args: vec![
-            tonemapped,
-            Expr::VecConstruct { ty: Type::Vec3, components: vec![Expr::Constant(1.0 / 2.2)] },
-        ],
-    };
+    let gamma_corrected = pow(tonemapped, ursus_shader_ir::vec3_splat(Expr::Constant(1.0 / 2.2)));
 
     let output = Expr::VecConstruct { ty: Type::Vec4, components: vec![gamma_corrected, Expr::Constant(1.0)] };
 
