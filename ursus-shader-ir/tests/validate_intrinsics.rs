@@ -1,6 +1,6 @@
 use IntrinsicFn::Pow;
 use Type::{IVec2, IVec3, IVec4, Int};
-use ursus_shader_ir::IntrinsicFn::{Clamp, Floor, Fract, Length, Max, Min, Mix, Sqrt};
+use ursus_shader_ir::IntrinsicFn::{Clamp, Cross, Floor, Fract, Length, Max, Min, Mix, Sqrt};
 use ursus_shader_ir::Type::{Bool, Float, UInt, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
 use ursus_shader_ir::validate::{ValidationError, validate};
 use ursus_shader_ir::{Expr, FragmentShader, IntrinsicFn, PushConstantDesc, PushConstantFieldDesc, Type};
@@ -53,10 +53,11 @@ func_rejected! {
     floor_on_bool_is_rejected => (Floor, [Bool], 0),
     fract_on_bool_is_rejected => (Fract, [Bool], 0),
     min_on_bool_is_rejected => (Min, [Bool, Bool], 0),
-    max_on_bool_is_rejected => (Min, [Bool, Bool], 0),
+    max_on_bool_is_rejected => (Max, [Bool, Bool], 0),
     mix_on_bool_is_rejected => (Mix, [Bool, Bool, Bool], 0),
-    clamp_on_bool_is_rejected => (Mix, [Bool, Bool, Bool], 0),
+    clamp_on_bool_is_rejected => (Clamp, [Bool, Bool, Bool], 0),
     pow_on_bool_is_rejected => (Pow, [Bool, Bool], 0),
+    cross_on_bool_is_rejected => (Cross, [Bool, Bool], 0),
 
     // signed int
     sqrt_on_int_is_rejected => (Sqrt, [Int], 0),
@@ -89,6 +90,11 @@ func_rejected! {
     pow_on_ivec3_is_rejected => (Pow, [IVec3, IVec3], 0),
     pow_on_ivec4_is_rejected => (Pow, [IVec4, IVec4], 0),
 
+    cross_on_int_is_rejected => (Cross, [Int, Int], 0),
+    cross_on_ivec2_is_rejected => (Cross, [IVec2, IVec2], 0),
+    cross_on_ivec3_is_rejected => (Cross, [IVec3, IVec3], 0),
+    cross_on_ivec4_is_rejected => (Cross, [IVec4, IVec4], 0),
+
     // unsigned int
     sqrt_on_uint_is_rejected => (Sqrt, [UInt], 0),
     sqrt_on_uvec2_is_rejected => (Sqrt, [UVec2], 0),
@@ -119,6 +125,16 @@ func_rejected! {
     pow_on_uvec2_is_rejected => (Pow, [UVec2, UVec2], 0),
     pow_on_uvec3_is_rejected => (Pow, [UVec3, UVec3], 0),
     pow_on_uvec4_is_rejected => (Pow, [UVec4, UVec4], 0),
+
+    cross_on_uint_is_rejected => (Cross, [UInt, UInt], 0),
+    cross_on_uvec2_is_rejected => (Cross, [UVec2, UVec2], 0),
+    cross_on_uvec3_is_rejected => (Cross, [UVec3, UVec3], 0),
+    cross_on_uvec4_is_rejected => (Cross, [UVec4, UVec4], 0),
+
+    // float
+    cross_on_float_is_rejected => (Cross, [Float, Float], 0),
+    cross_on_vec2_is_rejected => (Cross, [Vec2, Vec2], 0),
+    cross_on_vec4_is_rejected => (Cross, [Vec4, Vec4], 0),
 
     // opaque
     /*sqrt_on_sampler2d_is_rejected => (Sqrt, [Sampler2D], 0),
@@ -254,4 +270,7 @@ func_accepted! {
     pow_on_vec2_is_accepted => (Pow, [Vec2, Vec2], Vec2),
     pow_on_vec3_is_accepted => (Pow, [Vec3, Vec3], Vec3),
     pow_on_vec4_is_accepted => (Pow, [Vec4, Vec4], Vec4),
+
+    // Cross: vec3
+    cross_on_vec3_is_accepted => (Cross, [Vec3, Vec3], Vec3),
 }

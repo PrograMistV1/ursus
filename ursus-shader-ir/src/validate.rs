@@ -323,19 +323,22 @@ fn intrinsic_result_type(func: IntrinsicFn, arg_types: &[Type]) -> Result<Type, 
             }
             Ok(*x)
         }
+        IntrinsicFn::Cross => {
+            let [x, y] = arg_types else { return Err(arity_err(2)) };
+            if *x != Type::Vec3 {
+                return Err(type_err(0, *y));
+            }
+            if *y != Type::Vec3 {
+                return Err(type_err(1, *y));
+            }
+            Ok(Type::Vec3)
+        }
         IntrinsicFn::Dot => {
             let [x, y] = arg_types else { return Err(arity_err(2)) };
             if x != y || !x.is_vector() {
                 return Err(type_err(1, *y));
             }
             Ok(Type::Float)
-        }
-        IntrinsicFn::Cross => {
-            let [x, y] = arg_types else { return Err(arity_err(2)) };
-            if *x != Type::Vec3 || *y != Type::Vec3 {
-                return Err(type_err(1, *y));
-            }
-            Ok(Type::Vec3)
         }
         IntrinsicFn::Abs => {
             let [x] = arg_types else { return Err(arity_err(1)) };
