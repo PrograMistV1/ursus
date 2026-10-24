@@ -40,6 +40,8 @@ impl Type {
         )
     }
 
+    /// Opaque type (sampler): its contents are hidden from the shader,
+    /// so it has no byte size and no components.
     pub fn is_opaque(self) -> bool {
         matches!(self, Type::Sampler2D | Type::SamplerCube | Type::Sampler2DShadow)
     }
