@@ -1,3 +1,4 @@
+use crate::PushConstantDesc;
 use crate::expr::{BinOp, BuiltinVar, IntrinsicFn};
 use crate::shader::{BindingKind, FragmentShader};
 use crate::types::Type;
@@ -13,7 +14,7 @@ struct LoweringContext {
     glsl_ext: spirv::Word,
     builtin: HashMap<BuiltinVar, spirv::Word>,
     bindings: HashMap<&'static str, spirv::Word>,
-    push_constant_var: Option<spirv::Word>,
+    push_constant_var: Option<(PushConstantDesc, spirv::Word)>,
 }
 
 /// Lowers an already-validated, type-annotated shader tree to a SPIR-V
@@ -51,7 +52,6 @@ pub fn lower(shader: &FragmentShader, typed_output: &TypedExpr) -> Module {
 
     let mut interface = vec![out_color];
     interface.extend(ctx.builtin.values().copied());
-    interface.extend(ctx.bindings.values().copied());
     ctx.builder.entry_point(spirv::ExecutionModel::Fragment, main_fn, "main", interface);
     ctx.builder.execution_mode(main_fn, spirv::ExecutionMode::OriginUpperLeft, vec![]);
 
@@ -156,7 +156,7 @@ impl LoweringContext {
         let ptr_ty = self.builder.type_pointer(None, spirv::StorageClass::PushConstant, struct_ty);
         let var = self.builder.variable(ptr_ty, None, spirv::StorageClass::PushConstant, None);
 
-        self.push_constant_var = Some(var);
+        self.push_constant_var = Some((pc.clone(), var));
     }
 
     fn declare_builtin(&mut self, typed_expr: &TypedExpr) {
@@ -256,8 +256,16 @@ impl LoweringContext {
     /// `PushConstantDesc::new` currently guarantees) - revisit if alignment
     /// padding is introduced there.
     fn lower_push_constant_field(&mut self, offset: u32, ty: Type) -> spirv::Word {
-        let pc_var = self.push_constant_var.expect("lower_push_constant_field: no push constant block declared");
-        let member_index = offset / ty.component_byte_size().max(1);
+        let pc_var =
+            self.push_constant_var.as_ref().expect("lower_push_constant_field: no push constant block declared");
+        let word = pc_var.1;
+        let member_index = pc_var
+            .0
+            .fields
+            .iter()
+            .position(|f| f.offset == offset)
+            .unwrap_or_else(|| panic!("lower_push_constant_field: push constant has no field at offset {offset}; validate should have rejected this PushConstantField"))
+            as u32;
 
         let uint_ty = self.spirv_type(Type::UInt);
         let index_const = self.builder.constant_bit32(uint_ty, member_index);
@@ -266,7 +274,7 @@ impl LoweringContext {
         let ptr_ty = self.builder.type_pointer(None, spirv::StorageClass::PushConstant, field_ty);
         let member_ptr = self
             .builder
-            .access_chain(ptr_ty, None, pc_var, vec![index_const])
+            .access_chain(ptr_ty, None, word, vec![index_const])
             .expect("access_chain should not fail: member index is derived from a validated offset");
 
         self.builder

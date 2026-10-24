@@ -26,11 +26,11 @@ fn vec3_splat(x: Expr) -> Expr {
 }
 
 fn aces_inline(x: Expr) -> Expr {
-    let a = Expr::Constant(2.51);
-    let b = Expr::Constant(0.03);
-    let c = Expr::Constant(2.43);
-    let d = Expr::Constant(0.59);
-    let e = Expr::Constant(0.14);
+    let a = vec3_splat(Expr::Constant(2.51));
+    let b = vec3_splat(Expr::Constant(0.03));
+    let c = vec3_splat(Expr::Constant(2.43));
+    let d = vec3_splat(Expr::Constant(0.59));
+    let e = vec3_splat(Expr::Constant(0.14));
 
     let numerator = mul(x.clone(), add(mul(a, x.clone()), b));
     let denominator = add(mul(x.clone(), add(mul(c, x), d)), e);
@@ -53,7 +53,7 @@ fn build_post_process() -> FragmentShader {
 
     let uv = mul(swizzle(Expr::Builtin(BuiltinVar::FragCoord), "xy"), push_constant.field("texel_size"));
     let hdr = swizzle(Expr::Sample2D { texture: Box::new(Expr::BindingRef("hdrInput")), uv: Box::new(uv) }, "rgb");
-    let tonemapped = aces_inline(mul(hdr, push_constant.field("exposure")));
+    let tonemapped = aces_inline(mul(hdr, vec3_splat(push_constant.field("exposure"))));
 
     let gamma_corrected = Expr::Intrinsic {
         func: IntrinsicFn::Pow,
