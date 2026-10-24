@@ -1,6 +1,6 @@
 use IntrinsicFn::Pow;
 use Type::{IVec2, IVec3, IVec4, Int};
-use ursus_shader_ir::IntrinsicFn::{Clamp, Cross, Floor, Fract, Length, Max, Min, Mix, Sqrt};
+use ursus_shader_ir::IntrinsicFn::{Abs, Clamp, Cross, Floor, Fract, Length, Max, Min, Mix, Sqrt};
 use ursus_shader_ir::Type::{Bool, Float, UInt, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
 use ursus_shader_ir::validate::{ValidationError, validate};
 use ursus_shader_ir::{Expr, FragmentShader, IntrinsicFn, PushConstantDesc, PushConstantFieldDesc, Type};
@@ -58,6 +58,7 @@ func_rejected! {
     clamp_on_bool_is_rejected => (Clamp, [Bool, Bool, Bool], 0),
     pow_on_bool_is_rejected => (Pow, [Bool, Bool], 0),
     cross_on_bool_is_rejected => (Cross, [Bool, Bool], 0),
+    abs_on_bool_is_rejected => (Abs, [Bool], 0),
 
     // signed int
     sqrt_on_int_is_rejected => (Sqrt, [Int], 0),
@@ -130,6 +131,11 @@ func_rejected! {
     cross_on_uvec2_is_rejected => (Cross, [UVec2, UVec2], 0),
     cross_on_uvec3_is_rejected => (Cross, [UVec3, UVec3], 0),
     cross_on_uvec4_is_rejected => (Cross, [UVec4, UVec4], 0),
+
+    abs_on_uint_is_rejected => (Abs, [UInt], 0),
+    abs_on_uvec2_is_rejected => (Abs, [UVec2], 0),
+    abs_on_uvec3_is_rejected => (Abs, [UVec3], 0),
+    abs_on_uvec4_is_rejected => (Abs, [UVec4], 0),
 
     // float
     cross_on_float_is_rejected => (Cross, [Float, Float], 0),
@@ -273,4 +279,15 @@ func_accepted! {
 
     // Cross: vec3
     cross_on_vec3_is_accepted => (Cross, [Vec3, Vec3], Vec3),
+
+    // Abs: float, int scalar and vectors
+    abs_on_float_is_accepted => (Abs, [Float], Float),
+    abs_on_vec2_is_accepted => (Abs, [Vec2], Vec2),
+    abs_on_vec3_is_accepted => (Abs, [Vec3], Vec3),
+    abs_on_vec4_is_accepted => (Abs, [Vec4], Vec4),
+
+    abs_on_int_is_accepted => (Abs, [Int], Int),
+    abs_on_ivec2_is_accepted => (Abs, [IVec2], IVec2),
+    abs_on_ivec3_is_accepted => (Abs, [IVec3], IVec3),
+    abs_on_ivec4_is_accepted => (Abs, [IVec4], IVec4),
 }

@@ -333,17 +333,17 @@ fn intrinsic_result_type(func: IntrinsicFn, arg_types: &[Type]) -> Result<Type, 
             }
             Ok(Type::Vec3)
         }
+        IntrinsicFn::Abs => {
+            let [x] = arg_types else { return Err(arity_err(1)) };
+            if !matches!(x.scalar(), Type::Float | Type::Int) {
+                return Err(type_err(0, *x));
+            }
+            Ok(*x)
+        }
         IntrinsicFn::Dot => {
             let [x, y] = arg_types else { return Err(arity_err(2)) };
             if x != y || !x.is_vector() {
                 return Err(type_err(1, *y));
-            }
-            Ok(Type::Float)
-        }
-        IntrinsicFn::Abs => {
-            let [x] = arg_types else { return Err(arity_err(1)) };
-            if !x.is_vector() && *x != Type::Float {
-                return Err(type_err(0, *x));
             }
             Ok(Type::Float)
         }
