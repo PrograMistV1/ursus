@@ -342,8 +342,11 @@ fn intrinsic_result_type(func: IntrinsicFn, arg_types: &[Type]) -> Result<Type, 
         }
         IntrinsicFn::Dot => {
             let [x, y] = arg_types else { return Err(arity_err(2)) };
-            if x != y || !x.is_vector() {
+            if x != y {
                 return Err(type_err(1, *y));
+            }
+            if !x.is_vector() || x.scalar() != Type::Float {
+                return Err(type_err(0, *x));
             }
             Ok(Type::Float)
         }

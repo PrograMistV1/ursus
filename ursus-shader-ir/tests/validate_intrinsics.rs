@@ -1,6 +1,6 @@
 use IntrinsicFn::Pow;
 use Type::{IVec2, IVec3, IVec4, Int};
-use ursus_shader_ir::IntrinsicFn::{Abs, Clamp, Cross, Floor, Fract, Length, Max, Min, Mix, Sqrt};
+use ursus_shader_ir::IntrinsicFn::{Abs, Clamp, Cross, Dot, Floor, Fract, Length, Max, Min, Mix, Sqrt};
 use ursus_shader_ir::Type::{Bool, Float, UInt, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
 use ursus_shader_ir::validate::{ValidationError, validate};
 use ursus_shader_ir::{Expr, FragmentShader, IntrinsicFn, PushConstantDesc, PushConstantFieldDesc, Type};
@@ -59,6 +59,7 @@ func_rejected! {
     pow_on_bool_is_rejected => (Pow, [Bool, Bool], 0),
     cross_on_bool_is_rejected => (Cross, [Bool, Bool], 0),
     abs_on_bool_is_rejected => (Abs, [Bool], 0),
+    dot_on_bool_is_rejected => (Dot, [Bool, Bool], 0),
 
     // signed int
     sqrt_on_int_is_rejected => (Sqrt, [Int], 0),
@@ -95,6 +96,11 @@ func_rejected! {
     cross_on_ivec2_is_rejected => (Cross, [IVec2, IVec2], 0),
     cross_on_ivec3_is_rejected => (Cross, [IVec3, IVec3], 0),
     cross_on_ivec4_is_rejected => (Cross, [IVec4, IVec4], 0),
+
+    dot_on_int_is_rejected => (Dot, [Int, Int], 0),
+    dot_on_ivec2_is_rejected => (Dot, [IVec2, IVec2], 0),
+    dot_on_ivec3_is_rejected => (Dot, [IVec3, IVec3], 0),
+    dot_on_ivec4_is_rejected => (Dot, [IVec4, IVec4], 0),
 
     // unsigned int
     sqrt_on_uint_is_rejected => (Sqrt, [UInt], 0),
@@ -137,10 +143,16 @@ func_rejected! {
     abs_on_uvec3_is_rejected => (Abs, [UVec3], 0),
     abs_on_uvec4_is_rejected => (Abs, [UVec4], 0),
 
+    dot_on_uint_is_rejected => (Dot, [UInt, UInt], 0),
+    dot_on_uvec2_is_rejected => (Dot, [UVec2, UVec2], 0),
+    dot_on_uvec3_is_rejected => (Dot, [UVec3, UVec3], 0),
+    dot_on_uvec4_is_rejected => (Dot, [UVec4, UVec4], 0),
+
     // float
     cross_on_float_is_rejected => (Cross, [Float, Float], 0),
     cross_on_vec2_is_rejected => (Cross, [Vec2, Vec2], 0),
     cross_on_vec4_is_rejected => (Cross, [Vec4, Vec4], 0),
+    dot_on_float_is_rejected => (Dot, [Float, Float], 0),
 
     // opaque
     /*sqrt_on_sampler2d_is_rejected => (Sqrt, [Sampler2D], 0),
@@ -173,6 +185,7 @@ func_rejected! {
     mix_y_int_with_float_x_is_rejected => (Mix, [Float, Int, Float], 1),
     clamp_y_int_with_float_x_is_rejected => (Clamp, [Float, Int, Float], 1),
     pow_y_int_with_float_x_is_rejected => (Pow, [Float, Int], 1),
+    dot_y_vec2_with_vec3_x_is_rejected => (Dot, [Vec3, Vec2], 1),
 }
 
 macro_rules! func_accepted {
@@ -290,4 +303,9 @@ func_accepted! {
     abs_on_ivec2_is_accepted => (Abs, [IVec2], IVec2),
     abs_on_ivec3_is_accepted => (Abs, [IVec3], IVec3),
     abs_on_ivec4_is_accepted => (Abs, [IVec4], IVec4),
+
+    // Dot: float vectors
+    dot_on_vec2_is_accepted => (Dot, [Vec2, Vec2], Float),
+    dot_on_vec3_is_accepted => (Dot, [Vec3, Vec3], Float),
+    dot_on_vec4_is_accepted => (Dot, [Vec4, Vec4], Float),
 }
