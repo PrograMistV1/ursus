@@ -15,19 +15,25 @@ fn add(lhs: Expr, rhs: Expr) -> Expr {
 fn swizzle(base: Expr, pattern: &'static str) -> Expr {
     Expr::Swizzle { base: Box::new(base), pattern }
 }
+fn vec3_splat(x: Expr) -> Expr {
+    Expr::VecConstruct { ty: Type::Vec3, components: vec![x.clone(), x.clone(), x] }
+}
 
 fn aces_inline(x: Expr) -> Expr {
-    let a = Expr::Constant(2.51);
-    let b = Expr::Constant(0.03);
-    let c = Expr::Constant(2.43);
-    let d = Expr::Constant(0.59);
-    let e = Expr::Constant(0.14);
+    let a = vec3_splat(Expr::Constant(2.51));
+    let b = vec3_splat(Expr::Constant(0.03));
+    let c = vec3_splat(Expr::Constant(2.43));
+    let d = vec3_splat(Expr::Constant(0.59));
+    let e = vec3_splat(Expr::Constant(0.14));
 
     let numerator = mul(x.clone(), add(mul(a, x.clone()), b));
     let denominator = add(mul(x.clone(), add(mul(c, x), d)), e);
     let ratio = div(numerator, denominator);
 
-    Expr::Intrinsic { func: IntrinsicFn::Clamp, args: vec![ratio, Expr::Constant(0.0), Expr::Constant(1.0)] }
+    Expr::Intrinsic {
+        func: IntrinsicFn::Clamp,
+        args: vec![ratio, vec3_splat(Expr::Constant(0.0)), vec3_splat(Expr::Constant(1.0))],
+    }
 }
 
 fn build_post_process() -> FragmentShader {
