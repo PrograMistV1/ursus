@@ -1,14 +1,15 @@
 use IntrinsicFn::Pow;
 use Type::{IVec2, IVec3, IVec4, Int};
 use ursus_shader_ir::IntrinsicFn::{Abs, Clamp, Cross, Dot, Floor, Fract, Length, Max, Min, Mix, Sqrt};
+use ursus_shader_ir::StageData::Fragment;
 use ursus_shader_ir::Type::{Bool, Float, UInt, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
 use ursus_shader_ir::validate::{ValidationError, validate};
-use ursus_shader_ir::{Expr, FragmentShader, IntrinsicFn, PushConstantDesc, PushConstantFieldDesc, Type};
+use ursus_shader_ir::{Expr, IntrinsicFn, PushConstantDesc, PushConstantFieldDesc, Shader, Type};
 
 // TODO: tests for opaque operands (Sampler2D, SamplerCube, Sampler2DShadow)
 // are postponed: intrinsic_of cannot build opaque fields via push constants.
 // Revisit once sampler support is implemented in lower and BindingRef covers them.
-fn intrinsic_of(func: IntrinsicFn, tys: &[Type]) -> FragmentShader {
+fn intrinsic_of(func: IntrinsicFn, tys: &[Type]) -> Shader {
     let mut fields: Vec<PushConstantFieldDesc> = vec![];
     let mut args: Vec<Expr> = vec![];
     let mut offset = 0;
@@ -21,10 +22,10 @@ fn intrinsic_of(func: IntrinsicFn, tys: &[Type]) -> FragmentShader {
         offset += ty.component_byte_size() * ty.component_count();
     }
 
-    FragmentShader {
+    Shader {
         bindings: vec![],
         push_constant: Some(PushConstantDesc { fields }),
-        output: Expr::Intrinsic { func, args },
+        stage: Fragment { output: Expr::Intrinsic { func, args } },
     }
 }
 

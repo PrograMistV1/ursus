@@ -1,5 +1,5 @@
 use crate::expr::{BinOp, BuiltinVar, Expr, IntrinsicFn};
-use crate::shader::FragmentShader;
+use crate::shader::{Shader, StageData};
 use crate::types::Type;
 use std::error::Error;
 use std::fmt::Display;
@@ -105,11 +105,18 @@ pub enum TypedExprKind {
 
 /// Type-checks `shader.output` and, on success, returns the fully
 /// type-annotated tree ready for `lower::lower`.
-pub fn validate(shader: &FragmentShader) -> Result<TypedExpr, ValidationError> {
-    infer(shader, &shader.output)
+pub fn validate(shader: &Shader) -> Result<TypedExpr, ValidationError> {
+    match &shader.stage {
+        StageData::Fragment { output } => infer(shader, output),
+        StageData::Vertex
+        | StageData::Compute
+        | StageData::Geometry
+        | StageData::TessellationControl
+        | StageData::TessellationEvaluation => unimplemented!("validate: only fragment shaders are supported for now"),
+    }
 }
 
-fn infer(shader: &FragmentShader, expr: &Expr) -> Result<TypedExpr, ValidationError> {
+fn infer(shader: &Shader, expr: &Expr) -> Result<TypedExpr, ValidationError> {
     match expr {
         Expr::Constant(v) => Ok(TypedExpr { ty: Type::Float, kind: TypedExprKind::Constant(*v) }),
 

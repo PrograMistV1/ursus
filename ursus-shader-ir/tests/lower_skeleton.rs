@@ -1,3 +1,4 @@
+use StageData::Fragment;
 use rspirv::binary::{Assemble, Disassemble};
 use std::env::temp_dir;
 use std::fs::{File, remove_file};
@@ -5,7 +6,7 @@ use std::io::Write;
 use std::process::Command;
 use ursus_shader_ir::lower::lower;
 use ursus_shader_ir::{
-    Binding, BindingKind, BuiltinVar, Expr, FragmentShader, PushConstantDesc, Type, clamp, pow, sampler2d,
+    Binding, BindingKind, BuiltinVar, Expr, PushConstantDesc, Shader, StageData, Type, clamp, pow, sampler2d,
     validate::validate, vec4,
 };
 
@@ -23,7 +24,7 @@ fn aces_inline(x: Expr) -> Expr {
     clamp(ratio, ursus_shader_ir::vec3!(Expr::Constant(0.0)), ursus_shader_ir::vec3!(Expr::Constant(1.0)))
 }
 
-fn build_post_process() -> FragmentShader {
+fn build_post_process() -> Shader {
     let push_constant = PushConstantDesc::new(&[
         ("texel_size", Type::Vec2),
         ("exposure", Type::Float),
@@ -40,7 +41,7 @@ fn build_post_process() -> FragmentShader {
 
     let output = vec4!(gamma_corrected, Expr::Constant(1.0));
 
-    FragmentShader { bindings: vec![hdr_input_binding], push_constant: Some(push_constant), output }
+    Shader { bindings: vec![hdr_input_binding], push_constant: Some(push_constant), stage: Fragment { output } }
 }
 
 #[test]

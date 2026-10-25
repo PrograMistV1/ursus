@@ -15,7 +15,6 @@ fn compile_shaders() {
         ("shaders/unlit.vert", "unlit.vert.spv"),
         ("shaders/unlit.frag", "unlit.frag.spv"),
         ("shaders/post_process.vert", "post_process.vert.spv"),
-        ("shaders/post_process.frag", "post_process.frag.spv"),
         ("shaders/lighting.frag", "lighting.frag.spv"),
         ("shaders/shadow.vert", "shadow.vert.spv"),
         ("shaders/shadow.frag", "shadow.frag.spv"),

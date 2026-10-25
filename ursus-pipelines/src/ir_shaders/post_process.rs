@@ -1,5 +1,6 @@
+use ursus_shader_ir::StageData::Fragment;
 use ursus_shader_ir::{
-    clamp, pow, sampler2d, vec3, vec4, Binding, BindingKind, BuiltinVar, Expr, FragmentShader, PushConstantDesc, Type,
+    clamp, pow, sampler2d, vec3, vec4, Binding, BindingKind, BuiltinVar, Expr, PushConstantDesc, Shader, Type,
 };
 
 fn aces_inline(x: Expr) -> Expr {
@@ -16,7 +17,7 @@ fn aces_inline(x: Expr) -> Expr {
     clamp(ratio, vec3!(Expr::Constant(0.0)), vec3!(Expr::Constant(1.0)))
 }
 
-fn fragment() -> FragmentShader {
+fn fragment() -> Shader {
     let push_constant = PushConstantDesc::new(&[
         ("texel_size", Type::Vec2),
         ("exposure", Type::Float),
@@ -33,9 +34,9 @@ fn fragment() -> FragmentShader {
 
     let output = vec4!(gamma_corrected, Expr::Constant(1.0));
 
-    FragmentShader { bindings: vec![hdr_input_binding], push_constant: Some(push_constant), output }
+    Shader { bindings: vec![hdr_input_binding], push_constant: Some(push_constant), stage: Fragment { output } }
 }
 
 pub fn compile() -> anyhow::Result<Vec<u8>> {
-    Ok(ursus_shader_ir::compile_fragment(&fragment())?)
+    Ok(ursus_shader_ir::compile(&fragment())?)
 }

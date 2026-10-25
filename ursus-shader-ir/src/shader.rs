@@ -1,5 +1,33 @@
 use crate::expr::Expr;
 use crate::types::Type;
+use std::fmt::Debug;
+
+pub enum StageData {
+    Fragment { output: Expr },
+    Vertex,
+    Compute,
+    Geometry,
+    TessellationControl,
+    TessellationEvaluation,
+}
+
+/// A complete shader: resources shared by all stages (bindings and the push
+/// constant block) plus the stage-specific data in [`StageData`].
+pub struct Shader {
+    pub bindings: Vec<(&'static str, Binding)>,
+    pub push_constant: Option<PushConstantDesc>,
+    pub stage: StageData,
+}
+
+impl Shader {
+    pub fn binding(&self, name: &str) -> &Binding {
+        self.bindings
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, b)| b)
+            .unwrap_or_else(|| panic!("Shader::binding: no binding named '{name}'"))
+    }
+}
 
 /// A single resource binding, e.g.
 /// `layout (set = 0, binding = 0) uniform sampler2D hdrInput`.
@@ -59,27 +87,5 @@ impl PushConstantDesc {
 
     pub fn size(&self) -> u32 {
         self.fields.last().map_or(0, |f| f.offset + f.ty.component_byte_size() * f.ty.component_count())
-    }
-}
-
-/// A full fragment shader: its resource bindings, optional push constant
-/// block, and the expression producing its single color output.
-///
-/// Only one color output (location 0) is supported - multi-render-target
-/// output is not implemented yet.
-#[derive(Debug, Clone)]
-pub struct FragmentShader {
-    pub bindings: Vec<(&'static str, Binding)>,
-    pub push_constant: Option<PushConstantDesc>,
-    pub output: Expr,
-}
-
-impl FragmentShader {
-    pub fn binding(&self, name: &str) -> &Binding {
-        self.bindings
-            .iter()
-            .find(|(n, _)| *n == name)
-            .map(|(_, b)| b)
-            .unwrap_or_else(|| panic!("FragmentShader::binding: no binding named '{name}'"))
     }
 }

@@ -1,10 +1,11 @@
+use ursus_shader_ir::shader::Shader;
 use ursus_shader_ir::{
-    BinOp, BuiltinVar, Expr, FragmentShader, IntrinsicFn, Type, dot, sampler2d, validate::ValidationError,
+    BinOp, BuiltinVar, Expr, IntrinsicFn, StageData, Type, dot, sampler2d, validate::ValidationError,
     validate::validate, vec2, vec3, vec4,
 };
 
-fn shader_with_output(output: Expr) -> FragmentShader {
-    FragmentShader { bindings: vec![], push_constant: None, output }
+fn shader_with_output(output: Expr) -> Shader {
+    Shader { bindings: vec![], push_constant: None, stage: StageData::Fragment { output } }
 }
 
 #[test]

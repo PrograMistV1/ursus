@@ -1,8 +1,8 @@
-use crate::PushConstantDesc;
 use crate::expr::{BinOp, BuiltinVar, IntrinsicFn};
-use crate::shader::{BindingKind, FragmentShader};
+use crate::shader::{BindingKind, Shader};
 use crate::types::Type;
 use crate::validate::{TypedExpr, TypedExprKind};
+use crate::{PushConstantDesc, StageData};
 use rspirv::dr::{Builder, Module, Operand};
 use rspirv::spirv;
 use rspirv::spirv::GlslStd450Op;
@@ -17,18 +17,22 @@ struct LoweringContext {
     push_constant_var: Option<(PushConstantDesc, spirv::Word)>,
 }
 
-/// Lowers an already-validated, type-annotated shader tree to a SPIR-V
-/// `Module`. Callers get a `TypedExpr` from `validate::validate` - this
-/// function trusts its type annotations completely and does not re-infer
-/// or re-check anything; an internally inconsistent `TypedExpr` (one not
-/// actually produced by `validate::validate`) will panic rather than
-/// return an error.
-pub fn lower(shader: &FragmentShader, typed_output: &TypedExpr) -> Module {
-    let mut ctx = LoweringContext::new();
+pub fn lower(shader: &Shader, typed_output: &TypedExpr) -> Module {
+    match &shader.stage {
+        StageData::Fragment { .. } => lower_fragment_shader(shader, typed_output),
+        StageData::Vertex
+        | StageData::Compute
+        | StageData::Geometry
+        | StageData::TessellationControl
+        | StageData::TessellationEvaluation => unimplemented!("lower: only fragment shaders are supported for now"),
+    }
+}
 
+fn lower_fragment_shader(fragment: &Shader, typed_output: &TypedExpr) -> Module {
+    let mut ctx = LoweringContext::new();
     ctx.declare_builtin(typed_output);
-    ctx.declare_bindings(shader);
-    ctx.declare_push_constant(shader);
+    ctx.declare_bindings(fragment);
+    ctx.declare_push_constant(fragment);
 
     let output_ty = ctx.spirv_type(typed_output.ty);
     let output_ptr_ty = ctx.builder.type_pointer(None, spirv::StorageClass::Output, output_ty);
@@ -118,7 +122,7 @@ impl LoweringContext {
         id
     }
 
-    fn declare_bindings(&mut self, shader: &FragmentShader) {
+    fn declare_bindings(&mut self, shader: &Shader) {
         for (name, binding) in &shader.bindings {
             let ty = match binding.kind {
                 BindingKind::CombinedImageSampler2D => Type::Sampler2D,
@@ -134,7 +138,7 @@ impl LoweringContext {
         }
     }
 
-    fn declare_push_constant(&mut self, shader: &FragmentShader) {
+    fn declare_push_constant(&mut self, shader: &Shader) {
         let Some(pc) = &shader.push_constant else { return };
         if pc.fields.is_empty() {
             return;
