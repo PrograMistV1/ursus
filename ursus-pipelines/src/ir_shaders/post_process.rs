@@ -1,19 +1,19 @@
 use ursus_shader_ir::{
-    clamp, pow, sampler2d, Binding, BindingKind, BuiltinVar, Expr, FragmentShader, PushConstantDesc, Type,
+    clamp, pow, sampler2d, vec3, vec4, Binding, BindingKind, BuiltinVar, Expr, FragmentShader, PushConstantDesc, Type,
 };
 
 fn aces_inline(x: Expr) -> Expr {
-    let a = ursus_shader_ir::vec3_splat(Expr::Constant(2.51));
-    let b = ursus_shader_ir::vec3_splat(Expr::Constant(0.03));
-    let c = ursus_shader_ir::vec3_splat(Expr::Constant(2.43));
-    let d = ursus_shader_ir::vec3_splat(Expr::Constant(0.59));
-    let e = ursus_shader_ir::vec3_splat(Expr::Constant(0.14));
+    let a = vec3!(Expr::Constant(2.51));
+    let b = vec3!(Expr::Constant(0.03));
+    let c = vec3!(Expr::Constant(2.43));
+    let d = vec3!(Expr::Constant(0.59));
+    let e = vec3!(Expr::Constant(0.14));
 
     let numerator = x.clone() * ((a * x.clone()) + b);
     let denominator = (x.clone() * ((c * x) + d)) + e;
     let ratio = numerator / denominator;
 
-    clamp(ratio, ursus_shader_ir::vec3_splat(Expr::Constant(0.0)), ursus_shader_ir::vec3_splat(Expr::Constant(1.0)))
+    clamp(ratio, vec3!(Expr::Constant(0.0)), vec3!(Expr::Constant(1.0)))
 }
 
 fn fragment() -> FragmentShader {
@@ -27,11 +27,11 @@ fn fragment() -> FragmentShader {
 
     let uv = Expr::Builtin(BuiltinVar::FragCoord).xy() * push_constant.field("texel_size");
     let hdr = sampler2d(Expr::BindingRef("hdrInput"), uv).rgb();
-    let tonemapped = aces_inline(hdr * ursus_shader_ir::vec3_splat(push_constant.field("exposure")));
+    let tonemapped = aces_inline(hdr * vec3!(push_constant.field("exposure")));
 
-    let gamma_corrected = pow(tonemapped, ursus_shader_ir::vec3_splat(Expr::Constant(1.0 / 2.2)));
+    let gamma_corrected = pow(tonemapped, vec3!(Expr::Constant(1.0 / 2.2)));
 
-    let output = Expr::VecConstruct { ty: Type::Vec4, components: vec![gamma_corrected, Expr::Constant(1.0)] };
+    let output = vec4!(gamma_corrected, Expr::Constant(1.0));
 
     FragmentShader { bindings: vec![hdr_input_binding], push_constant: Some(push_constant), output }
 }

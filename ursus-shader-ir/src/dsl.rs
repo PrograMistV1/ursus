@@ -1,4 +1,4 @@
-use crate::{BinOp, Expr, IntrinsicFn, Type};
+use crate::{BinOp, Expr, IntrinsicFn};
 
 // Swizzle accessors for all 1-4 component combinations of xyzw and rgba.
 include!(concat!(env!("OUT_DIR"), "/swizzles.rs"));
@@ -75,85 +75,67 @@ pub fn fract(v: Expr) -> Expr {
     Expr::Intrinsic { func: IntrinsicFn::Fract, args: vec![v] }
 }
 
-pub fn vec2(x: Expr, y: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::Vec2, components: vec![x, y] }
+#[macro_export]
+macro_rules! vec2 {
+    ($($x:expr),+) => {
+        $crate::Expr::VecConstruct { ty: $crate::Type::Vec2, components: vec![$($x),+] }
+    };
 }
 
-/// Accepts a scalar only
-pub fn vec2_splat(x: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::Vec2, components: vec![x] }
+#[macro_export]
+macro_rules! vec3 {
+    ($($x:expr),+) => {
+        $crate::Expr::VecConstruct { ty: $crate::Type::Vec3, components: vec![$($x),+] }
+    };
 }
 
-pub fn vec3(x: Expr, y: Expr, z: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::Vec3, components: vec![x, y, z] }
+#[macro_export]
+macro_rules! vec4 {
+    ($($x:expr),+) => {
+        $crate::Expr::VecConstruct { ty: $crate::Type::Vec4, components: vec![$($x),+] }
+    };
 }
 
-/// Accepts a scalar only
-pub fn vec3_splat(x: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::Vec3, components: vec![x] }
+#[macro_export]
+macro_rules! ivec2 {
+    ($($x:expr),+) => {
+        $crate::Expr::VecConstruct { ty: $crate::Type::IVec2, components: vec![$($x),+] }
+    };
 }
 
-pub fn vec4(x: Expr, y: Expr, z: Expr, w: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::Vec4, components: vec![x, y, z, w] }
+#[macro_export]
+macro_rules! ivec3 {
+    ($($x:expr),+) => {
+        $crate::Expr::VecConstruct { ty: $crate::Type::IVec3, components: vec![$($x),+] }
+    };
 }
 
-/// Accepts a scalar only
-pub fn vec4_splat(x: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::Vec4, components: vec![x] }
+#[macro_export]
+macro_rules! ivec4 {
+    ($($x:expr),+) => {
+        $crate::Expr::VecConstruct { ty: $crate::Type::IVec4, components: vec![$($x),+] }
+    };
 }
 
-pub fn ivec2(x: Expr, y: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::IVec2, components: vec![x, y] }
+#[macro_export]
+macro_rules! uvec2 {
+    ($($x:expr),+) => {
+        $crate::Expr::VecConstruct { ty: $crate::Type::UVec2, components: vec![$($x),+] }
+    };
 }
 
-/// Accepts a scalar only
-pub fn ivec2_splat(x: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::IVec2, components: vec![x] }
+#[macro_export]
+macro_rules! uvec3 {
+    ($($x:expr),+) => {
+        $crate::Expr::VecConstruct { ty: $crate::Type::UVec3, components: vec![$($x),+] }
+    };
 }
 
-pub fn ivec3(x: Expr, y: Expr, z: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::IVec3, components: vec![x, y, z] }
-}
-
-/// Accepts a scalar only
-pub fn ivec3_splat(x: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::IVec3, components: vec![x] }
-}
-
-pub fn ivec4(x: Expr, y: Expr, z: Expr, w: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::IVec4, components: vec![x, y, z, w] }
-}
-
-/// Accepts a scalar only
-pub fn ivec4_splat(x: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::IVec4, components: vec![x] }
-}
-
-pub fn uvec2(x: Expr, y: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::UVec2, components: vec![x, y] }
-}
-
-/// Accepts a scalar only
-pub fn uvec2_splat(x: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::UVec2, components: vec![x] }
-}
-
-pub fn uvec3(x: Expr, y: Expr, z: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::UVec3, components: vec![x, y, z] }
-}
-
-/// Accepts a scalar only
-pub fn uvec3_splat(x: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::UVec3, components: vec![x] }
-}
-
-pub fn uvec4(x: Expr, y: Expr, z: Expr, w: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::UVec4, components: vec![x, y, z, w] }
-}
-
-/// Accepts a scalar only
-pub fn uvec4_splat(x: Expr) -> Expr {
-    Expr::VecConstruct { ty: Type::UVec4, components: vec![x] }
+#[macro_export]
+macro_rules! uvec4 {
+    ($($x:expr),+) => {
+        $crate::Expr::VecConstruct { ty: $crate::Type::UVec4, components: vec![$($x),+] }
+    };
 }
 
 pub fn sampler2d(texture: Expr, uv: Expr) -> Expr {
